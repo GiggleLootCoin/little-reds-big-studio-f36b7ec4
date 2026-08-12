@@ -112,7 +112,18 @@ function artifactUrl(v: unknown): string | null {
       if (u) return u;
     }
   if (v && typeof v === "object")
-    for (const key of ["url", "uri", "src", "path", "value", "data", "video", "audio", "image", "file"]) {
+    for (const key of [
+      "url",
+      "uri",
+      "src",
+      "path",
+      "value",
+      "data",
+      "video",
+      "audio",
+      "image",
+      "file",
+    ]) {
       const u = artifactUrl((v as Record<string, unknown>)[key]);
       if (u) return u;
     }
@@ -259,7 +270,10 @@ async function runOn(provider: FreeRunner, input: StudioJobInput, capability: St
 function withTimeout<T>(promise: Promise<T>, ms: number, label: string) {
   let timer: number | undefined;
   const timeout = new Promise<never>((_, reject) => {
-    timer = window.setTimeout(() => reject(new Error(`${label} timed out after ${Math.round(ms / 1000)}s`)), ms);
+    timer = window.setTimeout(
+      () => reject(new Error(`${label} timed out after ${Math.round(ms / 1000)}s`)),
+      ms,
+    );
   });
   return Promise.race([promise, timeout]).finally(() => {
     if (timer !== undefined) window.clearTimeout(timer);

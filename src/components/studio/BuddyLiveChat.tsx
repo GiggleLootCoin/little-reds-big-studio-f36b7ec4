@@ -556,7 +556,9 @@ export function BuddyLiveChat() {
         </div>
         <div className="mt-4 max-h-64 space-y-2 overflow-auto pr-1">
           {messages.length === 0 ? (
-            <p className="py-5 text-center text-xs text-muted-foreground">Buddy is ready when you are.</p>
+            <p className="py-5 text-center text-xs text-muted-foreground">
+              Buddy is ready when you are.
+            </p>
           ) : (
             messages.map((message, index) => (
               <div
