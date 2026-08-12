@@ -6,12 +6,12 @@ The Studio is designed around one simple experience: bring in your idea, music, 
 
 ## Production
 
-- **Live app:** https://little-reds-big-studio-611db058.gigglelootcoin.workers.dev
+- **Live app:** https://little-reds-big-studio-f36b7ec4.gigglelootcoin.workers.dev
 - **Source:** this private GitHub repository
 - **Hosting:** Cloudflare Workers
 - **Cost target:** $0 / no paid hosting required
 - **AI policy:** no mandatory paid AI API and no mandatory provider account
-- **Storage:** browser-first project storage where supported
+- **Storage:** browser-first project storage where supported, with account-backed project structures available through Supabase
 - **Device:** Android-friendly responsive web app
 
 ## Buddy orchestration
@@ -20,16 +20,25 @@ Buddy ranks available routes by capability and keeps free/open fallbacks ready. 
 
 The normal user does **not** choose models or providers.
 
+Every remote generation route is treated as a candidate until the live schema is compatible, the job actually runs, an artifact is returned and that artifact passes validation.
+
 ### Current free/open routes
 
-- Writing/reasoning: Bonsai WebGPU when the device can handle it
-- Voice: Applio/RVC, with browser and Qwen3-TTS fallbacks
-- Music: ACE-Step 1.5, with MusicGen Web for lighter jobs
-- Stems: Demucs, with BS-Roformer fallback
-- Artwork: Z Image Turbo, with SDXL fallback
-- Video: Wan 2.2 S2V / video routes, with LTX 2.3 fallback
+- Writing/reasoning: Qwen3 routes with browser-local fallback
+- Voice: Qwen3-TTS, MOSS-TTS, Chatterbox, Seed-VC and Applio/RVC fallbacks
+- Music: ACE-Step 1.5 with DiffRhythm fallback
+- Stems: Demucs
+- Artwork: Qwen Image / Z Image Turbo / SDXL fallbacks
+- Video: LTX 2.3 / Wan 2.2 fallbacks
+- Speech recognition: Qwen3-ASR / Whisper fallbacks
 
 Public free GPU services can have queues or temporary outages; Buddy therefore keeps alternatives rather than presenting one provider as guaranteed.
+
+## Authentication and entitlements
+
+Studio accounts use Supabase authentication. Trial and membership entitlement state is server-authoritative; browser/localStorage values do not grant paid access. Password recovery is supported.
+
+The paid target is Buddy Unlimited at $10/month through Buy Me a Coffee. The signed webhook and entitlement RPC are part of the backend; the membership webhook secret must still be live-verified before membership is described as fully production-verified.
 
 ## Red's Ways Of Thinking
 
@@ -64,10 +73,10 @@ Production build:
 npm run build
 ```
 
-Deployment:
+Cloudflare Worker deployment:
 
 ```sh
 npm run deploy
 ```
 
-GitHub Actions validates the main branch with dependency installation, TypeScript checking, formatting, linting and a production build before/alongside the Cloudflare deployment workflow.
+GitHub Actions validates the main branch with dependency installation, TypeScript checking, formatting, linting and a production build. Cloudflare handles production deployment from the connected repository.
