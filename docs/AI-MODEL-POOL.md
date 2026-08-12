@@ -122,6 +122,12 @@ This registry records promising open/free model projects for evaluation and inte
 - ACE-Step and HeartMuLa can consume approved lyrics to create music.
 - Lyrics remain editable text artifacts before music generation.
 
+## Current free Android execution map
+
+The production UI now maps the user-facing creation actions to verified public/local routes without requiring Colab, Kaggle, a computer, or a paid Studio API. Current routes include Qwen Image for artwork, Wan 2.2 S2V and LTX 2.3 for video, Qwen3-TTS/Applio for voice, ACE-Step for music, Demucs/BS-Roformer for stems, and a local WebGPU writing route for lyrics.
+
+These are **handoff routes**, not fake in-app completions: the Studio copies the prepared job prompt, opens the runner, and does not report success until an artifact is actually returned.
+
 ## Recommended user-facing routing
 
 The user should see simple controls such as:
