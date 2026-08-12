@@ -1,5 +1,9 @@
 export type MicrophoneErrorKind =
-  "permission" | "insecure-context" | "no-device" | "unsupported" | "unknown";
+  | "permission"
+  | "insecure-context"
+  | "no-device"
+  | "unsupported"
+  | "unknown";
 
 export type MicrophoneInfo = {
   id: string;
@@ -19,9 +23,15 @@ export async function listMicrophones(): Promise<MicrophoneInfo[]> {
     }));
 }
 
-export function chooseMicrophone(devices: MicrophoneInfo[]): MicrophoneInfo | null {
+export function chooseMicrophone(devices: MicrophoneInfo[], preferredId?: string): MicrophoneInfo | null {
   if (!devices.length) return null;
-  return devices.find((device) => !device.isDefault) ?? devices[0] ?? null;
+  if (preferredId) {
+    const preferred = devices.find((device) => device.id === preferredId);
+    if (preferred) return preferred;
+  }
+  // The browser's default is the safest first choice because it is the input
+  // the OS has already selected (including Bluetooth/wired routing on phones).
+  return devices.find((device) => device.isDefault) ?? devices[0] ?? null;
 }
 
 export async function requestMicrophone(deviceId?: string): Promise<MediaStream> {
@@ -43,13 +53,31 @@ export async function requestMicrophone(deviceId?: string): Promise<MediaStream>
   });
 }
 
+/**
+ * Test a candidate input without stealing the active call stream. This is
+ * deliberately best-effort: browsers may expose only a default device until
+ * permission has been granted, and Bluetooth routes can disappear while a
+ * call is active.
+ */
+export async function probeMicrophone(deviceId?: string): Promise<boolean> {
+  try {
+    const stream = await requestMicrophone(deviceId);
+    const track = stream.getAudioTracks()[0];
+    const usable = Boolean(track && track.readyState === "live" && track.enabled);
+    stopMicrophone(stream);
+    return usable;
+  } catch {
+    return false;
+  }
+}
+
 export function classifyMicrophoneError(error: unknown): MicrophoneErrorKind {
   const name = error instanceof DOMException ? error.name : "";
   const message =
     error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
   if (name === "NotAllowedError" || name === "SecurityError" || message.includes("permission"))
     return "permission";
-  if (!window.isSecureContext) return "insecure-context";
+  if (typeof window !== "undefined" && !window.isSecureContext) return "insecure-context";
   if (
     name === "NotFoundError" ||
     name === "OverconstrainedError" ||
