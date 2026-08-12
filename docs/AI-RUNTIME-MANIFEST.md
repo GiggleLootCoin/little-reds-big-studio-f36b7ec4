@@ -18,21 +18,21 @@ A model is **not considered installed/ready merely because it appears in a regis
 
 ## Primary verified public routes
 
-| Capability | Model / engine | Public route | Runtime role |
-|---|---|---|---|
-| Music | ACE-Step 1.5 | `ACE-Step/Ace-Step-v1.5` | primary song generation |
-| Speech / voice | Qwen3-TTS | `Qwen/Qwen3-TTS` | primary Buddy TTS / cloning |
-| Speech recognition | Qwen3-ASR | `Qwen/Qwen3-ASR` | primary recorded STT fallback |
-| Voice conversion | Applio / RVC | `IAHispano/ApplioX` | RVC / voice-swap specialist |
-| Voice conversion | Seed-VC | `Plachta/Seed-VC` | zero-shot VC fallback |
-| Voice | Chatterbox Multilingual | `ResembleAI/Chatterbox-Multilingual-TTS` | multilingual TTS/clone fallback |
-| Speech | MOSS-TTS v1.5 | `OpenMOSS-Team/MOSS-TTS-v1.5` | multilingual TTS/clone fallback |
-| Artwork | Qwen Image | `Qwen/Qwen-Image` | image generation |
-| Artwork editing | Qwen Image Edit | `Qwen/Qwen-Image-Edit` | image editing |
-| Video | LTX 2.3 | `Lightricks/LTX-2-3` | primary video route |
-| Video | Wan 2.2 | current public Wan 2.2 ZeroGPU Spaces | video fallback |
-| Stems | Demucs | public Demucs Gradio route | vocal/instrument separation |
-| Browser voice | Kokoro WebGPU | WebGPU-compatible public/local route | low-latency TTS fallback |
+| Capability         | Model / engine          | Public route                             | Runtime role                    |
+| ------------------ | ----------------------- | ---------------------------------------- | ------------------------------- |
+| Music              | ACE-Step 1.5            | `ACE-Step/Ace-Step-v1.5`                 | primary song generation         |
+| Speech / voice     | Qwen3-TTS               | `Qwen/Qwen3-TTS`                         | primary Buddy TTS / cloning     |
+| Speech recognition | Qwen3-ASR               | `Qwen/Qwen3-ASR`                         | primary recorded STT fallback   |
+| Voice conversion   | Applio / RVC            | `IAHispano/ApplioX`                      | RVC / voice-swap specialist     |
+| Voice conversion   | Seed-VC                 | `Plachta/Seed-VC`                        | zero-shot VC fallback           |
+| Voice              | Chatterbox Multilingual | `ResembleAI/Chatterbox-Multilingual-TTS` | multilingual TTS/clone fallback |
+| Speech             | MOSS-TTS v1.5           | `OpenMOSS-Team/MOSS-TTS-v1.5`            | multilingual TTS/clone fallback |
+| Artwork            | Qwen Image              | `Qwen/Qwen-Image`                        | image generation                |
+| Artwork editing    | Qwen Image Edit         | `Qwen/Qwen-Image-Edit`                   | image editing                   |
+| Video              | LTX 2.3                 | `Lightricks/LTX-2-3`                     | primary video route             |
+| Video              | Wan 2.2                 | current public Wan 2.2 ZeroGPU Spaces    | video fallback                  |
+| Stems              | Demucs                  | public Demucs Gradio route               | vocal/instrument separation     |
+| Browser voice      | Kokoro WebGPU           | WebGPU-compatible public/local route     | low-latency TTS fallback        |
 
 ## User-facing rule
 
