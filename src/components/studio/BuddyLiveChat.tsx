@@ -77,8 +77,20 @@ export function BuddyLiveChat() {
     navigator.mediaDevices?.addEventListener?.("devicechange", onDeviceChange);
     return () => {
       navigator.mediaDevices?.removeEventListener?.("devicechange", onDeviceChange);
-      stopAll();
+      stopRecognition();
+      try {
+        recorderRef.current?.stop();
+      } catch {
+        /* ignore */
+      }
+      stopMicrophone(streamRef.current);
+      streamRef.current = null;
+      audioRef.current?.pause();
+      window.speechSynthesis?.cancel();
     };
+    // These functions intentionally use refs for mount/unmount cleanup and do not
+    // need to restart this initialization effect when their identities change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   useEffect(() => {
     try {
@@ -92,13 +104,15 @@ export function BuddyLiveChat() {
     try {
       const devices = await listMicrophones();
       setMicOptions(devices);
-      if (!micId) setMicId(chooseMicrophone(devices)?.id || "");
+      setMicId((current) => current || chooseMicrophone(devices)?.id || "");
     } catch {
       setMicOptions([]);
     }
   }
   async function openMicrophone() {
     try {
+      // Request permission first. Android intentionally hides real device labels
+      // and IDs until the permission handshake has completed.
       let stream = await requestMicrophone();
       const devices = await listMicrophones();
       setMicOptions(devices);
@@ -110,8 +124,10 @@ export function BuddyLiveChat() {
           stream = candidate;
           setMicId(preferred.id);
         } catch {
-          /* keep working default */
+          // Keep the browser-selected default input if a device disappeared.
         }
+      } else if (!micId) {
+        setMicId(preferred?.id || "");
       }
       streamRef.current = stream;
       return stream;
@@ -186,6 +202,7 @@ export function BuddyLiveChat() {
     recorderRef.current = recorder;
     recorder.start(250);
     setRecording(true);
+    setBuddyStatus("listening", { message: "Buddy is listening…" });
     setStatus(
       mode === "live"
         ? "Listening… speak naturally, then pause."
@@ -254,7 +271,11 @@ export function BuddyLiveChat() {
     const stream = await openMicrophone();
     if (!stream) return;
     modeRef.current = mode;
-    if (startBrowserRecognition(mode)) {
+    // Browser SpeechRecognition always uses the browser's default input and can
+    // silently ignore an explicitly selected Android microphone. Use the actual
+    // MediaRecorder path whenever the user selected a device; this guarantees the
+    // selected phone/headset input reaches the Studio ASR engine.
+    if (!micId && startBrowserRecognition(mode)) {
       stopMicrophone(stream);
       streamRef.current = null;
       return;
@@ -298,7 +319,7 @@ export function BuddyLiveChat() {
       };
       setStatus("Buddy is speaking…");
       await audioRef.current.play();
-    } catch {
+    } catch (error) {
       if ("speechSynthesis" in window) {
         await new Promise<void>((resolve) => {
           const utterance = new SpeechSynthesisUtterance(text);
@@ -458,7 +479,7 @@ export function BuddyLiveChat() {
               onChange={(e) => setMicId(e.target.value)}
               className="mt-2 w-full rounded-xl border border-border/60 bg-background/60 px-3 py-2 text-xs"
             >
-              <option value="">Automatic</option>
+              <option value="">Automatic phone microphone</option>
               {micOptions.map((mic) => (
                 <option key={mic.id} value={mic.id}>
                   {mic.label}
@@ -519,51 +540,37 @@ export function BuddyLiveChat() {
               <Mic className="size-4" />
               Record → Text
             </StudioButton>
-            {recording && !live && (
+            {recording && (
               <StudioButton variant="ghost" onClick={stopCapture}>
                 <MicOff className="size-4" />
                 Stop
               </StudioButton>
             )}
             {transcript && (
-              <StudioButton onClick={sendTranscript} disabled={busy}>
+              <StudioButton variant="ghost" onClick={sendTranscript}>
                 <Send className="size-4" />
                 Send transcript
               </StudioButton>
             )}
           </div>
-          {transcript && (
-            <textarea
-              value={transcript}
-              onChange={(e) => setTranscript(e.target.value)}
-              className="mt-3 min-h-24 w-full rounded-xl border border-border/60 bg-background/70 p-3 text-sm outline-none focus:border-primary"
-              aria-label="Voice transcript"
-            />
-          )}
         </div>
-        <div className="mt-4 max-h-64 space-y-2 overflow-y-auto pr-1">
-          {messages.slice(-8).map((message, index) => (
-            <div
-              key={`${message.role}-${index}`}
-              className={`rounded-2xl px-3 py-2 text-sm ${message.role === "user" ? "ml-8 bg-primary/10" : "mr-8 bg-white/[0.045]"}`}
-            >
-              <div className="mb-1 text-[9px] font-bold uppercase tracking-[0.16em] text-muted-foreground">
-                {message.role === "user" ? "You" : "Buddy"}
+        <div className="mt-4 max-h-64 space-y-2 overflow-auto pr-1">
+          {messages.length === 0 ? (
+            <p className="py-5 text-center text-xs text-muted-foreground">Buddy is ready when you are.</p>
+          ) : (
+            messages.map((message, index) => (
+              <div
+                key={`${message.role}-${index}`}
+                className={`rounded-2xl px-4 py-3 text-sm ${message.role === "user" ? "ml-8 bg-primary/10" : "mr-8 bg-muted/60"}`}
+              >
+                <div className="mb-1 text-[9px] font-bold uppercase tracking-[0.15em] text-muted-foreground">
+                  {message.role === "user" ? "You" : "Buddy"}
+                </div>
+                {message.content}
               </div>
-              {message.content}
-            </div>
-          ))}
-          {busy && (
-            <div className="mr-8 flex items-center gap-2 rounded-2xl bg-white/[0.045] px-3 py-2 text-xs text-muted-foreground">
-              <LoaderCircle className="size-4 animate-spin" />
-              Buddy is thinking…
-            </div>
+            ))
           )}
         </div>
-        <p className="mt-4 text-center text-[10px] leading-4 text-muted-foreground">
-          Buddy first requests permission, discovers available inputs and uses the browser's native
-          speech path when supported. A denied OS/browser permission cannot be bypassed.
-        </p>
       </div>
     </Panel>
   );
