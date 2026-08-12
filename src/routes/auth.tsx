@@ -148,7 +148,9 @@ function AuthPage() {
                 className="block w-full underline"
                 onClick={() => setMode(mode === "signup" ? "signin" : "signup")}
               >
-                {mode === "signup" ? "Already have an account? Sign in" : "Need an account? Create one"}
+                {mode === "signup"
+                  ? "Already have an account? Sign in"
+                  : "Need an account? Create one"}
               </button>
             </div>
           )}
