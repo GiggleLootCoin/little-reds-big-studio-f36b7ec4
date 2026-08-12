@@ -99,7 +99,7 @@ export function BuddyLiveChat() {
       const blob = new Blob(chunksRef.current, { type: recorder.mimeType || "audio/webm" }); chunksRef.current = []; recorderRef.current = null;
       const captureMode = modeRef.current; modeRef.current = "idle"; setRecording(false);
       if (captureMode === "record") { stopMicrophone(streamRef.current); streamRef.current = null; if (!blob.size) return; void transcribeBlob(blob).then(setTranscript).then(() => setStatus("Transcription ready. Edit it or send it to Buddy.")).catch((error) => setStatus(error instanceof Error ? error.message : "Speech recognition failed.")); }
-      else if (captureMode === "live" && liveRef.current && blob.size) { void transcribeBlob(blob).then((text) => answer(text, true)).catch((error) => setStatus(error instanceof Error ? error.message : "Speech recognition failed.")); }
+      else if (captureMode === "live" && liveRef.current && blob.size) { void transcribeBlob(blob).then((text) => answer(text, true)).catch((error) => { setStatus(error instanceof Error ? error.message : "Speech recognition failed."); if (liveRef.current) setTimeout(() => void beginCapture("live"), 500); }); }
       else { stopMicrophone(streamRef.current); streamRef.current = null; }
     };
     recorderRef.current = recorder; recorder.start(250); setRecording(true); setBuddyStatus("listening", { message: "Buddy is listening…" });
@@ -120,7 +120,7 @@ export function BuddyLiveChat() {
     recognition.onerror = (event) => {
       const error = event.error || "unknown";
       if (error === "not-allowed" || error === "service-not-allowed") { recognitionRestartRef.current = false; setStatus("Microphone permission was denied. Allow microphone access for this site, then tap Call Buddy again."); }
-      else if (error !== "aborted" && !speakingRef.current) setStatus("Browser speech recognition is unavailable; Buddy will use the Studio speech engine if recording is available.");
+      else if (error !== "aborted" && !speakingRef.current) setStatus("Browser speech recognition is unavailable; use the Studio speech engine.");
     };
     recognition.onend = () => {
       const text = recognitionTextRef.current.trim(); recognitionRef.current = null; setRecording(false);
@@ -133,15 +133,12 @@ export function BuddyLiveChat() {
 
   async function beginCapture(mode: Mode) {
     if (busyRef.current || speakingRef.current || recording) return;
-    // Always open the real Android microphone first. This is intentionally done from
-    // the Call/Record user action so the browser receives a trusted permission signal.
     const stream = streamRef.current?.active ? streamRef.current : await openMicrophone();
     if (!stream) return;
     if (mode === "live") {
-      if (startBrowserRecognition("live")) return;
-      // Last-resort fallback: capture a short complete media container, transcribe it,
-      // then immediately start another segment. This keeps live mode functional even
-      // when Web Speech is unavailable.
+      // Hands-free deliberately uses a real microphone recording segment and the
+      // server-side Whisper route. This avoids Android/Web Speech implementations
+      // that appear to start but never deliver a usable transcript.
       startMediaRecorder("live", stream);
       window.setTimeout(() => { if (liveRef.current && recorderRef.current?.state === "recording") { try { recorderRef.current.stop(); } catch {} } }, 6500);
       return;
@@ -159,7 +156,7 @@ export function BuddyLiveChat() {
       const result = await runStudioJob("tts", { text, target_text: text }, setStatus); if (!result.url) throw new Error("No voice artifact returned.");
       if (!audioRef.current) audioRef.current = new Audio(); const audio = audioRef.current; audio.src = result.url;
       audio.onended = () => { speakingRef.current = false; setBuddyStatus("idle"); if (liveRef.current) setTimeout(() => void beginCapture("live"), 200); };
-      audio.onerror = () => { speakingRef.current = false; };
+      audio.onerror = () => { speakingRef.current = false; if (liveRef.current) setTimeout(() => void beginCapture("live"), 200); };
       await audio.play(); setStatus("Buddy is speaking…");
     } catch {
       if ("speechSynthesis" in window) {
@@ -195,9 +192,9 @@ export function BuddyLiveChat() {
     setLive(true); liveRef.current = true; setStatus("Requesting your phone microphone…"); window.speechSynthesis?.resume();
     const stream = await openMicrophone();
     if (!stream) { liveRef.current = false; setLive(false); return; }
-    setStatus("Microphone ready. Connecting Buddy…");
+    setStatus("Microphone ready. Buddy is listening…");
     await beginCapture("live");
-    if (!recognitionRef.current && !recorderRef.current) { liveRef.current = false; setLive(false); setStatus("Buddy could not start listening. Try Call Buddy again."); }
+    if (!recorderRef.current) { liveRef.current = false; setLive(false); setStatus("Buddy could not start the phone microphone recorder. Try again."); }
   }
   function sendTyped() { void answer(input, true); }
   function sendTranscript() { const text = transcript.trim(); if (text) { setTranscript(""); void answer(text, true); } }
