@@ -99,24 +99,32 @@ function output(v: unknown): boolean {
   if (typeof v === "object") {
     const r = v as Record<string, unknown>;
     if (typeof r.size === "number" && r.size <= 0) return false;
+    if (typeof r.is_stream === "boolean" && r.is_stream) return false;
     return Object.values(r).some(output);
   }
   return true;
 }
 function artifactUrl(v: unknown): string | null {
-  if (typeof v === "string" && /^(https?:|blob:|data:|\/gradio_api\/file=|\/file=|file=)/i.test(v))
-    return v;
+  if (typeof v === "string") {
+    if (/^(https?:|blob:|data:)/i.test(v)) return v;
+    if (/^(\/gradio_api\/file=|\/file=|file=)/i.test(v)) return v;
+    return null;
+  }
   if (typeof Blob !== "undefined" && v instanceof Blob) return URL.createObjectURL(v);
-  if (Array.isArray(v))
+  if (Array.isArray(v)) {
     for (const x of v) {
       const u = artifactUrl(x);
       if (u) return u;
     }
-  if (v && typeof v === "object")
-    for (const x of Object.values(v as Record<string, unknown>)) {
-      const u = artifactUrl(x);
+  }
+  if (v && typeof v === "object") {
+    const r = v as Record<string, unknown>;
+    // Prefer an actual browser URL over an internal filesystem path.
+    for (const key of ["url", "uri", "src", "path", "value", "data"]) {
+      const u = artifactUrl(r[key]);
       if (u) return u;
     }
+  }
   return null;
 }
 function origin(space: string) {
@@ -129,15 +137,28 @@ function origin(space: string) {
     .toLowerCase();
   return `https://${slug}.hf.space`;
 }
+function proxyOrigin(space: string) {
+  const token = encodeURIComponent(space);
+  return `${window.location.origin}/api/hf-space/${token}`;
+}
 function normalizeUrl(u: string | null, space: string) {
-  if (!u || /^(https?:|blob:|data:)/.test(u)) return u;
-  if (u.startsWith("/")) return `${origin(space)}${u}`;
+  if (!u) return null;
+  if (/^(https?:|blob:|data:)/i.test(u)) return u;
+  if (u.startsWith("/")) return `${proxyOrigin(space)}${u}`;
+  if (/^file=/i.test(u)) return `${proxyOrigin(space)}/gradio_api/${u}`;
   return u;
 }
 async function client(space: string) {
   let p = clients.get(space);
   if (!p) {
-    p = Client.connect(space);
+    const source = typeof window === "undefined" ? origin(space) : proxyOrigin(space);
+    p = Client.connect(source, {
+      status_callback: (status) => {
+        if (status.status === "sleeping" || status.status === "building") {
+          console.info(`[Studio] ${space}: ${status.status}`);
+        }
+      },
+    });
     p.catch(() => clients.delete(space));
     clients.set(space, p);
   }
@@ -181,6 +202,10 @@ function score(ep: Endpoint, name: string, input: StudioJobInput, capability: St
         ? 2
         : -20;
   if (capability === "voice-clone" && (h.includes("clone") || h.includes("reference"))) s += 10;
+  if (capability === "voice-swap" && (h.includes("convert") || h.includes("vc") || h.includes("infer")))
+    s += 10;
+  if (capability === "music" && (h.includes("song") || h.includes("music") || h.includes("generate")))
+    s += 8;
   return s;
 }
 function validateArtifact(capability: StudioCapability, value: unknown, url: string | null) {
@@ -269,17 +294,17 @@ export async function runStudioJob(
   let last = "No compatible provider available";
   for (const p of providers) {
     try {
-      onStatus?.("Checking a compatible route…");
+      onStatus?.(`Connecting to ${p.name}…`);
       const result = await withTimeout(
         runOn(p, prepared.input, prepared.capability),
         180000,
         `${p.name} route`,
       );
-      onStatus?.("Result verified.");
+      onStatus?.(`Result verified from ${p.name}.`);
       return { ...result, capability };
     } catch (e) {
       last = e instanceof Error ? e.message : String(e);
-      onStatus?.("Trying a fallback route…");
+      onStatus?.(`${p.name} was unavailable; trying the next compatible route…`);
     }
   }
   throw new Error(`${capability} could not produce a usable result. ${last}`);
