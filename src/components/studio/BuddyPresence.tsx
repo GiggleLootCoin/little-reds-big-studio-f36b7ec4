@@ -6,6 +6,7 @@ import type { BuddyStatus } from "@/lib/buddy-presence";
 import buddyReference from "../../../file_0000000070e8824391d24367b5f22d59.png";
 import { cn } from "@/lib/utils";
 import { StudioLogo } from "@/components/studio/StudioLogo";
+import "./BuddyVisual.css";
 
 const STATUS_LABELS: Record<BuddyStatus, string> = {
   idle: "Ready",
