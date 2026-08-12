@@ -1,15 +1,21 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import logo from "@/assets/littlered-logo.png.asset.json";
 import { AnimatedBackground } from "@/components/studio/AnimatedBackground";
 import { StudioButton } from "@/components/studio/ui";
 import { Field } from "@/components/studio/AiOutput";
-import { sendPasswordReset, signIn, signUp } from "@/lib/supabase-rest";
+import {
+  adoptSessionFromAuthHash,
+  sendPasswordReset,
+  signIn,
+  signUp,
+  updatePassword,
+} from "@/lib/supabase-rest";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/auth")({ component: AuthPage });
 
-type Mode = "signin" | "signup" | "reset";
+type Mode = "signin" | "signup" | "reset" | "update";
 
 function AuthPage() {
   const [mode, setMode] = useState<Mode>("signup");
@@ -17,6 +23,14 @@ function AuthPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    void adoptSessionFromAuthHash()
+      .then((session) => {
+        if (session) setMode("update");
+      })
+      .catch(() => undefined);
+  }, []);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -36,6 +50,12 @@ function AuthPage() {
         toast.error("Use a password with at least 8 characters.");
         return;
       }
+      if (mode === "update") {
+        await updatePassword(password);
+        toast.success("Password updated. Welcome back to the Studio.");
+        window.location.replace("/");
+        return;
+      }
       const r =
         mode === "signup"
           ? await signUp(email.trim(), password, name || "Creator")
@@ -53,11 +73,20 @@ function AuthPage() {
     }
   };
 
-  const title = mode === "signup" ? "Create your Studio account" : mode === "reset" ? "Reset your password" : "Welcome back";
+  const title =
+    mode === "signup"
+      ? "Create your Studio account"
+      : mode === "reset"
+        ? "Reset your password"
+        : mode === "update"
+          ? "Choose a new password"
+          : "Welcome back";
   const description =
     mode === "reset"
       ? "We will send password-reset instructions to your account email."
-      : "Your account keeps Buddy, projects and entitlements available across devices.";
+      : mode === "update"
+        ? "Choose a new password for your Studio account."
+        : "Your account keeps Buddy, projects and entitlements available across devices.";
 
   return (
     <>
@@ -76,14 +105,16 @@ function AuthPage() {
                 placeholder="Little Red"
               />
             )}
-            <Field
-              label="Email"
-              type="email"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@example.com"
-            />
+            {mode !== "update" && (
+              <Field
+                label="Email"
+                type="email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@example.com"
+              />
+            )}
             {mode !== "reset" && (
               <Field
                 label="Password"
@@ -101,22 +132,26 @@ function AuthPage() {
                   ? "Create account"
                   : mode === "reset"
                     ? "Send reset email"
-                    : "Sign in"}
+                    : mode === "update"
+                      ? "Update password"
+                      : "Sign in"}
             </StudioButton>
           </form>
-          <div className="mt-4 space-y-2 text-center text-xs text-muted-foreground">
-            {mode === "signin" && (
-              <button className="block w-full underline" onClick={() => setMode("reset")}>
-                Forgot your password?
+          {mode !== "update" && (
+            <div className="mt-4 space-y-2 text-center text-xs text-muted-foreground">
+              {mode === "signin" && (
+                <button className="block w-full underline" onClick={() => setMode("reset")}>
+                  Forgot your password?
+                </button>
+              )}
+              <button
+                className="block w-full underline"
+                onClick={() => setMode(mode === "signup" ? "signin" : "signup")}
+              >
+                {mode === "signup" ? "Already have an account? Sign in" : "Need an account? Create one"}
               </button>
-            )}
-            <button
-              className="block w-full underline"
-              onClick={() => setMode(mode === "signup" ? "signin" : "signup")}
-            >
-              {mode === "signup" ? "Already have an account? Sign in" : "Need an account? Create one"}
-            </button>
-          </div>
+            </div>
+          )}
         </section>
         <a href="/" className="text-center text-xs text-muted-foreground underline">
           Back to the studio
