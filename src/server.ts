@@ -101,6 +101,9 @@ function asBase64(value: unknown): string | null {
     }
   return null;
 }
+function fromBase64(value: string): Uint8Array {
+  return Uint8Array.from(atob(value), (c) => c.charCodeAt(0));
+}
 function isCapacityError(error: unknown) {
   const message = error instanceof Error ? error.message : String(error);
   return (
@@ -136,24 +139,36 @@ async function cloudflareAI(request: Request, env: ServerEnv): Promise<Response 
   if (!url.pathname.startsWith(AI_PREFIX)) return null;
   if (!env.AI) return jsonError("Cloudflare Workers AI binding is not configured.", 503);
   if (request.method !== "POST") return jsonError("POST required.", 405);
+
   let body: {
     capability?: string;
     prompt?: string;
     language?: string;
     messages?: unknown[];
     speaker?: string;
+    audioBase64?: string;
   };
   try {
     body = await request.json();
   } catch {
     return jsonError("Invalid JSON request.", 400);
   }
+
   const capability = body.capability ?? "";
   const prompt = String(body.prompt ?? "").trim();
   if (!prompt && capability !== "speech-to-text") return jsonError("Prompt is required.", 400);
+
   try {
+    if (capability === "speech-to-text") {
+      if (!body.audioBase64) return jsonError("Audio is required for speech recognition.", 400);
+      const audio = fromBase64(body.audioBase64);
+      if (!audio.length) return jsonError("The recorded audio was empty.", 400);
+      const result = await env.AI.run("@cf/openai/whisper", audio);
+      return Response.json(result, { headers: { "cache-control": "no-store" } });
+    }
+
     if (capability === "image") {
-      const result = await env.AI.run("@cf/black-forest-labs/flux-2-klein-9b", {
+      const result = await env.AI.run("@cf/black-forest-labs/flux-2-klein-4b", {
         prompt,
         width: 1024,
         height: 768,
@@ -165,6 +180,7 @@ async function cloudflareAI(request: Request, env: ServerEnv): Promise<Response 
         { headers: { "content-type": "image/png", "cache-control": "no-store" } },
       );
     }
+
     if (capability === "tts") {
       try {
         const result = await env.AI.run("@cf/myshell-ai/melotts", {
@@ -185,19 +201,19 @@ async function cloudflareAI(request: Request, env: ServerEnv): Promise<Response 
       if (!audio) return jsonError("TTS providers returned no usable audio.");
       return audio;
     }
+
     if (capability === "chat") {
       const messages =
         Array.isArray(body.messages) && body.messages.length
           ? body.messages
           : [{ role: "user", content: prompt }];
-      // Qwen3 is retained for ordinary text chat. Gemma 4 is the current Cloudflare
-      // vision-capable route for messages containing image_url parts.
       const model = hasImageContent(messages)
         ? "@cf/google/gemma-4-26b-a4b-it"
         : "@cf/qwen/qwen3-30b-a3b-fp8";
       const result = await env.AI.run(model, { messages, max_tokens: 1024 });
       return Response.json(result, { headers: { "cache-control": "no-store" } });
     }
+
     return jsonError(`Cloudflare AI does not provide the ${capability} capability.`, 400);
   } catch (error) {
     console.error("Workers AI generation failed", error);
