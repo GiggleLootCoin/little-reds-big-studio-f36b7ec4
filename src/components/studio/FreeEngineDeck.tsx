@@ -1,12 +1,4 @@
-import {
-  AudioWaveform,
-  Film,
-  Image,
-  Mic2,
-  MessageCircle,
-  Music2,
-  Sparkles,
-} from "lucide-react";
+import { AudioWaveform, Film, Image, Mic2, MessageCircle, Music2, Sparkles } from "lucide-react";
 import { FREE_RUNNERS } from "@/lib/free-runners";
 
 const featured = [
@@ -58,10 +50,12 @@ export function FreeEngineDeck({ onOpenCreate }: { onOpenCreate: () => void }) {
             Free engine deck
           </p>
         </div>
-        <h2 className="mt-1 font-display text-lg font-bold">Real tools. Buddy handles the machinery.</h2>
+        <h2 className="mt-1 font-display text-lg font-bold">
+          Real tools. Buddy handles the machinery.
+        </h2>
         <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-          Pick what you want to make. Buddy chooses a live compatible route, validates the result and
-          falls back automatically when a public free service is unavailable.
+          Pick what you want to make. Buddy chooses a live compatible route, validates the result
+          and falls back automatically when a public free service is unavailable.
         </p>
       </div>
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
