@@ -4,8 +4,8 @@
   "compatibility_date": "2026-08-12",
   "main": "@tanstack/react-start/server-entry",
   "observability": {
-    "enabled": true
+    "enabled": true,
   },
   "workers_dev": true,
-  "preview_urls": true
+  "preview_urls": true,
 }

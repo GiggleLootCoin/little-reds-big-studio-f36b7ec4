@@ -25,7 +25,8 @@ export const FREE_RUNNERS: FreeRunner[] = [
     description: "Official Qwen3 conversational Space for Buddy's primary free cloud brain.",
     capabilities: ["chat", "conversation", "text-generation", "text"],
     url: "https://huggingface.co/spaces/Qwen/Qwen3-Demo",
-    notes: "Live Gradio API discovery is required; incompatible endpoints are rejected automatically.",
+    notes:
+      "Live Gradio API discovery is required; incompatible endpoints are rejected automatically.",
     priority: 180,
   },
   {
@@ -143,7 +144,13 @@ export const FREE_RUNNERS: FreeRunner[] = [
     name: "AI-RVC",
     kind: "public",
     description: "Whole-song cover workflow combining separation, conversion and remixing.",
-    capabilities: ["voice-swap", "singing-voice-conversion", "ai-cover", "vocal-separation", "audio-mix"],
+    capabilities: [
+      "voice-swap",
+      "singing-voice-conversion",
+      "ai-cover",
+      "vocal-separation",
+      "audio-mix",
+    ],
     url: "https://huggingface.co/spaces/mason369/AI-RVC",
     notes: "Fallback only when its live API exposes the required inputs.",
     priority: 125,
