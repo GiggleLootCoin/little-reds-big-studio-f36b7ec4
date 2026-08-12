@@ -108,7 +108,8 @@ export const FREE_RUNNERS: FreeRunner[] = [
     description: "Primary server-side Buddy speech generation.",
     capabilities: ["voice", "tts", "multilingual-tts"],
     url: "/api/ai/tts",
-    notes: "Cheap first choice; server automatically fails over to Aura-1 on transient capacity errors.",
+    notes:
+      "Cheap first choice; server automatically fails over to Aura-1 on transient capacity errors.",
     priority: 300,
   },
   {

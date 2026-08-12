@@ -117,7 +117,9 @@ function asBase64(value: unknown): string | null {
 
 function isCapacityError(error: unknown) {
   const message = error instanceof Error ? error.message : String(error);
-  return message.includes("3040") || message.toLowerCase().includes("capacity temporarily exceeded");
+  return (
+    message.includes("3040") || message.toLowerCase().includes("capacity temporarily exceeded")
+  );
 }
 
 async function rawAudioResponse(result: unknown): Promise<Response | null> {
@@ -130,9 +132,12 @@ async function rawAudioResponse(result: unknown): Promise<Response | null> {
   }
   const base64 = asBase64(result);
   if (!base64) return null;
-  return new Response(Uint8Array.from(atob(base64), (c) => c.charCodeAt(0)), {
-    headers: { "content-type": "audio/mpeg", "cache-control": "no-store" },
-  });
+  return new Response(
+    Uint8Array.from(atob(base64), (c) => c.charCodeAt(0)),
+    {
+      headers: { "content-type": "audio/mpeg", "cache-control": "no-store" },
+    },
+  );
 }
 
 async function cloudflareAI(request: Request, env: ServerEnv): Promise<Response | null> {
@@ -140,7 +145,13 @@ async function cloudflareAI(request: Request, env: ServerEnv): Promise<Response 
   if (!url.pathname.startsWith(AI_PREFIX)) return null;
   if (!env.AI) return jsonError("Cloudflare Workers AI binding is not configured.", 503);
   if (request.method !== "POST") return jsonError("POST required.", 405);
-  let body: { capability?: string; prompt?: string; language?: string; messages?: unknown[]; speaker?: string };
+  let body: {
+    capability?: string;
+    prompt?: string;
+    language?: string;
+    messages?: unknown[];
+    speaker?: string;
+  };
   try {
     body = await request.json();
   } catch {
@@ -159,9 +170,12 @@ async function cloudflareAI(request: Request, env: ServerEnv): Promise<Response 
       });
       const base64 = asBase64(result);
       if (!base64) return jsonError("Image model returned no usable image.");
-      return new Response(Uint8Array.from(atob(base64), (c) => c.charCodeAt(0)), {
-        headers: { "content-type": "image/png", "cache-control": "no-store" },
-      });
+      return new Response(
+        Uint8Array.from(atob(base64), (c) => c.charCodeAt(0)),
+        {
+          headers: { "content-type": "image/png", "cache-control": "no-store" },
+        },
+      );
     }
 
     if (capability === "tts") {
