@@ -1,25 +1,217 @@
 import { useEffect, useMemo, useState } from "react";
-import { Download, Film, Image, LoaderCircle, MessageCircle, Mic2, Music2, Scissors, Sparkles } from "lucide-react";
-import { artifactText, runStudioJob, type StudioArtifact, type StudioCapability } from "@/lib/studio-runtime";
+import {
+  Download,
+  Film,
+  Image,
+  LoaderCircle,
+  MessageCircle,
+  Mic2,
+  Music2,
+  Scissors,
+  Sparkles,
+} from "lucide-react";
+import {
+  artifactText,
+  runStudioJob,
+  type StudioArtifact,
+  type StudioCapability,
+} from "@/lib/studio-runtime";
 import { Note, Panel, Readout, StudioButton, StudioSlider } from "./ui";
 
 export function FreeCreatePanel() {
-  const [brief, setBrief] = useState(""); const [lyrics, setLyrics] = useState(""); const [seconds, setSeconds] = useState(180); const [busy, setBusy] = useState<StudioCapability | null>(null); const [status, setStatus] = useState("Buddy will choose a compatible free route and verify the returned result."); const [artifact, setArtifact] = useState<StudioArtifact | null>(null);
-  useEffect(() => { setBrief(localStorage.getItem("lrbgs-song-brief") || ""); setLyrics(localStorage.getItem("lrbgs-lyrics") || ""); }, []);
-  const songPrompt = useMemo(() => `${brief.trim() || "Create an original song"}\nLength: ${seconds}s\nLyrics:\n${lyrics.trim() || "Write suitable original lyrics."}`, [brief, lyrics, seconds]);
-  const lyricPrompt = useMemo(() => `Write original song lyrics from this brief. Include clear verse/chorus structure and keep the words singable.\n\n${brief.trim() || "Create an emotionally engaging original song."}`, [brief]);
-  const save = () => { localStorage.setItem("lrbgs-song-brief", brief); localStorage.setItem("lrbgs-lyrics", lyrics); };
-  const run = async (capability: StudioCapability, input: Record<string, unknown>) => { if (busy) return; save(); setBusy(capability); setArtifact(null); try { const result = await runStudioJob(capability, input, setStatus); setArtifact(result); if (capability === "chat") { const text = artifactText(result.value); if (text) setLyrics(text); } } catch (error) { setStatus(error instanceof Error ? error.message : "No verified route could complete this job."); } finally { setBusy(null); } };
-  return <Panel eyebrow="Free Core" title="Create — Buddy runs the machinery" icon={<Music2 className="size-5" />} defaultOpen>
-    <p className="text-sm text-muted-foreground">Buddy checks a live compatible route, runs it, validates the returned result and falls back when necessary.</p>
-    <textarea value={brief} onChange={(e) => setBrief(e.target.value)} rows={4} placeholder="Describe the song, artwork or video: genre, mood, tempo, instruments, visual world…" className="w-full rounded-xl border border-border bg-background/60 p-3 text-sm outline-none focus:ring-2 focus:ring-ring" />
-    <textarea value={lyrics} onChange={(e) => setLyrics(e.target.value)} rows={7} placeholder="Paste lyrics here, or leave blank and let Buddy write them first." className="w-full rounded-xl border border-border bg-background/60 p-3 text-sm outline-none focus:ring-2 focus:ring-ring" />
-    <StudioSlider label="Target length" value={seconds} min={30} max={600} step={5} unit="s" onChange={setSeconds} />
-    <div className="grid grid-cols-2 gap-2"><StudioButton className="w-full" disabled={!!busy} onClick={() => void run("music", { prompt: songPrompt, lyrics, duration: seconds })}><Music2 className="size-4" />{busy === "music" ? "Making music…" : "Generate song"}</StudioButton><StudioButton variant="ghost" className="w-full" disabled={!!busy} onClick={() => void run("chat", { prompt: lyricPrompt, text: lyricPrompt })}><MessageCircle className="size-4" />{busy === "chat" ? "Writing…" : "Generate lyrics"}</StudioButton></div>
-    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3"><EngineButton icon={Mic2} title="Voice / RVC" onClick={() => void run("voice-swap", {})} /><EngineButton icon={Image} title="Artwork" onClick={() => void run("image", { prompt: brief || "Premium cinematic cover artwork for an original song" })} /><EngineButton icon={Film} title="Video" onClick={() => void run("video", { prompt: brief || "Cinematic music video" })} /><EngineButton icon={Scissors} title="Split stems" onClick={() => void run("vocal-separation", {})} /><EngineButton icon={Sparkles} title="Buddy chat" onClick={() => void run("chat", { prompt: brief || "Help me develop this creative idea." })} /></div>
-    <div className="rounded-xl border border-primary/20 bg-primary/5 p-3 text-xs text-muted-foreground">{busy ? <span className="flex items-center gap-2"><LoaderCircle className="size-4 animate-spin" /> {status}</span> : status}</div>
-    {artifact?.url && <div className="rounded-2xl border border-border bg-background/50 p-3"><div className="mb-2 flex items-center justify-between gap-2"><span className="text-xs font-semibold">Verified result</span><a href={artifact.url} target="_blank" rel="noreferrer" download className="inline-flex items-center gap-1 rounded-lg border border-border px-2 py-1 text-xs"><Download className="size-3" /> Save</a></div>{artifact.capability === "image" ? <img src={artifact.url} alt="Generated artwork" className="max-h-96 w-full rounded-xl object-contain" /> : artifact.capability === "video" ? <video src={artifact.url} controls className="w-full rounded-xl" /> : <audio src={artifact.url} controls className="w-full" />}</div>}
-    <Note><Readout label="Routing" value="Automatic capability + live schema + fallback" /><Readout label="Providers shown to you" value="None" /><Readout label="Cost target" value="Free/open first" /><Readout label="Success rule" value="Usable artifact required" /></Note>
-  </Panel>;
+  const [brief, setBrief] = useState("");
+  const [lyrics, setLyrics] = useState("");
+  const [seconds, setSeconds] = useState(180);
+  const [busy, setBusy] = useState<StudioCapability | null>(null);
+  const [status, setStatus] = useState(
+    "Buddy will choose a compatible free route and verify the returned result.",
+  );
+  const [artifact, setArtifact] = useState<StudioArtifact | null>(null);
+  useEffect(() => {
+    setBrief(localStorage.getItem("lrbgs-song-brief") || "");
+    setLyrics(localStorage.getItem("lrbgs-lyrics") || "");
+  }, []);
+  const songPrompt = useMemo(
+    () =>
+      `${brief.trim() || "Create an original song"}\nLength: ${seconds}s\nLyrics:\n${lyrics.trim() || "Write suitable original lyrics."}`,
+    [brief, lyrics, seconds],
+  );
+  const lyricPrompt = useMemo(
+    () =>
+      `Write original song lyrics from this brief. Include clear verse/chorus structure and keep the words singable.\n\n${brief.trim() || "Create an emotionally engaging original song."}`,
+    [brief],
+  );
+  const save = () => {
+    localStorage.setItem("lrbgs-song-brief", brief);
+    localStorage.setItem("lrbgs-lyrics", lyrics);
+  };
+  const run = async (capability: StudioCapability, input: Record<string, unknown>) => {
+    if (busy) return;
+    save();
+    setBusy(capability);
+    setArtifact(null);
+    try {
+      const result = await runStudioJob(capability, input, setStatus);
+      setArtifact(result);
+      if (capability === "chat") {
+        const text = artifactText(result.value);
+        if (text) setLyrics(text);
+      }
+    } catch (error) {
+      setStatus(
+        error instanceof Error ? error.message : "No verified route could complete this job.",
+      );
+    } finally {
+      setBusy(null);
+    }
+  };
+  return (
+    <Panel
+      eyebrow="Free Core"
+      title="Create — Buddy runs the machinery"
+      icon={<Music2 className="size-5" />}
+      defaultOpen
+    >
+      <p className="text-sm text-muted-foreground">
+        Buddy checks a live compatible route, runs it, validates the returned result and falls back
+        when necessary.
+      </p>
+      <textarea
+        value={brief}
+        onChange={(e) => setBrief(e.target.value)}
+        rows={4}
+        placeholder="Describe the song, artwork or video: genre, mood, tempo, instruments, visual world…"
+        className="w-full rounded-xl border border-border bg-background/60 p-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+      />
+      <textarea
+        value={lyrics}
+        onChange={(e) => setLyrics(e.target.value)}
+        rows={7}
+        placeholder="Paste lyrics here, or leave blank and let Buddy write them first."
+        className="w-full rounded-xl border border-border bg-background/60 p-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+      />
+      <StudioSlider
+        label="Target length"
+        value={seconds}
+        min={30}
+        max={600}
+        step={5}
+        unit="s"
+        onChange={setSeconds}
+      />
+      <div className="grid grid-cols-2 gap-2">
+        <StudioButton
+          className="w-full"
+          disabled={!!busy}
+          onClick={() => void run("music", { prompt: songPrompt, lyrics, duration: seconds })}
+        >
+          <Music2 className="size-4" />
+          {busy === "music" ? "Making music…" : "Generate song"}
+        </StudioButton>
+        <StudioButton
+          variant="ghost"
+          className="w-full"
+          disabled={!!busy}
+          onClick={() => void run("chat", { prompt: lyricPrompt, text: lyricPrompt })}
+        >
+          <MessageCircle className="size-4" />
+          {busy === "chat" ? "Writing…" : "Generate lyrics"}
+        </StudioButton>
+      </div>
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+        <EngineButton icon={Mic2} title="Voice / RVC" onClick={() => void run("voice-swap", {})} />
+        <EngineButton
+          icon={Image}
+          title="Artwork"
+          onClick={() =>
+            void run("image", {
+              prompt: brief || "Premium cinematic cover artwork for an original song",
+            })
+          }
+        />
+        <EngineButton
+          icon={Film}
+          title="Video"
+          onClick={() => void run("video", { prompt: brief || "Cinematic music video" })}
+        />
+        <EngineButton
+          icon={Scissors}
+          title="Split stems"
+          onClick={() => void run("vocal-separation", {})}
+        />
+        <EngineButton
+          icon={Sparkles}
+          title="Buddy chat"
+          onClick={() =>
+            void run("chat", { prompt: brief || "Help me develop this creative idea." })
+          }
+        />
+      </div>
+      <div className="rounded-xl border border-primary/20 bg-primary/5 p-3 text-xs text-muted-foreground">
+        {busy ? (
+          <span className="flex items-center gap-2">
+            <LoaderCircle className="size-4 animate-spin" /> {status}
+          </span>
+        ) : (
+          status
+        )}
+      </div>
+      {artifact?.url && (
+        <div className="rounded-2xl border border-border bg-background/50 p-3">
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <span className="text-xs font-semibold">Verified result</span>
+            <a
+              href={artifact.url}
+              target="_blank"
+              rel="noreferrer"
+              download
+              className="inline-flex items-center gap-1 rounded-lg border border-border px-2 py-1 text-xs"
+            >
+              <Download className="size-3" /> Save
+            </a>
+          </div>
+          {artifact.capability === "image" ? (
+            <img
+              src={artifact.url}
+              alt="Generated artwork"
+              className="max-h-96 w-full rounded-xl object-contain"
+            />
+          ) : artifact.capability === "video" ? (
+            <video src={artifact.url} controls className="w-full rounded-xl" />
+          ) : (
+            <audio src={artifact.url} controls className="w-full" />
+          )}
+        </div>
+      )}
+      <Note>
+        <Readout label="Routing" value="Automatic capability + live schema + fallback" />
+        <Readout label="Providers shown to you" value="None" />
+        <Readout label="Cost target" value="Free/open first" />
+        <Readout label="Success rule" value="Usable artifact required" />
+      </Note>
+    </Panel>
+  );
 }
-function EngineButton({ icon: Icon, title, onClick }: { icon: typeof Music2; title: string; onClick: () => void }) { return <button type="button" onClick={onClick} className="group rounded-xl border border-border/70 bg-background/55 p-3 text-left transition-all hover:-translate-y-0.5 hover:border-primary/50 hover:bg-primary/5"><Icon className="size-4 text-primary" /><span className="mt-2 block font-display text-xs font-semibold">{title}</span><span className="mt-1 block text-[0.62rem] text-muted-foreground">Buddy handles the engine</span></button>; }
+function EngineButton({
+  icon: Icon,
+  title,
+  onClick,
+}: {
+  icon: typeof Music2;
+  title: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="group rounded-xl border border-border/70 bg-background/55 p-3 text-left transition-all hover:-translate-y-0.5 hover:border-primary/50 hover:bg-primary/5"
+    >
+      <Icon className="size-4 text-primary" />
+      <span className="mt-2 block font-display text-xs font-semibold">{title}</span>
+      <span className="mt-1 block text-[0.62rem] text-muted-foreground">
+        Buddy handles the engine
+      </span>
+    </button>
+  );
+}

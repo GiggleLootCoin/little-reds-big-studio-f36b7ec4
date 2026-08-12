@@ -6,5 +6,89 @@ import { StudioButton } from "@/components/studio/ui";
 import { Field } from "@/components/studio/AiOutput";
 import { signIn, signUp } from "@/lib/supabase-rest";
 import { toast } from "sonner";
-export const Route=createFileRoute("/auth")({component:AuthPage});
-function AuthPage(){const[mode,setMode]=useState<"signin"|"signup">("signup");const[name,setName]=useState("");const[email,setEmail]=useState("");const[password,setPassword]=useState("");const[busy,setBusy]=useState(false);const submit=async(e:React.FormEvent)=>{e.preventDefault();if(password.length<8){toast.error("Use a password with at least 8 characters.");return}setBusy(true);try{const r=mode==="signup"?await signUp(email,password,name||"Creator"):await signIn(email,password);if(mode==="signup"&&!("access_token"in r)){toast.success("Account created. Check your email if confirmation is required, then sign in.");setMode("signin")}else window.location.replace("/")}catch(err){toast.error(err instanceof Error?err.message:"Authentication failed.")}finally{setBusy(false)}};return <><AnimatedBackground/><main className="mx-auto flex min-h-dvh max-w-md flex-col justify-center gap-6 px-5"><img src={logo.url} alt="Little Red's Big Studio" className="mx-auto w-56"/><section className="glass-panel rounded-2xl p-5"><h1 className="text-center font-display text-xl font-black text-glow">{mode==="signup"?"Create your Studio account":"Welcome back"}</h1><p className="my-3 text-center text-xs text-muted-foreground">Your account keeps Buddy, projects and entitlements available across devices.</p><form onSubmit={submit} className="space-y-3">{mode==="signup"&&<Field label="Display name" value={name} onChange={e=>setName(e.target.value)} placeholder="Little Red"/>}<Field label="Email" type="email" required value={email} onChange={e=>setEmail(e.target.value)} placeholder="you@example.com"/><Field label="Password" type="password" required value={password} onChange={e=>setPassword(e.target.value)} placeholder="At least 8 characters"/><StudioButton className="w-full" type="submit" disabled={busy}>{busy?"Working…":mode==="signup"?"Create account":"Sign in"}</StudioButton></form><button className="mt-4 w-full text-xs underline text-muted-foreground" onClick={()=>setMode(mode==="signup"?"signin":"signup")}>{mode==="signup"?"Already have an account? Sign in":"Need an account? Create one"}</button></section><a href="/" className="text-center text-xs text-muted-foreground underline">Back to the studio</a></main></>}
+export const Route = createFileRoute("/auth")({ component: AuthPage });
+function AuthPage() {
+  const [mode, setMode] = useState<"signin" | "signup">("signup");
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [busy, setBusy] = useState(false);
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (password.length < 8) {
+      toast.error("Use a password with at least 8 characters.");
+      return;
+    }
+    setBusy(true);
+    try {
+      const r =
+        mode === "signup"
+          ? await signUp(email, password, name || "Creator")
+          : await signIn(email, password);
+      if (mode === "signup" && !("access_token" in r)) {
+        toast.success(
+          "Account created. Check your email if confirmation is required, then sign in.",
+        );
+        setMode("signin");
+      } else window.location.replace("/");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Authentication failed.");
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <>
+      <AnimatedBackground />
+      <main className="mx-auto flex min-h-dvh max-w-md flex-col justify-center gap-6 px-5">
+        <img src={logo.url} alt="Little Red's Big Studio" className="mx-auto w-56" />
+        <section className="glass-panel rounded-2xl p-5">
+          <h1 className="text-center font-display text-xl font-black text-glow">
+            {mode === "signup" ? "Create your Studio account" : "Welcome back"}
+          </h1>
+          <p className="my-3 text-center text-xs text-muted-foreground">
+            Your account keeps Buddy, projects and entitlements available across devices.
+          </p>
+          <form onSubmit={submit} className="space-y-3">
+            {mode === "signup" && (
+              <Field
+                label="Display name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Little Red"
+              />
+            )}
+            <Field
+              label="Email"
+              type="email"
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="you@example.com"
+            />
+            <Field
+              label="Password"
+              type="password"
+              required
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="At least 8 characters"
+            />
+            <StudioButton className="w-full" type="submit" disabled={busy}>
+              {busy ? "Working…" : mode === "signup" ? "Create account" : "Sign in"}
+            </StudioButton>
+          </form>
+          <button
+            className="mt-4 w-full text-xs underline text-muted-foreground"
+            onClick={() => setMode(mode === "signup" ? "signin" : "signup")}
+          >
+            {mode === "signup" ? "Already have an account? Sign in" : "Need an account? Create one"}
+          </button>
+        </section>
+        <a href="/" className="text-center text-xs text-muted-foreground underline">
+          Back to the studio
+        </a>
+      </main>
+    </>
+  );
+}
