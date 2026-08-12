@@ -1,0 +1,53 @@
+name: Deploy Little Red's Big Studio
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install
+        run: npm ci
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Format check
+        run: npx prettier --check .
+      - name: Lint
+        run: npm run lint
+      - name: Build
+        run: npm run build
+      - name: Deploy to Cloudflare Workers
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: deploy --config wrangler.jsonc
+      - name: Production smoke test
+        env:
+          PRODUCTION_URL: https://little-reds-big-studio-f36b7ec4.gigglelootcoin.workers.dev
+        run: |
+          set -e
+          for i in 1 2 3 4 5; do
+            code=$(curl -L -sS -o /tmp/studio.html -w '%{http_code}' "$PRODUCTION_URL/?deploy_sha=${GITHUB_SHA}") || code=000
+            if [ "$code" = "200" ] && grep -q "Little Red" /tmp/studio.html; then
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "Production smoke test failed"
+          cat /tmp/studio.html || true
+          exit 1
