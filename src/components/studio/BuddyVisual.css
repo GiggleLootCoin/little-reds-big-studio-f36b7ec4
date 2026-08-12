@@ -1,0 +1,124 @@
+/* Buddy's committed character asset remains the source of truth. These layers add interaction without changing identity. */
+
+@keyframes buddy-breathe {
+  0%,
+  100% { transform: translate3d(0, 1px, 0) scale(1); }
+  50% { transform: translate3d(0, -4px, 0) scale(1.018); }
+}
+
+@keyframes buddy-eye-glow {
+  0%,
+  100% { opacity: 0.35; filter: blur(0.4px); }
+  45% { opacity: 1; filter: blur(0); }
+  55% { opacity: 0.75; }
+}
+
+@keyframes buddy-heartbeat {
+  0%,
+  100% { transform: scale(0.9) rotate(-6deg); opacity: 0.42; }
+  12% { transform: scale(1.16) rotate(3deg); opacity: 1; }
+  24% { transform: scale(0.98) rotate(-2deg); opacity: 0.7; }
+  36% { transform: scale(1.08) rotate(2deg); opacity: 0.92; }
+}
+
+@keyframes buddy-orbit {
+  0% { transform: rotate(0deg) translateX(0) rotate(0deg); }
+  50% { transform: rotate(180deg) translateX(4px) rotate(-180deg); }
+  100% { transform: rotate(360deg) translateX(0) rotate(-360deg); }
+}
+
+@keyframes buddy-shoe-lights {
+  0%,
+  100% { opacity: 0.25; transform: translateY(0); }
+  50% { opacity: 0.95; transform: translateY(-2px); }
+}
+
+.buddy-character-image {
+  animation:
+    buddy-breathe 3.9s ease-in-out infinite,
+    buddy-float 4.8s ease-in-out infinite;
+  transform-origin: 50% 88%;
+  will-change: transform, filter;
+}
+
+/* Expressive face-light layer: subtle enough to preserve the approved character art. */
+.buddy-character::before,
+.buddy-presence-character::before,
+div:has(> .buddy-character-image)::before {
+  content: "";
+  position: absolute;
+  z-index: 3;
+  left: 50%;
+  top: 34%;
+  width: 42%;
+  height: 22%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 27% 38%, rgba(255,255,255,.98) 0 5%, rgba(255,75,97,.82) 8%, transparent 18%),
+    radial-gradient(circle at 73% 38%, rgba(255,255,255,.98) 0 5%, rgba(255,75,97,.82) 8%, transparent 18%);
+  filter: drop-shadow(0 0 9px rgba(255,58,84,.75));
+  animation: buddy-eye-glow 2.7s ease-in-out infinite;
+}
+
+.buddy-character::after,
+.buddy-presence-character::after,
+div:has(> .buddy-character-image)::after {
+  content: "♥";
+  position: absolute;
+  z-index: 4;
+  right: 6%;
+  top: 4%;
+  color: #ff5268;
+  font-size: clamp(12px, 3vw, 24px);
+  line-height: 1;
+  text-shadow: 0 0 8px rgba(255,62,88,.95), 0 0 20px rgba(255,62,88,.55);
+  pointer-events: none;
+  animation: buddy-heartbeat 3.2s ease-in-out infinite;
+}
+
+.buddy-stage::before {
+  content: "♫";
+  position: absolute;
+  z-index: 5;
+  left: -3%;
+  top: 13%;
+  color: #ff6678;
+  font-size: 22px;
+  text-shadow: 0 0 12px rgba(255,70,90,.9);
+  animation: buddy-orbit 8s linear infinite;
+}
+
+.buddy-stage::after {
+  content: "✦  🎧  ✦";
+  position: absolute;
+  z-index: 5;
+  right: -8%;
+  bottom: 16%;
+  color: #ff6a7b;
+  font-size: 12px;
+  letter-spacing: .18em;
+  text-shadow: 0 0 10px rgba(255,70,90,.8);
+  animation: buddy-shoe-lights 2.4s ease-in-out infinite;
+}
+
+.buddy-character {
+  isolation: isolate;
+}
+
+.buddy-character::marker,
+.buddy-presence-character::marker {
+  display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .buddy-character-image,
+  .buddy-character::before,
+  .buddy-character::after,
+  .buddy-presence-character::before,
+  .buddy-presence-character::after,
+  .buddy-stage::before,
+  .buddy-stage::after {
+    animation: none !important;
+  }
+}
