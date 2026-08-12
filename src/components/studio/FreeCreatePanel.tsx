@@ -20,7 +20,9 @@ import {
 import { Note, Panel, Readout, StudioButton } from "./ui";
 
 function explicitDurationRequest(brief: string) {
-  const match = brief.match(/(?:about|around|roughly|exactly|for|of)?\s*(\d+(?:\.\d+)?)\s*(seconds?|secs?|minutes?|mins?)/i);
+  const match = brief.match(
+    /(?:about|around|roughly|exactly|for|of)?\s*(\d+(?:\.\d+)?)\s*(seconds?|secs?|minutes?|mins?)/i,
+  );
   if (!match) return undefined;
   const amount = Number(match[1]);
   const unit = match[2].toLowerCase();
@@ -108,7 +110,11 @@ export function FreeCreatePanel() {
         in your brief.
         {requestedDuration ? (
           <span className="ml-1 text-primary">
-            Explicit request detected: about {requestedDuration >= 60 ? `${(requestedDuration / 60).toFixed(requestedDuration % 60 ? 1 : 0)} min` : `${requestedDuration} sec`}.
+            Explicit request detected: about{" "}
+            {requestedDuration >= 60
+              ? `${(requestedDuration / 60).toFixed(requestedDuration % 60 ? 1 : 0)} min`
+              : `${requestedDuration} sec`}
+            .
           </span>
         ) : null}
       </div>

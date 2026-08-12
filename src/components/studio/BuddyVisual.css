@@ -2,35 +2,71 @@
 
 @keyframes buddy-breathe {
   0%,
-  100% { transform: translate3d(0, 1px, 0) scale(1); }
-  50% { transform: translate3d(0, -4px, 0) scale(1.018); }
+  100% {
+    transform: translate3d(0, 1px, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(0, -4px, 0) scale(1.018);
+  }
 }
 
 @keyframes buddy-eye-glow {
   0%,
-  100% { opacity: 0.35; filter: blur(0.4px); }
-  45% { opacity: 1; filter: blur(0); }
-  55% { opacity: 0.75; }
+  100% {
+    opacity: 0.35;
+    filter: blur(0.4px);
+  }
+  45% {
+    opacity: 1;
+    filter: blur(0);
+  }
+  55% {
+    opacity: 0.75;
+  }
 }
 
 @keyframes buddy-heartbeat {
   0%,
-  100% { transform: scale(0.9) rotate(-6deg); opacity: 0.42; }
-  12% { transform: scale(1.16) rotate(3deg); opacity: 1; }
-  24% { transform: scale(0.98) rotate(-2deg); opacity: 0.7; }
-  36% { transform: scale(1.08) rotate(2deg); opacity: 0.92; }
+  100% {
+    transform: scale(0.9) rotate(-6deg);
+    opacity: 0.42;
+  }
+  12% {
+    transform: scale(1.16) rotate(3deg);
+    opacity: 1;
+  }
+  24% {
+    transform: scale(0.98) rotate(-2deg);
+    opacity: 0.7;
+  }
+  36% {
+    transform: scale(1.08) rotate(2deg);
+    opacity: 0.92;
+  }
 }
 
 @keyframes buddy-orbit {
-  0% { transform: rotate(0deg) translateX(0) rotate(0deg); }
-  50% { transform: rotate(180deg) translateX(4px) rotate(-180deg); }
-  100% { transform: rotate(360deg) translateX(0) rotate(-360deg); }
+  0% {
+    transform: rotate(0deg) translateX(0) rotate(0deg);
+  }
+  50% {
+    transform: rotate(180deg) translateX(4px) rotate(-180deg);
+  }
+  100% {
+    transform: rotate(360deg) translateX(0) rotate(-360deg);
+  }
 }
 
 @keyframes buddy-shoe-lights {
   0%,
-  100% { opacity: 0.25; transform: translateY(0); }
-  50% { opacity: 0.95; transform: translateY(-2px); }
+  100% {
+    opacity: 0.25;
+    transform: translateY(0);
+  }
+  50% {
+    opacity: 0.95;
+    transform: translateY(-2px);
+  }
 }
 
 .buddy-character-image {
@@ -55,9 +91,19 @@ div:has(> .buddy-character-image)::before {
   transform: translate(-50%, -50%);
   pointer-events: none;
   background:
-    radial-gradient(circle at 27% 38%, rgba(255,255,255,.98) 0 5%, rgba(255,75,97,.82) 8%, transparent 18%),
-    radial-gradient(circle at 73% 38%, rgba(255,255,255,.98) 0 5%, rgba(255,75,97,.82) 8%, transparent 18%);
-  filter: drop-shadow(0 0 9px rgba(255,58,84,.75));
+    radial-gradient(
+      circle at 27% 38%,
+      rgba(255, 255, 255, 0.98) 0 5%,
+      rgba(255, 75, 97, 0.82) 8%,
+      transparent 18%
+    ),
+    radial-gradient(
+      circle at 73% 38%,
+      rgba(255, 255, 255, 0.98) 0 5%,
+      rgba(255, 75, 97, 0.82) 8%,
+      transparent 18%
+    );
+  filter: drop-shadow(0 0 9px rgba(255, 58, 84, 0.75));
   animation: buddy-eye-glow 2.7s ease-in-out infinite;
 }
 
@@ -72,7 +118,9 @@ div:has(> .buddy-character-image)::after {
   color: #ff5268;
   font-size: clamp(12px, 3vw, 24px);
   line-height: 1;
-  text-shadow: 0 0 8px rgba(255,62,88,.95), 0 0 20px rgba(255,62,88,.55);
+  text-shadow:
+    0 0 8px rgba(255, 62, 88, 0.95),
+    0 0 20px rgba(255, 62, 88, 0.55);
   pointer-events: none;
   animation: buddy-heartbeat 3.2s ease-in-out infinite;
 }
@@ -85,7 +133,7 @@ div:has(> .buddy-character-image)::after {
   top: 13%;
   color: #ff6678;
   font-size: 22px;
-  text-shadow: 0 0 12px rgba(255,70,90,.9);
+  text-shadow: 0 0 12px rgba(255, 70, 90, 0.9);
   animation: buddy-orbit 8s linear infinite;
 }
 
@@ -97,8 +145,8 @@ div:has(> .buddy-character-image)::after {
   bottom: 16%;
   color: #ff6a7b;
   font-size: 12px;
-  letter-spacing: .18em;
-  text-shadow: 0 0 10px rgba(255,70,90,.8);
+  letter-spacing: 0.18em;
+  text-shadow: 0 0 10px rgba(255, 70, 90, 0.8);
   animation: buddy-shoe-lights 2.4s ease-in-out infinite;
 }
 
