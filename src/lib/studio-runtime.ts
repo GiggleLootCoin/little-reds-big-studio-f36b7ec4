@@ -57,13 +57,9 @@ function build(ep: Endpoint, input: StudioJobInput, capability: StudioCapability
     const name = norm(p.parameter_name ?? p.label ?? "");
     const value = pick(p.parameter_name ?? p.label ?? "", input);
     if (value != null) return value;
-    // A reference clip belongs to cloning, not ordinary TTS. Never make Buddy's
-    // normal speech depend on a user's sample or a hidden ref_audio field.
     if (capability === "tts" && (name.includes("refaudio") || name.includes("referenceaudio") || name === "reference")) {
       if (p.optional || p.parameter_has_default || p.default != null) return p.default;
-      // Some Spaces expose a clone-capable endpoint with a mandatory reference.
-      // Reject that endpoint and let the next TTS provider handle ordinary speech.
-      throw new Error(`TTS endpoint requires reference audio; skipped for normal speech`);
+      throw new Error("TTS endpoint requires reference audio; skipped for normal speech");
     }
     const f = fallback(p);
     if (f !== undefined) return f;
@@ -138,7 +134,6 @@ function score(ep: Endpoint, name: string, input: StudioJobInput, capability: St
   if (capability === "voice-clone" && (h.includes("clone") || h.includes("reference"))) s += 10;
   if (capability === "voice-swap" && (h.includes("convert") || h.includes("vc") || h.includes("infer"))) s += 10;
   if (capability === "music" && (h.includes("song") || h.includes("music") || h.includes("generate"))) s += 8;
-  // Clone endpoints with mandatory reference audio cannot satisfy normal TTS.
   if (capability === "tts" && ep.parameters?.some((p) => { const n = norm(p.parameter_name ?? p.label ?? ""); return n.includes("refaudio") || n.includes("referenceaudio"); })) s -= 30;
   return s;
 }
@@ -147,7 +142,34 @@ function validateArtifact(capability: StudioCapability, value: unknown, url: str
   if (["music", "image", "video", "voice-clone", "voice-swap", "vocal-separation", "tts"].includes(capability) && !url) throw new Error("Provider returned data without a usable media artifact");
   if (["chat", "speech-to-text"].includes(capability) && !artifactText(value)) throw new Error("Provider returned no usable text");
 }
+async function runCloudflare(provider: FreeRunner, input: StudioJobInput, capability: StudioCapability): Promise<StudioArtifact> {
+  const prompt = String(input.prompt ?? input.text ?? input.lyrics ?? "").trim();
+  const response = await fetch(provider.url, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      capability,
+      prompt,
+      language: typeof input.language === "string" ? input.language : undefined,
+      messages: Array.isArray(input.messages) ? input.messages : undefined,
+    }),
+  });
+  if (!response.ok) {
+    const detail = await response.text();
+    throw new Error(`${provider.name}: HTTP ${response.status} ${detail.slice(0, 300)}`);
+  }
+  const contentType = response.headers.get("content-type") ?? "";
+  if (contentType.startsWith("audio/") || contentType.startsWith("image/")) {
+    const blob = await response.blob();
+    if (!blob.size) throw new Error(`${provider.name}: returned an empty media artifact`);
+    return { capability, value: blob, url: URL.createObjectURL(blob), provider: provider.name };
+  }
+  const value = await response.json() as unknown;
+  validateArtifact(capability, value, null);
+  return { capability, value, url: null, provider: provider.name };
+}
 async function runOn(provider: FreeRunner, input: StudioJobInput, capability: StudioCapability) {
+  if (provider.url.startsWith("/api/ai/")) return runCloudflare(provider, input, capability);
   const space = spaceId(provider.url); const cl = await client(space); const map = endpoints(await api(space));
   const candidates = Object.entries(map).map(([name, ep]) => ({ name, ep, s: score(ep, name, input, capability) })).filter((x) => x.s > -10).sort((a, b) => b.s - a.s);
   if (!candidates[0]) throw new Error("No compatible endpoint discovered");
@@ -187,6 +209,6 @@ export function runtimeProviders(capability?: StudioCapability) { return capabil
 export function artifactText(value: unknown): string {
   if (typeof value === "string") return value.trim();
   if (Array.isArray(value)) return value.map(artifactText).find(Boolean) || "";
-  if (value && typeof value === "object") for (const k of ["text", "generated_text", "transcription", "transcript", "content", "value", "data"]) { const t = artifactText((value as Record<string, unknown>)[k]); if (t) return t; }
+  if (value && typeof value === "object") for (const k of ["text", "response", "generated_text", "transcription", "transcript", "content", "value", "data"]) { const t = artifactText((value as Record<string, unknown>)[k]); if (t) return t; }
   return "";
 }
