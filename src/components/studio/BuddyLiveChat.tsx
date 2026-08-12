@@ -114,12 +114,10 @@ export function BuddyLiveChat() {
       localStorage.setItem(
         KEY,
         JSON.stringify(
-          messages
-            .slice(-50)
-            .map(({ attachments: savedAttachments, ...message }) => ({
-              ...message,
-              attachments: savedAttachments?.map(({ url: _url, ...metadata }) => metadata),
-            })),
+          messages.slice(-50).map(({ attachments: savedAttachments, ...message }) => ({
+            ...message,
+            attachments: savedAttachments?.map(({ url: _url, ...metadata }) => metadata),
+          })),
         ),
       );
     } catch {}
