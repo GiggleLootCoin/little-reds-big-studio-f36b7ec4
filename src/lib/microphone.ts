@@ -23,14 +23,15 @@ export async function listMicrophones(): Promise<MicrophoneInfo[]> {
     }));
 }
 
-export function chooseMicrophone(devices: MicrophoneInfo[], preferredId?: string): MicrophoneInfo | null {
+export function chooseMicrophone(
+  devices: MicrophoneInfo[],
+  preferredId?: string,
+): MicrophoneInfo | null {
   if (!devices.length) return null;
   if (preferredId) {
     const preferred = devices.find((device) => device.id === preferredId);
     if (preferred) return preferred;
   }
-  // The browser's default is the safest first choice because it is the input
-  // the OS has already selected (including Bluetooth/wired routing on phones).
   return devices.find((device) => device.isDefault) ?? devices[0] ?? null;
 }
 
@@ -42,23 +43,32 @@ export async function requestMicrophone(deviceId?: string): Promise<MediaStream>
     throw new Error("This browser does not provide microphone access.");
   }
 
-  const exact = deviceId && deviceId !== "default" ? { deviceId: { exact: deviceId } } : {};
-  return navigator.mediaDevices.getUserMedia({
-    audio: {
-      ...exact,
-      echoCancellation: true,
-      noiseSuppression: true,
-      autoGainControl: true,
-    },
-  });
+  const constraints: MediaTrackConstraints = {
+    echoCancellation: true,
+    noiseSuppression: true,
+    autoGainControl: true,
+  };
+  if (deviceId && deviceId !== "default") constraints.deviceId = { exact: deviceId };
+
+  try {
+    return await navigator.mediaDevices.getUserMedia({ audio: constraints });
+  } catch (error) {
+    // Bluetooth/headset inputs can disappear between enumerateDevices() and
+    // getUserMedia(). Never turn that race into a permanent "blocked" state:
+    // retry once using the OS/browser-selected default input.
+    if (deviceId && deviceId !== "default") {
+      return navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+      });
+    }
+    throw error;
+  }
 }
 
-/**
- * Test a candidate input without stealing the active call stream. This is
- * deliberately best-effort: browsers may expose only a default device until
- * permission has been granted, and Bluetooth routes can disappear while a
- * call is active.
- */
 export async function probeMicrophone(deviceId?: string): Promise<boolean> {
   try {
     const stream = await requestMicrophone(deviceId);
