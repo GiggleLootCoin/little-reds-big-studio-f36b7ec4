@@ -19,44 +19,54 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
+
       - name: Install
         run: npm ci
+
       - name: Typecheck
         run: npx tsc --noEmit
+
       - name: Format check
         run: npx prettier --check .
+
       - name: Lint
         run: npm run lint
+
       - name: Build
         run: npm run build
+
       - name: Verify Cloudflare credentials are available
         shell: bash
         run: |
           set -euo pipefail
-          test -n "$CLOUDFLARE_API_TOKEN" || { echo "CLOUDFLARE_API_TOKEN is not available to this workflow."; exit 1; }
-          test -n "$CLOUDFLARE_ACCOUNT_ID" || { echo "CLOUDFLARE_ACCOUNT_ID is not available to this workflow."; exit 1; }
+          test -n "${CLOUDFLARE_API_TOKEN:-}" || { echo "CLOUDFLARE_API_TOKEN is not available to this workflow."; exit 1; }
+          test -n "${CLOUDFLARE_ACCOUNT_ID:-}" || { echo "CLOUDFLARE_ACCOUNT_ID is not available to this workflow."; exit 1; }
           echo "Cloudflare credentials are present (values intentionally not displayed)."
+
       - name: Deploy to Cloudflare Workers
-        uses: cloudflare/wrangler-action@v3
-        with:
-          command: deploy --config wrangler.jsonc
+        run: npx wrangler deploy --config wrangler.jsonc
+
       - name: Production smoke test
         env:
           PRODUCTION_URL: https://little-reds-big-studio-f36b7ec4.gigglelootcoin.workers.dev
+        shell: bash
         run: |
-          set -e
-          for i in 1 2 3 4 5; do
-            code=$(curl -L -sS -o /tmp/studio.html -w '%{http_code}' "$PRODUCTION_URL/?deploy_sha=${GITHUB_SHA}") || code=000
-            if [ "$code" = "200" ] && grep -q "Little Red" /tmp/studio.html; then
+          set -euo pipefail
+          for i in 1 2 3 4 5 6 7 8 9 10; do
+            code=$(curl -L -sS --max-time 20 -o /tmp/studio.html -w '%{http_code}' "$PRODUCTION_URL/?deploy_sha=${GITHUB_SHA}") || code=000
+            if [ "$code" = "200" ] && grep -qi "Little Red" /tmp/studio.html; then
+              echo "Production smoke test passed: HTTP 200 and Studio content detected."
               exit 0
             fi
+            echo "Attempt $i: HTTP $code; waiting for deployment propagation..."
             sleep 5
           done
           echo "Production smoke test failed"
-          cat /tmp/studio.html || true
+          cat /tmp/studio.html 2>/dev/null || true
           exit 1
