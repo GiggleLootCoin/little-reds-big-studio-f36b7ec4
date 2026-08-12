@@ -53,12 +53,12 @@ export const FREE_RUNNERS: FreeRunner[] = [
   },
   {
     id: "cf-flux-2-klein",
-    name: "Cloudflare FLUX.2 Klein 9B",
+    name: "Cloudflare FLUX.2 Klein 4B",
     kind: "gpu",
-    description: "Real server-side text-to-image generation.",
+    description: "Real server-side text-to-image generation and editing.",
     capabilities: ["image", "image-generation", "artwork", "cover"],
     url: "/api/ai/image",
-    notes: "Uses FLUX.2 Klein 9B through the repository Cloudflare AI binding.",
+    notes: "Uses FLUX.2 Klein 4B through the repository Cloudflare AI binding.",
     priority: 300,
   },
   {
@@ -108,8 +108,7 @@ export const FREE_RUNNERS: FreeRunner[] = [
     description: "Primary server-side Buddy speech generation.",
     capabilities: ["voice", "tts", "multilingual-tts"],
     url: "/api/ai/tts",
-    notes:
-      "Cheap first choice; server automatically fails over to Aura-1 on transient capacity errors.",
+    notes: "Cheap first choice; server automatically fails over to Aura-1 on transient capacity errors.",
     priority: 300,
   },
   {
@@ -121,6 +120,16 @@ export const FREE_RUNNERS: FreeRunner[] = [
     url: "/api/ai/tts",
     notes: "Deepgram Aura-1 is the server-side capacity fallback; no client API key is exposed.",
     priority: 290,
+  },
+  {
+    id: "cf-whisper",
+    name: "Cloudflare Whisper",
+    kind: "gpu",
+    description: "Reliable server-side speech recognition for Android voice chat.",
+    capabilities: ["speech-to-text", "transcription", "realtime-asr"],
+    url: "/api/ai/speech-to-text",
+    notes: "Audio is sent to the server and transcribed with the Cloudflare-hosted Whisper model; no client key required.",
+    priority: 300,
   },
   {
     id: "hf-moss-tts-15",
@@ -201,26 +210,6 @@ export const FREE_RUNNERS: FreeRunner[] = [
     url: "https://huggingface.co/spaces/owiedotch/demucs-stem-separation",
     notes: "Live Gradio Space; output must contain actual separated audio artifacts.",
     priority: 170,
-  },
-  {
-    id: "hf-qwen3-asr",
-    name: "Qwen3-ASR",
-    kind: "public",
-    description: "Speech recognition for Buddy.",
-    capabilities: ["speech-to-text", "transcription", "realtime-asr"],
-    url: "https://huggingface.co/spaces/Qwen/Qwen3-ASR",
-    notes: "Live input compatibility required.",
-    priority: 170,
-  },
-  {
-    id: "hf-whisper-realtime",
-    name: "Realtime Whisper",
-    kind: "public",
-    description: "Speech recognition fallback.",
-    capabilities: ["speech-to-text", "transcription", "realtime-asr"],
-    url: "https://huggingface.co/spaces/gradio/whisper-large-v3-turbo",
-    notes: "Live input compatibility required.",
-    priority: 155,
   },
 ];
 
