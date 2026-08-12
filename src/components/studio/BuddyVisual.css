@@ -1,4 +1,4 @@
-/* Buddy's committed character asset remains the source of truth. These layers add interaction without changing identity. */
+/* Buddy's committed character asset is the identity source of truth. These layers add responsive presence without changing the character design. */
 
 @keyframes buddy-breathe {
   0%,
@@ -7,6 +7,58 @@
   }
   50% {
     transform: translate3d(0, -4px, 0) scale(1.018);
+  }
+}
+
+@keyframes buddy-float {
+  0%,
+  100% {
+    filter: drop-shadow(0 0 10px rgba(255, 48, 70, 0.18));
+  }
+  50% {
+    filter: drop-shadow(0 0 22px rgba(255, 48, 70, 0.38));
+  }
+}
+
+@keyframes buddy-listening {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) rotate(0deg) scale(1);
+  }
+  35% {
+    transform: translate3d(-2px, -3px, 0) rotate(-1.2deg) scale(1.018);
+  }
+  70% {
+    transform: translate3d(2px, -1px, 0) rotate(1deg) scale(1.01);
+  }
+}
+
+@keyframes buddy-thinking {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) rotate(0deg);
+  }
+  35% {
+    transform: translate3d(2px, -2px, 0) rotate(1.2deg);
+  }
+  65% {
+    transform: translate3d(-2px, 0, 0) rotate(-1deg);
+  }
+}
+
+@keyframes buddy-speaking {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  25% {
+    transform: translate3d(0, -2px, 0) scale(1.025);
+  }
+  50% {
+    transform: translate3d(0, 1px, 0) scale(0.995);
+  }
+  75% {
+    transform: translate3d(0, -1px, 0) scale(1.015);
   }
 }
 
@@ -75,6 +127,28 @@
     buddy-float 4.8s ease-in-out infinite;
   transform-origin: 50% 88%;
   will-change: transform, filter;
+}
+
+[data-buddy-status="listening"] .buddy-character-image,
+.buddy-stage[data-buddy-status="listening"] .buddy-character-image {
+  animation: buddy-listening 2.8s ease-in-out infinite;
+}
+
+[data-buddy-status="thinking"] .buddy-character-image,
+.buddy-stage[data-buddy-status="thinking"] .buddy-character-image {
+  animation: buddy-thinking 3.1s ease-in-out infinite;
+}
+
+[data-buddy-status="working"] .buddy-character-image,
+.buddy-stage[data-buddy-status="working"] .buddy-character-image {
+  animation: buddy-speaking 1.65s ease-in-out infinite;
+}
+
+[data-buddy-status="success"] .buddy-character-image {
+  animation:
+    buddy-breathe 3.9s ease-in-out infinite,
+    buddy-float 4.8s ease-in-out infinite;
+  filter: drop-shadow(0 0 28px rgba(255, 48, 70, 0.5));
 }
 
 /* Expressive face-light layer: subtle enough to preserve the approved character art. */
