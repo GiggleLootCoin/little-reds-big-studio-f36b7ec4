@@ -4,7 +4,7 @@ import { consumeLastCapturedError } from "./lib/error-capture";
 import { renderErrorPage } from "./lib/error-page";
 
 type WorkersAI = {
-  run: (model: string, input: unknown) => Promise<unknown>;
+  run: (model: string, input: unknown, options?: unknown) => Promise<unknown>;
 };
 type ServerEnv = { AI?: WorkersAI };
 type ServerEntry = {
@@ -115,12 +115,32 @@ function asBase64(value: unknown): string | null {
   return null;
 }
 
+function isCapacityError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  return message.includes("3040") || message.toLowerCase().includes("capacity temporarily exceeded");
+}
+
+async function rawAudioResponse(result: unknown): Promise<Response | null> {
+  if (result instanceof Response) {
+    if (!result.ok) return result;
+    const headers = new Headers(result.headers);
+    headers.set("cache-control", "no-store");
+    if (!headers.get("content-type")) headers.set("content-type", "audio/mpeg");
+    return new Response(result.body, { status: result.status, headers });
+  }
+  const base64 = asBase64(result);
+  if (!base64) return null;
+  return new Response(Uint8Array.from(atob(base64), (c) => c.charCodeAt(0)), {
+    headers: { "content-type": "audio/mpeg", "cache-control": "no-store" },
+  });
+}
+
 async function cloudflareAI(request: Request, env: ServerEnv): Promise<Response | null> {
   const url = new URL(request.url);
   if (!url.pathname.startsWith(AI_PREFIX)) return null;
   if (!env.AI) return jsonError("Cloudflare Workers AI binding is not configured.", 503);
   if (request.method !== "POST") return jsonError("POST required.", 405);
-  let body: { capability?: string; prompt?: string; language?: string; messages?: unknown[] };
+  let body: { capability?: string; prompt?: string; language?: string; messages?: unknown[]; speaker?: string };
   try {
     body = await request.json();
   } catch {
@@ -139,32 +159,37 @@ async function cloudflareAI(request: Request, env: ServerEnv): Promise<Response 
       });
       const base64 = asBase64(result);
       if (!base64) return jsonError("Image model returned no usable image.");
-      return new Response(
-        Uint8Array.from(atob(base64), (c) => c.charCodeAt(0)),
-        {
-          headers: { "content-type": "image/png", "cache-control": "no-store" },
-        },
-      );
+      return new Response(Uint8Array.from(atob(base64), (c) => c.charCodeAt(0)), {
+        headers: { "content-type": "image/png", "cache-control": "no-store" },
+      });
     }
 
     if (capability === "tts") {
-      const result = await env.AI.run("@cf/myshell-ai/melotts", {
-        prompt,
-        lang: body.language || "en",
-      });
-      if (result instanceof Response) {
-        const headers = new Headers(result.headers);
-        headers.set("cache-control", "no-store");
-        return new Response(result.body, { status: result.status, headers });
+      // MeloTTS is the cheapest first choice. 3040 is a transient Cloudflare
+      // capacity error, not a bad request, so immediately fail over to Aura-1.
+      try {
+        const result = await env.AI.run("@cf/myshell-ai/melotts", {
+          prompt,
+          lang: body.language || "en",
+        });
+        const audio = await rawAudioResponse(result);
+        if (audio) return audio;
+      } catch (error) {
+        if (!isCapacityError(error)) console.warn("MeloTTS failed; trying Aura-1", error);
       }
-      const base64 = asBase64(result);
-      if (!base64) return jsonError("TTS model returned no usable audio.");
-      return new Response(
-        Uint8Array.from(atob(base64), (c) => c.charCodeAt(0)),
+
+      const aura = await env.AI.run(
+        "@cf/deepgram/aura-1",
         {
-          headers: { "content-type": "audio/mpeg", "cache-control": "no-store" },
+          text: prompt,
+          encoding: "mp3",
+          speaker: body.speaker || "asteria",
         },
+        { returnRawResponse: true },
       );
+      const audio = await rawAudioResponse(aura);
+      if (!audio) return jsonError("TTS providers returned no usable audio.");
+      return audio;
     }
 
     if (capability === "chat") {
