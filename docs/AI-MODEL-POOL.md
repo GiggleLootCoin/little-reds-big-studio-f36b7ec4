@@ -5,11 +5,13 @@ This registry records promising open/free model projects for evaluation and inte
 ## Approved for integration evaluation
 
 ### Music
+
 - ACE-Step 1.5 — https://github.com/ace-step/ACE-Step — Apache-2.0. High-priority music engine; full-song generation, editing, extension, remixing and vocal/BGM workflows. Prefer the official project only.
 - DiffRhythm / DiffRhythm 2 — https://github.com/ASLP-lab/DiffRhythm — Apache-2.0. Strong fast full-length song option and valuable fallback/specialist engine.
 - HeartMuLa / heartlib — https://github.com/HeartMuLa/heartlib — evaluate as an additional music engine for lyrics/tags/reference-audio conditioning. Confirm the exact model/checkpoint license at integration time.
 
 ### Speech / voice
+
 - Qwen3-TTS — https://github.com/QwenLM/Qwen3-TTS — Apache-2.0. High-priority Buddy TTS/voice-design/voice-cloning engine.
 - MOSS-TTS — https://github.com/OpenMOSS/MOSS-TTS — open-source family with TTS, voice cloning, long-form speech, multilingual/code-switching and sound-effect capabilities; strong fallback/specialist candidate. Verify model-specific license before commercial deployment.
 - OmniVoice — https://github.com/k2-fsa/OmniVoice — promising multilingual zero-shot TTS candidate; evaluate runtime and license before promotion.
