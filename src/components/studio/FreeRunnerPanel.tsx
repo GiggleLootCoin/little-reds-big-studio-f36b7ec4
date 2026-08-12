@@ -1,4 +1,4 @@
-import { ExternalLink, Smartphone, Cpu, Zap } from "lucide-react";
+import { ExternalLink, Smartphone, Zap } from "lucide-react";
 import { runnersFor } from "@/lib/free-runners";
 import { Panel, StudioButton } from "./ui";
 
@@ -25,13 +25,7 @@ export function FreeRunnerPanel({ capability }: { capability?: string }) {
           <article key={runner.id} className="rounded-xl border border-border bg-background/50 p-3">
             <div className="flex items-start gap-3">
               <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                {runner.kind === "android" ? (
-                  <Smartphone className="size-4" />
-                ) : runner.kind === "gpu" ? (
-                  <Cpu className="size-4" />
-                ) : (
-                  <Zap className="size-4" />
-                )}
+                {runner.kind === "android" ? <Smartphone className="size-4" /> : <Zap className="size-4" />}
               </div>
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
