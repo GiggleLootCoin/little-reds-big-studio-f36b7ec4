@@ -23,6 +23,7 @@
 ### Task 1: Correct project state and verification record
 
 **Files:**
+
 - Modify: `.studio-memory/CURRENT-STATE.md`
 - Modify: `.studio-memory/CHANGELOG.md`
 - Modify: `.studio-memory/KNOWN-ISSUES.md`
@@ -38,10 +39,12 @@
 ### Task 2: Production microphone/device layer
 
 **Files:**
+
 - Create: `src/lib/microphone.ts`
 - Modify: `src/components/studio/BuddyLiveChat.tsx`
 
 **Interfaces:**
+
 - `listMicrophones(): Promise<MediaDeviceInfo[]>`
 - `chooseMicrophone(devices: MediaDeviceInfo[]): MediaDeviceInfo | null`
 - `requestMicrophone(deviceId?: string): Promise<MediaStream>`
@@ -62,11 +65,13 @@
 ### Task 3: Phone-call-style Buddy interaction
 
 **Files:**
+
 - Modify: `src/components/studio/BuddyLiveChat.tsx`
 - Modify: `src/components/studio/BuddyPresence.tsx`
 - Modify: `src/styles.css`
 
 **Interfaces:**
+
 - Live session states: `idle | connecting | listening | thinking | speaking | error`.
 - Composer modes: `live | record | type`.
 
@@ -85,6 +90,7 @@
 ### Task 4: Record→Text and voice-clone capture
 
 **Files:**
+
 - Modify: `src/components/studio/BuddyLiveChat.tsx`
 - Modify: `src/components/studio/FreeCreatePanel.tsx`
 - Create: `src/components/studio/VoiceProfilePanel.tsx`
@@ -102,6 +108,7 @@
 ### Task 5: Generation controls and artifact handling
 
 **Files:**
+
 - Modify: `src/components/studio/FreeCreatePanel.tsx`
 - Modify: `src/lib/studio-runtime.ts`
 
@@ -119,6 +126,7 @@
 ### Task 6: Authentication and persistent user state
 
 **Files:**
+
 - Modify: `src/routes/auth.tsx`
 - Modify: relevant Supabase/auth helper files discovered during implementation.
 - Modify: relevant project-memory persistence files discovered during implementation.
@@ -134,6 +142,7 @@
 ### Task 7: Visual polish and responsive Buddy presentation
 
 **Files:**
+
 - Modify: `src/routes/index.tsx`
 - Modify: `src/components/studio/BuddyWelcome.tsx`
 - Modify: `src/components/studio/StudioLogo.tsx`
@@ -152,6 +161,7 @@
 ### Task 8: Production verification gate
 
 **Files:**
+
 - Modify: `.studio-memory/CURRENT-STATE.md`
 - Modify: `.studio-memory/KNOWN-ISSUES.md`
 - Modify: `.studio-memory/DEPLOYMENT.md`

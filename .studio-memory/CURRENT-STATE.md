@@ -9,6 +9,7 @@
 **Product:** Buddy-first, Android-first, free/open-first creative studio for musicians and YouTubers.
 
 ## Non-negotiable product rules
+
 - Real working product, not a visual demo.
 - Android/mobile-first; do not assume a computer.
 - Prefer free/open solutions and avoid mandatory paid AI APIs/provider accounts.
@@ -19,6 +20,7 @@
 - Keep development/engineering memory separate from Buddy's user memory/Creative DNA.
 
 ## Verified foundations
+
 - TanStack Start + Vite + TypeScript application.
 - Production-oriented Buddy orchestration and free/open route selection.
 - Supabase authentication and server-authoritative entitlement logic.
@@ -29,11 +31,13 @@
 - Permanent `.studio-memory/` handoff layer is now merged into `main`.
 
 ## Current known verification gaps
+
 1. Live verification of the Buy Me a Coffee membership webhook secret/production membership flow is still required before calling membership fully production-verified.
 2. End-to-end Android runtime generation testing remains a required final verification gate.
 3. Remote free/open AI routes are candidates until live schema compatibility, execution, artifact return and artifact validation are confirmed.
 
 ## Current route families
+
 - Writing/reasoning: Qwen3 + browser-local fallback.
 - Voice: Qwen3-TTS, MOSS-TTS, Chatterbox, Seed-VC, Applio/RVC fallbacks.
 - Music: ACE-Step 1.5 + DiffRhythm fallback.
@@ -43,7 +47,9 @@
 - Speech recognition: Qwen3-ASR / Whisper fallbacks.
 
 ## Immediate next action
+
 Close only the remaining real verification gaps. Do not rebuild already-validated infrastructure. Verify production membership webhook configuration and perform Android/runtime generation smoke tests; record exact evidence here and in `KNOWN-ISSUES.md`/`DEPLOYMENT.md`.
 
 ## Handoff rule
+
 A future agent must read this file first, then `MASTER-SPEC.md`, `DECISIONS.md`, `KNOWN-ISSUES.md`, `PROVIDERS.md`, `DEPLOYMENT.md`, `CHANGELOG.md`, and `HANDOFF.md` before making architectural changes.

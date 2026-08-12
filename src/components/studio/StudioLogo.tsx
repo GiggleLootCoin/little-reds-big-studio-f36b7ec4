@@ -9,10 +9,7 @@ export function StudioLogo({
 }) {
   return (
     <span
-      className={cn(
-        "group/logo relative inline-flex items-center gap-3 select-none",
-        className,
-      )}
+      className={cn("group/logo relative inline-flex items-center gap-3 select-none", className)}
       aria-label="Little Red's Big Studio"
     >
       <svg
@@ -45,11 +42,30 @@ export function StudioLogo({
           filter="url(#softGlow)"
         />
         <path d="M25 34h27l-3 22c-1 7-5 11-10 11s-9-4-10-11l-4-22Z" fill="url(#redDrop)" />
-        <path d="M27 35c2 8 3 13 1 22M49 35c-2 7-2 13 1 21" fill="none" stroke="#ff7b7f" strokeOpacity=".45" strokeWidth="1.5" />
+        <path
+          d="M27 35c2 8 3 13 1 22M49 35c-2 7-2 13 1 21"
+          fill="none"
+          stroke="#ff7b7f"
+          strokeOpacity=".45"
+          strokeWidth="1.5"
+        />
         <circle cx="31" cy="42" r="2.5" fill="#fff" />
         <circle cx="45" cy="42" r="2.5" fill="#fff" />
-        <path d="M32 51c4 3 8 3 12 0" fill="none" stroke="#fff" strokeOpacity=".8" strokeWidth="2" strokeLinecap="round" />
-        <path d="M22 18c5-6 10-8 16-8M54 18c-4-5-8-7-13-8" fill="none" stroke="#ff5a5f" strokeWidth="3" strokeLinecap="round" />
+        <path
+          d="M32 51c4 3 8 3 12 0"
+          fill="none"
+          stroke="#fff"
+          strokeOpacity=".8"
+          strokeWidth="2"
+          strokeLinecap="round"
+        />
+        <path
+          d="M22 18c5-6 10-8 16-8M54 18c-4-5-8-7-13-8"
+          fill="none"
+          stroke="#ff5a5f"
+          strokeWidth="3"
+          strokeLinecap="round"
+        />
       </svg>
       {!compact && (
         <span className="min-w-0 text-left leading-none">
