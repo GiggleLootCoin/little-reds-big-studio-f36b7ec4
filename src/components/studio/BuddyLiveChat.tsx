@@ -5,6 +5,7 @@ import { setBuddyStatus } from "@/lib/buddy-presence";
 import { chooseMicrophone, describeMicrophoneError, listMicrophones, requestMicrophone, stopMicrophone, type MicrophoneInfo } from "@/lib/microphone";
 import { Panel, StudioButton } from "./ui";
 import buddyReference from "../../../file_0000000070e8824391d24367b5f22d59.png";
+import "./BuddyVisual.css";
 
 type Message = { role: "user" | "assistant"; content: string };
 type Mode = "idle" | "live" | "record";
@@ -198,7 +199,7 @@ export function BuddyLiveChat() {
         {recording && <div className="mt-3 flex items-center justify-center gap-2 text-xs text-primary"><span className="size-2 animate-pulse rounded-full bg-primary" />{status}</div>}
         <div className="mt-5 rounded-2xl border border-border/60 bg-background/55 p-3">
           <div className="flex gap-2"><input value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendTyped(); } }} placeholder="Type to Buddy…" className="min-w-0 flex-1 rounded-xl border border-border/60 bg-background/70 px-3 py-3 text-sm outline-none focus:border-primary" /><StudioButton onClick={sendTyped} disabled={busy || !input.trim()}><Send className="size-4" /></StudioButton></div>
-          <div className="mt-3 flex flex-wrap gap-2"><StudioButton variant="secondary" onClick={() => void beginCapture("record")} disabled={recording || busy}><Mic className="size-4" />Record → Text</StudioButton>{recording && !live && <StudioButton variant="secondary" onClick={stopCapture}><MicOff className="size-4" />Stop</StudioButton>}{transcript && <StudioButton onClick={sendTranscript} disabled={busy}><Send className="size-4" />Send transcript</StudioButton>}</div>
+          <div className="mt-3 flex flex-wrap gap-2"><StudioButton variant="ghost" onClick={() => void beginCapture("record")} disabled={recording || busy}><Mic className="size-4" />Record → Text</StudioButton>{recording && !live && <StudioButton variant="ghost" onClick={stopCapture}><MicOff className="size-4" />Stop</StudioButton>}{transcript && <StudioButton onClick={sendTranscript} disabled={busy}><Send className="size-4" />Send transcript</StudioButton>}</div>
           {transcript && <textarea value={transcript} onChange={(e) => setTranscript(e.target.value)} className="mt-3 min-h-24 w-full rounded-xl border border-border/60 bg-background/70 p-3 text-sm outline-none focus:border-primary" aria-label="Voice transcript" />}
         </div>
         <div className="mt-4 max-h-64 space-y-2 overflow-y-auto pr-1">{messages.slice(-8).map((message, index) => <div key={`${message.role}-${index}`} className={`rounded-2xl px-3 py-2 text-sm ${message.role === "user" ? "ml-8 bg-primary/10" : "mr-8 bg-white/[0.045]"}`}><div className="mb-1 text-[9px] font-bold uppercase tracking-[0.16em] text-muted-foreground">{message.role === "user" ? "You" : "Buddy"}</div>{message.content}</div>)}{busy && <div className="mr-8 flex items-center gap-2 rounded-2xl bg-white/[0.045] px-3 py-2 text-xs text-muted-foreground"><LoaderCircle className="size-4 animate-spin" />Buddy is thinking…</div>}</div>
