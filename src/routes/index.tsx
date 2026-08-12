@@ -27,7 +27,7 @@ import {
   SupportPanel,
 } from "@/components/studio/sections-community";
 
-const SITE_URL = "https://littleredsbigstudio.lovable.app/";
+const SITE_URL = "https://little-reds-big-studio-f36b7ec4.gigglelootcoin.workers.dev";
 const TITLE = "Little Red's Big Studio — Free AI Music & Creator Studio";
 const DESCRIPTION =
   "Little Red's Big Studio: Android-first creative tools with Buddy, free/open AI routes, music, voice, artwork, video and project workflows.";
