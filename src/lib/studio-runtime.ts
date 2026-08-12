@@ -1,16 +1,7 @@
 import { Client, handle_file } from "@gradio/client";
 import { FREE_RUNNERS, type FreeRunner, runnersFor } from "./free-runners";
 
-export type StudioCapability =
-  | "chat"
-  | "speech-to-text"
-  | "music"
-  | "image"
-  | "video"
-  | "voice-clone"
-  | "voice-swap"
-  | "vocal-separation"
-  | "tts";
+export type StudioCapability = "chat" | "speech-to-text" | "music" | "image" | "video" | "voice-clone" | "voice-swap" | "vocal-separation" | "tts";
 export type StudioJobInput = Record<string, unknown>;
 export type StudioArtifact = { capability: StudioCapability; value: unknown; url: string | null; provider: string };
 type Parameter = { parameter_name?: string; label?: string; component?: string; type?: string; default?: unknown; optional?: boolean; parameter_has_default?: boolean };
@@ -29,7 +20,7 @@ function artifactUrl(v: unknown): string | null { if (typeof v === "string" && /
 function origin(space: string) { const slug = space.replace(/^https?:\/\/huggingface\.co\/spaces\//, "").replace(/\//g, "-").replace(/[^a-zA-Z0-9-]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "").toLowerCase(); return `https://${slug}.hf.space`; }
 function normalizeUrl(u: string | null, space: string) { if (!u || /^(https?:|blob:|data:)/.test(u)) return u; if (u.startsWith("/")) return `${origin(space)}${u}`; return u; }
 async function client(space: string) { let p = clients.get(space); if (!p) { p = Client.connect(space); p.catch(() => clients.delete(space)); clients.set(space, p); } return p; }
-async function api(space: string) { const cached = apis.get(space); if (cached && cached.expires > Date.now()) return cached.api; const cl = await client(space); if (!cl.view_api) throw new Error("Runtime schema discovery unavailable"); const a = await cl.view_api(true); if (!Object.keys(endpoints(a)).length) throw new Error("Provider exposes no callable endpoints"); apis.set(space, { api: a, expires: Date.now() + 30000 }); return a; }
+async function api(space: string) { const cached = apis.get(space); if (cached && cached.expires > Date.now()) return cached.api; const cl = await client(space); if (!cl.view_api) throw new Error("Runtime schema discovery unavailable"); const a = await cl.view_api(); if (!Object.keys(endpoints(a)).length) throw new Error("Provider exposes no callable endpoints"); apis.set(space, { api: a, expires: Date.now() + 30000 }); return a; }
 function score(ep: Endpoint, name: string, input: StudioJobInput, capability: StudioCapability) { const h = norm(`${name} ${ep.fn ?? ""} ${ep.description ?? ""}`); const words = capability === "chat" ? ["chat", "text", "generate", "message"] : capability === "speech-to-text" ? ["transcribe", "speech", "audio", "asr"] : capability === "tts" ? ["tts", "speech", "voice", "audio"] : ["generate", "create", capability.replace(/-/g, ""), "text", "audio", "image", "video", "music", "voice"]; let s = 0; for (const w of words) if (h.includes(w)) s += 4; for (const p of ep.parameters ?? []) s += pick(p.parameter_name ?? p.label ?? "", input) !== undefined || fallback(p) !== undefined ? 2 : -20; return s; }
 async function runOn(provider: FreeRunner, input: StudioJobInput, capability: StudioCapability) { const space = provider.url.replace("https://huggingface.co/spaces/", ""); const cl = await client(space); const map = endpoints(await api(space)); const candidates = Object.entries(map).map(([name, ep]) => ({ name, ep, s: score(ep, name, input, capability) })).filter((x) => x.s > -10).sort((a, b) => b.s - a.s); if (!candidates[0]) throw new Error("No compatible endpoint discovered"); const args = await Promise.all(build(candidates[0].ep, input).map(async (v) => typeof Blob !== "undefined" && v instanceof Blob ? handle_file(v) : v)); const r = await cl.predict(candidates[0].name, args); const data = Array.isArray(r) ? r : (r?.data ?? r); if (!output(data)) throw new Error("Provider returned no usable artifact"); return { capability, value: data, url: normalizeUrl(artifactUrl(data), provider.url), provider: provider.name } as StudioArtifact; }
 export async function runStudioJob(capability: StudioCapability, input: StudioJobInput, onStatus?: (s: string) => void): Promise<StudioArtifact> { const providers = runnersFor(capability); let last = "No compatible provider available"; for (const p of providers) { try { onStatus?.("Checking a compatible route…"); const result = await runOn(p, input, capability); onStatus?.("Result verified."); return result; } catch (e) { last = e instanceof Error ? e.message : String(e); onStatus?.("Trying a fallback route…"); } } throw new Error(`${capability} could not produce a usable result. ${last}`); }
