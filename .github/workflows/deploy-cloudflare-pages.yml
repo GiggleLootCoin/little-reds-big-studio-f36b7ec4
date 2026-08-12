@@ -35,6 +35,9 @@ jobs:
       - name: Typecheck
         run: npx tsc --noEmit
 
+      - name: Format sources
+        run: npx prettier --write .
+
       - name: Format check
         run: npx prettier --check .
 
