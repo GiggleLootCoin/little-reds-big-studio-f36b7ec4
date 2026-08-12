@@ -155,7 +155,7 @@ function Studio() {
             <EntitlementBanner />
             <BuddyWelcome onChoose={chooseBuddyTask} />
             <BuddyLiveChat />
-            <FreeEngineDeck />
+            <FreeEngineDeck onOpenCreate={() => go("write")} />
             <section className="rounded-2xl border border-border/60 bg-background/45 p-4 backdrop-blur-md sm:p-5">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
