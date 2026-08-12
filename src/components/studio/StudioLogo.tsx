@@ -1,4 +1,5 @@
 import { cn } from "@/lib/utils";
+import studioLogo from "../../../1784996969001.png";
 
 export function StudioLogo({
   compact = false,
@@ -13,11 +14,11 @@ export function StudioLogo({
       aria-label="Little Red's Big Studio"
     >
       <img
-        src="/logo.svg"
+        src={studioLogo}
         alt="Little Red's Big Studio"
         className={cn(
           "h-auto shrink-0 object-contain drop-shadow-[0_0_24px_oklch(0.62_0.24_26_/_0.48)] transition-transform duration-500 group-hover/logo:scale-[1.035]",
-          compact ? "w-24" : "w-44 sm:w-56",
+          compact ? "w-28 sm:w-32" : "w-48 sm:w-64",
         )}
       />
     </span>
