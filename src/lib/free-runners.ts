@@ -8,6 +8,7 @@ export type FreeRunner = {
   notes: string;
   priority: number;
 };
+
 export const FREE_RUNNERS: FreeRunner[] = [
   {
     id: "hf-qwen3-chat",
@@ -63,11 +64,21 @@ export const FREE_RUNNERS: FreeRunner[] = [
     id: "hf-qwen3-tts",
     name: "Qwen3-TTS",
     kind: "public",
-    description: "Speech, voice design and cloning.",
+    description: "Primary natural conversational speech, voice design and cloning.",
     capabilities: ["voice", "voice-clone", "tts"],
     url: "https://huggingface.co/spaces/Qwen/Qwen3-TTS",
-    notes: "Live schema required.",
-    priority: 175,
+    notes: "Apache-2.0 Qwen3-TTS Space; live schema required. Never fall back to browser speech for Buddy Live.",
+    priority: 190,
+  },
+  {
+    id: "hf-chatterbox-v3",
+    name: "Chatterbox Multilingual V3",
+    kind: "public",
+    description: "High-quality natural multilingual TTS and voice cloning fallback.",
+    capabilities: ["voice", "voice-clone", "tts"],
+    url: "https://huggingface.co/spaces/ResembleAI/Chatterbox-Multilingual-TTS-V3",
+    notes: "Current Chatterbox V3 route; MIT-licensed model family. Live schema required. Never fall back to browser speech for Buddy Live.",
+    priority: 185,
   },
   {
     id: "hf-moss-tts",
@@ -76,18 +87,8 @@ export const FREE_RUNNERS: FreeRunner[] = [
     description: "Open voice-cloning fallback.",
     capabilities: ["voice", "voice-clone", "tts"],
     url: "https://huggingface.co/spaces/OpenMOSS-Team/MOSS-TTS-v1.5",
-    notes: "Live schema required.",
+    notes: "Live schema required and quality-gated before delivery.",
     priority: 155,
-  },
-  {
-    id: "hf-chatterbox",
-    name: "Chatterbox",
-    kind: "public",
-    description: "Multilingual TTS and cloning fallback.",
-    capabilities: ["voice", "voice-clone", "tts"],
-    url: "https://huggingface.co/spaces/ResembleAI/Chatterbox-Multilingual-TTS",
-    notes: "Live schema required.",
-    priority: 150,
   },
   {
     id: "hf-seed-vc",
@@ -189,24 +190,14 @@ export const FREE_RUNNERS: FreeRunner[] = [
     notes: "Live schema required.",
     priority: 125,
   },
-  {
-    id: "hf-kokoro",
-    name: "Kokoro WebGPU",
-    kind: "android",
-    description: "Lightweight local TTS fallback.",
-    capabilities: ["tts", "voice"],
-    url: "https://huggingface.co/spaces/webml-community/kokoro-webgpu",
-    notes: "Device capability dependent.",
-    priority: 105,
-  },
 ];
+
 export function runnersFor(capability?: string) {
-  return [
-    ...(capability
-      ? FREE_RUNNERS.filter((r) => r.capabilities.includes(capability))
-      : FREE_RUNNERS),
-  ].sort((a, b) => b.priority - a.priority);
+  return [...(capability ? FREE_RUNNERS.filter((r) => r.capabilities.includes(capability)) : FREE_RUNNERS)].sort(
+    (a, b) => b.priority - a.priority,
+  );
 }
+
 export function bestFreeRunner(capability: string) {
   return runnersFor(capability)[0] ?? null;
 }
