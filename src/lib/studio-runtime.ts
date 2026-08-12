@@ -202,9 +202,15 @@ function score(ep: Endpoint, name: string, input: StudioJobInput, capability: St
         ? 2
         : -20;
   if (capability === "voice-clone" && (h.includes("clone") || h.includes("reference"))) s += 10;
-  if (capability === "voice-swap" && (h.includes("convert") || h.includes("vc") || h.includes("infer")))
+  if (
+    capability === "voice-swap" &&
+    (h.includes("convert") || h.includes("vc") || h.includes("infer"))
+  )
     s += 10;
-  if (capability === "music" && (h.includes("song") || h.includes("music") || h.includes("generate")))
+  if (
+    capability === "music" &&
+    (h.includes("song") || h.includes("music") || h.includes("generate"))
+  )
     s += 8;
   return s;
 }

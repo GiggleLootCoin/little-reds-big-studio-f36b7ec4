@@ -1,9 +1,5 @@
 export type MicrophoneErrorKind =
-  | "permission"
-  | "insecure-context"
-  | "no-device"
-  | "unsupported"
-  | "unknown";
+  "permission" | "insecure-context" | "no-device" | "unsupported" | "unknown";
 
 export type MicrophoneInfo = {
   id: string;
