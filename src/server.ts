@@ -34,11 +34,10 @@ function encodeSpaceToken(space: string) {
 }
 
 /**
- * Gradio Spaces are excellent free/open inference targets, but browser-to-Space
- * CORS and sleeping/ZeroGPU lifecycle behaviour can make a direct client
- * connection fail even when the Space itself is healthy. Keep the browser on
- * our own origin and proxy only the public Gradio HTTP surface upstream.
- * No provider secret is stored in the browser or forwarded automatically.
+ * Keep public Gradio inference on the Studio origin. This proxy deliberately
+ * forwards the headers Gradio uses for queued/ZeroGPU requests, including
+ * WebSocket upgrade and x-ip-token. Without those headers some Spaces can load
+ * their schema but fail when an actual generation is submitted.
  */
 async function proxyHfSpace(request: Request): Promise<Response | null> {
   const url = new URL(request.url);
@@ -61,9 +60,19 @@ async function proxyHfSpace(request: Request): Promise<Response | null> {
     "accept-language",
     "authorization",
     "content-type",
+    "cookie",
+    "origin",
     "range",
+    "referer",
+    "user-agent",
     "x-ip-token",
     "x-requested-with",
+    "upgrade",
+    "connection",
+    "sec-websocket-key",
+    "sec-websocket-version",
+    "sec-websocket-protocol",
+    "sec-websocket-extensions",
   ]) {
     const value = request.headers.get(name);
     if (value) headers.set(name, value);
@@ -78,6 +87,7 @@ async function proxyHfSpace(request: Request): Promise<Response | null> {
 
   const responseHeaders = new Headers(upstreamResponse.headers);
   responseHeaders.delete("content-security-policy");
+  responseHeaders.delete("content-encoding");
   responseHeaders.set("cache-control", "no-store");
   responseHeaders.set("x-studio-upstream", space);
 
@@ -88,8 +98,6 @@ async function proxyHfSpace(request: Request): Promise<Response | null> {
   });
 }
 
-// h3 swallows in-handler throws into a normal 500 Response with body
-// {"unhandled":true,"message":"HTTPError"} — try/catch alone never fires for those.
 async function normalizeCatastrophicSsrResponse(response: Response): Promise<Response> {
   if (response.status < 500) return response;
   const contentType = response.headers.get("content-type") ?? "";
