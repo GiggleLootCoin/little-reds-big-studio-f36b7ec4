@@ -67,7 +67,8 @@ export const FREE_RUNNERS: FreeRunner[] = [
     description: "Primary natural conversational speech, voice design and cloning.",
     capabilities: ["voice", "voice-clone", "tts"],
     url: "https://huggingface.co/spaces/Qwen/Qwen3-TTS",
-    notes: "Apache-2.0 Qwen3-TTS Space; live schema required. Never fall back to browser speech for Buddy Live.",
+    notes:
+      "Apache-2.0 Qwen3-TTS Space; live schema required. Never fall back to browser speech for Buddy Live.",
     priority: 190,
   },
   {
@@ -77,7 +78,8 @@ export const FREE_RUNNERS: FreeRunner[] = [
     description: "High-quality natural multilingual TTS and voice cloning fallback.",
     capabilities: ["voice", "voice-clone", "tts"],
     url: "https://huggingface.co/spaces/ResembleAI/Chatterbox-Multilingual-TTS-V3",
-    notes: "Current Chatterbox V3 route; MIT-licensed model family. Live schema required. Never fall back to browser speech for Buddy Live.",
+    notes:
+      "Current Chatterbox V3 route; MIT-licensed model family. Live schema required. Never fall back to browser speech for Buddy Live.",
     priority: 185,
   },
   {
@@ -193,9 +195,11 @@ export const FREE_RUNNERS: FreeRunner[] = [
 ];
 
 export function runnersFor(capability?: string) {
-  return [...(capability ? FREE_RUNNERS.filter((r) => r.capabilities.includes(capability)) : FREE_RUNNERS)].sort(
-    (a, b) => b.priority - a.priority,
-  );
+  return [
+    ...(capability
+      ? FREE_RUNNERS.filter((r) => r.capabilities.includes(capability))
+      : FREE_RUNNERS),
+  ].sort((a, b) => b.priority - a.priority);
 }
 
 export function bestFreeRunner(capability: string) {

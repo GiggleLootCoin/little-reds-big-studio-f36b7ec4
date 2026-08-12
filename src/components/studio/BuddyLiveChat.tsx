@@ -188,7 +188,8 @@ export function BuddyLiveChat() {
         setListening(false);
         void (async () => {
           try {
-            if (blob.size < 2048) throw new Error("I didn't get enough microphone audio. Try again.");
+            if (blob.size < 2048)
+              throw new Error("I didn't get enough microphone audio. Try again.");
             setStatus("Buddy is understanding you…");
             const stt = await runStudioJob("speech-to-text", { audio: blob }, setStatus);
             const text = artifactText(stt.value);
@@ -268,7 +269,11 @@ export function BuddyLiveChat() {
           }}
           className="rounded-xl border border-border px-3 py-2 text-xs"
         >
-          {muted ? <VolumeX className="mr-2 inline size-4" /> : <Volume2 className="mr-2 inline size-4" />}
+          {muted ? (
+            <VolumeX className="mr-2 inline size-4" />
+          ) : (
+            <Volume2 className="mr-2 inline size-4" />
+          )}
           {muted ? "Voice muted" : "Buddy voice on"}
         </button>
       </div>
@@ -313,7 +318,8 @@ export function BuddyLiveChat() {
         </StudioButton>
       </form>
       <p className="mt-2 text-[0.65rem] text-muted-foreground">
-        Hands-free uses Android microphone capture, free speech recognition and Buddy's verified natural-voice routes. Browser speech is deliberately not used as a voice-quality fallback.
+        Hands-free uses Android microphone capture, free speech recognition and Buddy's verified
+        natural-voice routes. Browser speech is deliberately not used as a voice-quality fallback.
       </p>
     </Panel>
   );
