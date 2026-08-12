@@ -3,7 +3,7 @@
 **Last updated:** 2026-08-12
 **Authoritative repository:** `GiggleLootCoin/little-reds-big-studio-f36b7ec4`
 **Branch:** `main`
-**Last observed main commit:** `0b89d9928c2e7aec2596f890d1a21125570e6b12`
+**Last observed main commit:** `d0dda5645481bcc6b093cf50924b621d10854bf1` (memory layer merged)
 **Production:** `https://little-reds-big-studio-f36b7ec4.gigglelootcoin.workers.dev`
 **Hosting:** Cloudflare Workers
 **Product:** Buddy-first, Android-first, free/open-first creative studio for musicians and YouTubers.
@@ -26,6 +26,7 @@
 - Cloudflare production deployment configuration exists.
 - Production CI has been hardened to validate TypeScript, formatting, linting and production build.
 - Studio branding was made self-contained so production does not depend on obsolete hosted logo metadata.
+- Permanent `.studio-memory/` handoff layer is now merged into `main`.
 
 ## Current known verification gaps
 1. Live verification of the Buy Me a Coffee membership webhook secret/production membership flow is still required before calling membership fully production-verified.
@@ -42,7 +43,7 @@
 - Speech recognition: Qwen3-ASR / Whisper fallbacks.
 
 ## Immediate next action
-Close only the remaining real verification gaps. Do not rebuild already-validated infrastructure. Verify production membership webhook configuration and perform Android/runtime generation smoke tests; record the exact results here and in `KNOWN-ISSUES.md`/`DEPLOYMENT.md`.
+Close only the remaining real verification gaps. Do not rebuild already-validated infrastructure. Verify production membership webhook configuration and perform Android/runtime generation smoke tests; record exact evidence here and in `KNOWN-ISSUES.md`/`DEPLOYMENT.md`.
 
 ## Handoff rule
 A future agent must read this file first, then `MASTER-SPEC.md`, `DECISIONS.md`, `KNOWN-ISSUES.md`, `PROVIDERS.md`, `DEPLOYMENT.md`, `CHANGELOG.md`, and `HANDOFF.md` before making architectural changes.
