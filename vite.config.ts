@@ -5,13 +5,9 @@ import tailwindcss from "@tailwindcss/vite";
 import tsconfigPaths from "vite-tsconfig-paths";
 
 export default defineConfig({
-  base: "/little-reds-big-studio-611db058/",
+  base: "/",
   plugins: [
-    tanstackStart({
-      spa: {
-        enabled: true,
-      },
-    }),
+    tanstackStart({ spa: { enabled: true } }),
     tailwindcss(),
     tsconfigPaths(),
     viteReact(),
