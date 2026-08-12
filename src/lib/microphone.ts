@@ -1,5 +1,9 @@
 export type MicrophoneErrorKind =
-  "permission" | "insecure-context" | "no-device" | "unsupported" | "unknown";
+  | "permission"
+  | "insecure-context"
+  | "no-device"
+  | "unsupported"
+  | "unknown";
 
 export type MicrophoneInfo = {
   id: string;
@@ -15,52 +19,46 @@ export async function listMicrophones(): Promise<MicrophoneInfo[]> {
     .map((device, index) => ({
       id: device.deviceId || "default",
       label: device.label || `Microphone ${index + 1}`,
-      isDefault: device.deviceId === "default" || /default/i.test(device.label),
+      isDefault: device.deviceId === "default" || /default|phone|built.?in/i.test(device.label),
     }));
 }
 
-export function chooseMicrophone(
-  devices: MicrophoneInfo[],
-  preferredId?: string,
-): MicrophoneInfo | null {
+export function chooseMicrophone(devices: MicrophoneInfo[], preferredId?: string) {
   if (!devices.length) return null;
-  if (preferredId) {
-    const preferred = devices.find((device) => device.id === preferredId);
-    if (preferred) return preferred;
-  }
-  return devices.find((device) => device.isDefault) ?? devices[0] ?? null;
+  if (preferredId) return devices.find((device) => device.id === preferredId) ?? null;
+  return devices.find((device) => device.id === "default") ??
+    devices.find((device) => device.isDefault) ??
+    devices[0] ??
+    null;
 }
 
 export async function requestMicrophone(deviceId?: string): Promise<MediaStream> {
-  if (typeof window === "undefined" || !window.isSecureContext) {
+  if (typeof window === "undefined" || !window.isSecureContext)
     throw new Error("Microphone access requires a secure HTTPS page.");
-  }
-  if (!navigator.mediaDevices?.getUserMedia) {
+  if (!navigator.mediaDevices?.getUserMedia)
     throw new Error("This browser does not provide microphone access.");
-  }
 
-  const constraints: MediaTrackConstraints = {
+  const base: MediaTrackConstraints = {
     echoCancellation: true,
     noiseSuppression: true,
     autoGainControl: true,
+    channelCount: 1,
   };
+
+  // IMPORTANT: on Android Chrome the literal `default` device is the phone's
+  // current OS-selected input. Do not turn an absent/hidden deviceId into an
+  // arbitrary physical input; doing so is what made Buddy appear to require a
+  // plugged-in microphone.
+  const constraints: MediaTrackConstraints = { ...base };
   if (deviceId && deviceId !== "default") constraints.deviceId = { exact: deviceId };
 
   try {
-    return await navigator.mediaDevices.getUserMedia({ audio: constraints });
+    return await navigator.mediaDevices.getUserMedia({ audio: constraints, video: false });
   } catch (error) {
-    // Bluetooth/headset inputs can disappear between enumerateDevices() and
-    // getUserMedia(). Never turn that race into a permanent "blocked" state:
-    // retry once using the OS/browser-selected default input.
-    if (deviceId && deviceId !== "default") {
-      return navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-        },
-      });
-    }
+    // If a remembered Bluetooth/headset id is stale, immediately fall back to
+    // Android's current default input (normally the built-in phone microphone).
+    if (deviceId && deviceId !== "default")
+      return navigator.mediaDevices.getUserMedia({ audio: base, video: false });
     throw error;
   }
 }
@@ -69,7 +67,7 @@ export async function probeMicrophone(deviceId?: string): Promise<boolean> {
   try {
     const stream = await requestMicrophone(deviceId);
     const track = stream.getAudioTracks()[0];
-    const usable = Boolean(track && track.readyState === "live" && track.enabled);
+    const usable = Boolean(track?.enabled && track?.readyState === "live");
     stopMicrophone(stream);
     return usable;
   } catch {
@@ -79,17 +77,10 @@ export async function probeMicrophone(deviceId?: string): Promise<boolean> {
 
 export function classifyMicrophoneError(error: unknown): MicrophoneErrorKind {
   const name = error instanceof DOMException ? error.name : "";
-  const message =
-    error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
-  if (name === "NotAllowedError" || name === "SecurityError" || message.includes("permission"))
-    return "permission";
+  const message = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
+  if (name === "NotAllowedError" || name === "SecurityError" || message.includes("permission")) return "permission";
   if (typeof window !== "undefined" && !window.isSecureContext) return "insecure-context";
-  if (
-    name === "NotFoundError" ||
-    name === "OverconstrainedError" ||
-    message.includes("no microphone")
-  )
-    return "no-device";
+  if (name === "NotFoundError" || name === "OverconstrainedError" || message.includes("no microphone")) return "no-device";
   if (name === "NotSupportedError" || message.includes("not supported")) return "unsupported";
   return "unknown";
 }
@@ -97,15 +88,15 @@ export function classifyMicrophoneError(error: unknown): MicrophoneErrorKind {
 export function describeMicrophoneError(error: unknown): string {
   switch (classifyMicrophoneError(error)) {
     case "permission":
-      return "Microphone permission was denied. Allow microphone access for this site, then tap Live Chat again.";
+      return "Microphone permission was denied. Allow microphone access for this site, then try Buddy again.";
     case "insecure-context":
       return "Microphone access requires the secure Studio address (HTTPS).";
     case "no-device":
-      return "No usable microphone was found. Check the phone, headset or Bluetooth input and try again.";
+      return "No usable microphone was found. Check Android microphone permission and try again.";
     case "unsupported":
-      return "This browser does not support the microphone feature Buddy needs.";
+      return "This browser does not support Buddy's microphone feature.";
     default:
-      return "Buddy could not open a microphone. Check the selected input and try again.";
+      return "Buddy could not open the phone microphone. Check the site's microphone permission and try again.";
   }
 }
 
