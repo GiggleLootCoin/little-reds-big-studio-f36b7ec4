@@ -24,8 +24,10 @@ export function FreeCreatePanel() {
   const [copied, setCopied] = useState(false);
   const ace = runner("hf-ace-step");
   const rvc = runner("hf-rvc");
-  const image = runner("hf-z-image");
+  const image = runner("hf-qwen-image");
+  const imageFallback = runner("hf-z-image");
   const video = runner("hf-wan-s2v");
+  const videoFallback = runner("hf-ltx-23");
   const stems = runner("hf-demucs");
   const chat = runner("bonsai-webgpu");
 
@@ -38,6 +40,12 @@ export function FreeCreatePanel() {
     () =>
       `${brief.trim() || "Create an original song"}\nLength: ${seconds}s\nLyrics:\n${lyrics.trim() || "Write suitable original lyrics."}`,
     [brief, lyrics, seconds],
+  );
+
+  const lyricPrompt = useMemo(
+    () =>
+      `Write original song lyrics from this brief. Include a clear verse/chorus structure and keep the words singable.\n\n${brief.trim() || "Create an emotionally engaging original song."}`,
+    [brief],
   );
 
   const launch = async (url: string, text?: string) => {
@@ -66,8 +74,8 @@ export function FreeCreatePanel() {
       defaultOpen
     >
       <p className="text-sm text-muted-foreground">
-        This is the honest free path: your Studio prepares the creative job, then opens the best
-        free/open engine directly. Nothing is pretending to run a paid API behind your back.
+        Buddy prepares the job and opens a current free/open runner. The Studio does not pretend an
+        external generator finished until you actually receive its artifact.
       </p>
       <textarea
         value={brief}
@@ -80,7 +88,7 @@ export function FreeCreatePanel() {
         value={lyrics}
         onChange={(e) => setLyrics(e.target.value)}
         rows={7}
-        placeholder="Paste your lyrics here, or leave blank and ask the free engine to write them."
+        placeholder="Paste your lyrics here, or leave blank and generate them first."
         className="w-full rounded-xl border border-border bg-background/60 p-3 text-sm outline-none focus:ring-2 focus:ring-ring"
       />
       <StudioSlider
@@ -103,8 +111,12 @@ export function FreeCreatePanel() {
           <Music2 className="size-4" />
           {copied ? "Prompt copied" : "Generate song"}
         </StudioButton>
-        <StudioButton variant="ghost" className="w-full" onClick={save}>
-          <Save className="size-4" /> Save locally
+        <StudioButton
+          variant="ghost"
+          className="w-full"
+          onClick={() => void launch(chat.url, lyricPrompt)}
+        >
+          <MessageCircle className="size-4" /> Generate lyrics
         </StudioButton>
       </div>
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
@@ -140,6 +152,18 @@ export function FreeCreatePanel() {
         />
         <EngineButton
           icon={ExternalLink}
+          title="Video fallback"
+          note={videoFallback.name}
+          onClick={() => void launch(videoFallback.url, brief)}
+        />
+        <EngineButton
+          icon={Image}
+          title="Image fallback"
+          note={imageFallback.name}
+          onClick={() => void launch(imageFallback.url, brief)}
+        />
+        <EngineButton
+          icon={ExternalLink}
           title="ACE-Step"
           note="Open music studio"
           onClick={() => void launch(ace.url, songPrompt)}
@@ -147,6 +171,8 @@ export function FreeCreatePanel() {
       </div>
       <Note>
         <Readout label="Primary music engine" value={ace.name} />
+        <Readout label="Image route" value={image.name} />
+        <Readout label="Video routes" value={`${video.name} → ${videoFallback.name}`} />
         <Readout label="Cost" value="Free / no Studio API key" />
         <Readout label="Storage" value="Local browser storage" />
       </Note>
