@@ -17,12 +17,20 @@ import {
   type StudioArtifact,
   type StudioCapability,
 } from "@/lib/studio-runtime";
-import { Note, Panel, Readout, StudioButton, StudioSlider } from "./ui";
+import { Note, Panel, Readout, StudioButton } from "./ui";
+
+function explicitDurationRequest(brief: string) {
+  const match = brief.match(/(?:about|around|roughly|exactly|for|of)?\s*(\d+(?:\.\d+)?)\s*(seconds?|secs?|minutes?|mins?)/i);
+  if (!match) return undefined;
+  const amount = Number(match[1]);
+  const unit = match[2].toLowerCase();
+  if (!Number.isFinite(amount) || amount <= 0) return undefined;
+  return unit.startsWith("min") ? Math.round(amount * 60) : Math.round(amount);
+}
 
 export function FreeCreatePanel() {
   const [brief, setBrief] = useState("");
   const [lyrics, setLyrics] = useState("");
-  const [seconds, setSeconds] = useState(180);
   const [busy, setBusy] = useState<StudioCapability | null>(null);
   const [status, setStatus] = useState(
     "Buddy will choose a compatible free route and verify the returned result.",
@@ -34,10 +42,11 @@ export function FreeCreatePanel() {
     setBrief(localStorage.getItem("lrbgs-song-brief") || "");
     setLyrics(localStorage.getItem("lrbgs-lyrics") || "");
   }, []);
+  const requestedDuration = useMemo(() => explicitDurationRequest(brief), [brief]);
   const songPrompt = useMemo(
     () =>
-      `${brief.trim() || "Create an original song"}\nLength: ${seconds}s\nLyrics:\n${lyrics.trim() || "Write suitable original lyrics."}`,
-    [brief, lyrics, seconds],
+      `${brief.trim() || "Create an original song"}\nLyrics:\n${lyrics.trim() || "Write suitable original lyrics."}`,
+    [brief, lyrics],
   );
   const lyricPrompt = useMemo(
     () =>
@@ -93,15 +102,16 @@ export function FreeCreatePanel() {
         placeholder="Paste lyrics here, or leave blank and let Buddy write them first."
         className="w-full rounded-xl border border-border bg-background/60 p-3 text-sm outline-none focus:ring-2 focus:ring-ring"
       />
-      <StudioSlider
-        label="Target length"
-        value={seconds}
-        min={30}
-        max={600}
-        step={5}
-        unit="s"
-        onChange={setSeconds}
-      />
+      <div className="rounded-2xl border border-primary/20 bg-primary/5 p-3 text-xs leading-5 text-muted-foreground">
+        <span className="font-semibold text-foreground">Natural track length.</span> Buddy lets the
+        music engine decide how long the result should be unless you explicitly request a duration
+        in your brief.
+        {requestedDuration ? (
+          <span className="ml-1 text-primary">
+            Explicit request detected: about {requestedDuration >= 60 ? `${(requestedDuration / 60).toFixed(requestedDuration % 60 ? 1 : 0)} min` : `${requestedDuration} sec`}.
+          </span>
+        ) : null}
+      </div>
       <div className="grid gap-2 sm:grid-cols-2">
         <label className="flex min-h-16 cursor-pointer items-center gap-3 rounded-xl border border-border bg-background/50 p-3 text-xs">
           <Upload className="size-4 text-primary" />
@@ -138,7 +148,13 @@ export function FreeCreatePanel() {
         <StudioButton
           className="w-full"
           disabled={!!busy}
-          onClick={() => void run("music", { prompt: songPrompt, lyrics, duration: seconds })}
+          onClick={() =>
+            void run("music", {
+              prompt: songPrompt,
+              lyrics,
+              ...(requestedDuration ? { duration: requestedDuration } : {}),
+            })
+          }
         >
           <Music2 className="size-4" />
           {busy === "music" ? "Making music…" : "Generate song"}
