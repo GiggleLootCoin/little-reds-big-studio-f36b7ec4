@@ -2,7 +2,7 @@ name: Free Open Validation
 
 on:
   push:
-    branches: [main, production-integration]
+    branches: [main, production-integration, finish-line-independent-deploy]
   pull_request:
     branches: [main]
 
