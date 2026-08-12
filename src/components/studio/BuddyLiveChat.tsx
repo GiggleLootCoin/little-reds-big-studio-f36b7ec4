@@ -41,9 +41,7 @@ export function BuddyLiveChat() {
     try {
       const saved = JSON.parse(localStorage.getItem(KEY) || "[]") as Message[];
       if (Array.isArray(saved)) setMessages(saved.slice(-50));
-    } catch {
-      localStorage.removeItem(KEY);
-    }
+    } catch { localStorage.removeItem(KEY); }
     void refreshMicrophones();
     const onDeviceChange = () => void refreshMicrophones();
     navigator.mediaDevices?.addEventListener?.("devicechange", onDeviceChange);
@@ -58,292 +56,103 @@ export function BuddyLiveChat() {
 
   useEffect(() => {
     try {
-      localStorage.setItem(KEY, JSON.stringify(messages.slice(-50).map(({ attachments: savedAttachments, ...message }) => ({
-        ...message,
-        attachments: savedAttachments?.map(({ url: _url, ...metadata }) => metadata),
-      }))));
+      localStorage.setItem(KEY, JSON.stringify(messages.slice(-50).map(({ attachments: savedAttachments, ...message }) => ({ ...message, attachments: savedAttachments?.map(({ url: _url, ...metadata }) => metadata) }))));
     } catch {}
   }, [messages]);
 
   async function refreshMicrophones() {
-    try {
-      setMicOptions(await listMicrophones());
-    } catch {
-      setMicOptions([]);
-    }
+    try { setMicOptions(await listMicrophones()); } catch { setMicOptions([]); }
   }
-
   function stopRecognition() {
-    const recognition = recognitionRef.current;
-    recognitionRef.current = null;
-    if (recognition) {
-      try { recognition.onend = null; recognition.abort(); } catch {}
-    }
+    const recognition = recognitionRef.current; recognitionRef.current = null;
+    if (recognition) { try { recognition.onend = null; recognition.abort(); } catch {} }
   }
-
-  function cleanupCapture() {
-    stopRecognition();
-    try { recorderRef.current?.stop(); } catch {}
-    recorderRef.current = null;
-    stopMicrophone(streamRef.current);
-    streamRef.current = null;
-    setRecording(false);
-  }
-
   async function openMicrophone() {
     try {
-      // Empty micId deliberately means Android/Chrome's current OS default input.
       const stream = await requestMicrophone(micId && micId !== "default" ? micId : undefined);
-      streamRef.current = stream;
-      return stream;
+      streamRef.current = stream; return stream;
     } catch (error) {
-      const message = describeMicrophoneError(error);
-      setStatus(message);
-      setBuddyStatus("error", { message });
-      return null;
+      const message = describeMicrophoneError(error); setStatus(message); setBuddyStatus("error", { message }); return null;
     }
   }
-
   async function transcribeBlob(blob: Blob) {
     if (!blob.size) throw new Error("I didn't catch any audio. Try again.");
     const result = await runStudioJob("speech-to-text", { audio: blob }, setStatus);
-    const text = artifactText(result.value).trim();
-    if (!text) throw new Error("Speech recognition returned no usable text.");
-    return text;
+    const text = artifactText(result.value).trim(); if (!text) throw new Error("Speech recognition returned no usable text."); return text;
   }
-
   function startMediaRecorder(mode: Mode, stream: MediaStream) {
     if (typeof MediaRecorder === "undefined") throw new Error("This browser cannot record microphone audio.");
     const mime = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/ogg"].find((type) => MediaRecorder.isTypeSupported(type));
     const recorder = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
-    chunksRef.current = [];
-    modeRef.current = mode;
+    chunksRef.current = []; modeRef.current = mode;
     recorder.ondataavailable = (event) => { if (event.data.size) chunksRef.current.push(event.data); };
     recorder.onstop = () => {
-      const blob = new Blob(chunksRef.current, { type: recorder.mimeType || "audio/webm" });
-      chunksRef.current = [];
-      recorderRef.current = null;
-      stopMicrophone(streamRef.current);
-      streamRef.current = null;
-      setRecording(false);
-      const captureMode = modeRef.current;
-      modeRef.current = "idle";
-      if (!blob.size || captureMode === "idle") return;
+      const blob = new Blob(chunksRef.current, { type: recorder.mimeType || "audio/webm" }); chunksRef.current = []; recorderRef.current = null; stopMicrophone(streamRef.current); streamRef.current = null; setRecording(false);
+      const captureMode = modeRef.current; modeRef.current = "idle"; if (!blob.size || captureMode === "idle") return;
       void transcribeBlob(blob).then((text) => captureMode === "record" ? setTranscript(text) : answer(text, true)).catch((error) => setStatus(error instanceof Error ? error.message : "Speech recognition failed."));
     };
-    recorderRef.current = recorder;
-    recorder.start(250);
-    setRecording(true);
-    setBuddyStatus("listening", { message: "Buddy is listening…" });
-    setStatus(mode === "live" ? "Listening… speak naturally, then pause." : "Recording… tap stop when you're done.");
+    recorderRef.current = recorder; recorder.start(250); setRecording(true); setBuddyStatus("listening", { message: "Buddy is listening…" }); setStatus(mode === "live" ? "Listening… speak naturally, then pause." : "Recording… tap stop when you're done.");
   }
-
   function startBrowserRecognition(mode: Mode) {
-    const Ctor = recognitionCtor();
-    if (!Ctor) return false;
-    const recognition = new Ctor();
-    recognition.continuous = false;
-    recognition.interimResults = true;
-    recognition.lang = localStorage.getItem("buddy-language") || navigator.language || "en-US";
-    recognitionTextRef.current = "";
-    modeRef.current = mode;
-    recognitionRef.current = recognition;
+    const Ctor = recognitionCtor(); if (!Ctor) return false; const recognition = new Ctor(); recognition.continuous = false; recognition.interimResults = true; recognition.lang = localStorage.getItem("buddy-language") || navigator.language || "en-US"; recognitionTextRef.current = ""; modeRef.current = mode; recognitionRef.current = recognition;
     recognition.onstart = () => { setRecording(true); setBuddyStatus("listening", { message: "Buddy is listening…" }); setStatus("Listening…"); };
-    recognition.onresult = (event) => {
-      let text = "";
-      for (let i = event.resultIndex; i < event.results.length; i++) text += `${event.results[i][0].transcript} `;
-      recognitionTextRef.current = `${recognitionTextRef.current} ${text}`.trim();
-      if (mode === "record") setTranscript(recognitionTextRef.current);
-    };
-    recognition.onerror = (event) => {
-      if (event.error === "not-allowed" || event.error === "service-not-allowed") setStatus("Microphone permission was denied. Allow microphone access for this site, then try again.");
-      else if (event.error !== "aborted") setStatus("Browser speech recognition failed; switching to the Studio speech engine.");
-    };
-    recognition.onend = () => {
-      const text = recognitionTextRef.current.trim();
-      recognitionRef.current = null;
-      setRecording(false);
-      if (text) {
-        modeRef.current = "idle";
-        if (mode === "record") { setTranscript(text); setStatus("Transcription ready. Edit it or send it to Buddy."); }
-        else void answer(text, true);
-      } else if (liveRef.current && !speakingRef.current) {
-        setTimeout(() => void beginCapture("live"), 250);
-      } else {
-        setStatus("I didn't catch that. Try again.");
-      }
-    };
+    recognition.onresult = (event) => { let text = ""; for (let i = event.resultIndex; i < event.results.length; i++) text += `${event.results[i][0].transcript} `; recognitionTextRef.current = `${recognitionTextRef.current} ${text}`.trim(); if (mode === "record") setTranscript(recognitionTextRef.current); };
+    recognition.onerror = (event) => { if (event.error === "not-allowed" || event.error === "service-not-allowed") setStatus("Microphone permission was denied. Allow microphone access for this site, then try again."); else if (event.error !== "aborted") setStatus("Browser speech recognition failed; switching to the Studio speech engine."); };
+    recognition.onend = () => { const text = recognitionTextRef.current.trim(); recognitionRef.current = null; setRecording(false); if (text) { modeRef.current = "idle"; if (mode === "record") { setTranscript(text); setStatus("Transcription ready. Edit it or send it to Buddy."); } else void answer(text, true); } else if (liveRef.current && !speakingRef.current) setTimeout(() => void beginCapture("live"), 250); else setStatus("I didn't catch that. Try again."); };
     try { recognition.start(); return true; } catch { recognitionRef.current = null; return false; }
   }
-
   async function beginCapture(mode: Mode) {
     if (busyRef.current || speakingRef.current || recording) return;
-    // SpeechRecognition is the best Android path because Chrome owns the OS default
-    // microphone. If it is missing/fails, MediaRecorder explicitly opens the same default.
     if (!micId && startBrowserRecognition(mode)) return;
-    const stream = await openMicrophone();
-    if (!stream) return;
-    try { startMediaRecorder(mode, stream); }
-    catch (error) { stopMicrophone(stream); streamRef.current = null; setStatus(error instanceof Error ? error.message : "Recording is unavailable."); }
+    const stream = await openMicrophone(); if (!stream) return;
+    try { startMediaRecorder(mode, stream); } catch (error) { stopMicrophone(stream); streamRef.current = null; setStatus(error instanceof Error ? error.message : "Recording is unavailable."); }
   }
-
-  function stopCapture() {
-    stopRecognition();
-    try { recorderRef.current?.stop(); } catch {}
-    setRecording(false);
-  }
-
+  function stopCapture() { stopRecognition(); try { recorderRef.current?.stop(); } catch {} setRecording(false); }
   async function speak(text: string) {
-    if (muted || speakingRef.current) return;
-    speakingRef.current = true;
-    setBuddyStatus("working", { message: "Buddy is speaking…" });
+    if (muted || speakingRef.current) return; speakingRef.current = true; setBuddyStatus("working", { message: "Buddy is speaking…" });
     try {
-      const result = await runStudioJob("tts", { text, target_text: text }, setStatus);
-      if (!result.url) throw new Error("No voice artifact returned.");
-      if (!audioRef.current) audioRef.current = new Audio();
-      const audio = audioRef.current;
-      audio.src = result.url;
-      audio.onended = () => { speakingRef.current = false; setBuddyStatus("idle"); if (liveRef.current) void beginCapture("live"); };
-      audio.onerror = () => { throw new Error("Buddy audio could not be played."); };
-      await audio.play();
-      setStatus("Buddy is speaking…");
+      const result = await runStudioJob("tts", { text, target_text: text }, setStatus); if (!result.url) throw new Error("No voice artifact returned."); if (!audioRef.current) audioRef.current = new Audio(); const audio = audioRef.current; audio.src = result.url;
+      audio.onended = () => { speakingRef.current = false; setBuddyStatus("idle"); if (liveRef.current) void beginCapture("live"); }; audio.onerror = () => { throw new Error("Buddy audio could not be played."); }; await audio.play(); setStatus("Buddy is speaking…");
     } catch {
-      if ("speechSynthesis" in window) {
-        window.speechSynthesis.resume();
-        await new Promise<void>((resolve) => {
-          const utterance = new SpeechSynthesisUtterance(text);
-          utterance.lang = localStorage.getItem("buddy-language") || navigator.language || "en-US";
-          utterance.rate = 0.98;
-          utterance.pitch = 1.02;
-          utterance.onend = () => resolve();
-          utterance.onerror = () => resolve();
-          window.speechSynthesis.cancel();
-          window.speechSynthesis.speak(utterance);
-        });
-      }
-      speakingRef.current = false;
-      if (liveRef.current) void beginCapture("live");
-      else setBuddyStatus("idle");
+      if ("speechSynthesis" in window) { window.speechSynthesis.resume(); await new Promise<void>((resolve) => { const utterance = new SpeechSynthesisUtterance(text); utterance.lang = localStorage.getItem("buddy-language") || navigator.language || "en-US"; utterance.rate = 0.98; utterance.pitch = 1.02; utterance.onend = () => resolve(); utterance.onerror = () => resolve(); window.speechSynthesis.cancel(); window.speechSynthesis.speak(utterance); }); }
+      speakingRef.current = false; if (liveRef.current) void beginCapture("live"); else setBuddyStatus("idle");
     }
   }
-
   async function answer(text: string, speakReply = false) {
-    const clean = text.trim();
-    if ((!clean && !attachments.length) || busyRef.current) return;
-    busyRef.current = true;
-    setBusy(true);
-    setBuddyStatus("thinking", { message: "Buddy is thinking…" });
-    const currentAttachments = [...attachments];
-    setAttachments([]);
-    const userMessage: Message = {
-      id: crypto.randomUUID(),
-      role: "user",
-      content: clean || "Please look at the attached files.",
-      createdAt: Date.now(),
-      attachments: currentAttachments.map(({ file: _file, url, ...metadata }) => ({ ...metadata, url })),
-    };
-    const next = [...messages, userMessage].slice(-30);
-    setMessages(next);
-    setInput("");
+    const clean = text.trim(); if ((!clean && !attachments.length) || busyRef.current) return; busyRef.current = true; setBusy(true); setBuddyStatus("thinking", { message: "Buddy is thinking…" });
+    const currentAttachments = [...attachments]; setAttachments([]);
+    const userMessage: Message = { id: crypto.randomUUID(), role: "user", content: clean || "Please look at the attached files.", createdAt: Date.now(), attachments: currentAttachments.map(({ file: _file, url, ...metadata }) => ({ ...metadata, url })) };
+    const next = [...messages, userMessage].slice(-30); setMessages(next); setInput("");
     try {
-      const imageParts = await Promise.all(currentAttachments.filter((a) => a.type.startsWith("image/")).slice(0, 4).map(async (a) => ({ type: "image_url", image_url: { url: await fileToDataUrl(a.file) } })));
+      const imageParts = await Promise.all(currentAttachments.filter((a) => a.type.startsWith("image/")).slice(0, 4).map(async (a) => ({ type: "image_url" as const, image_url: { url: await fileToDataUrl(a.file) } })));
       const attachmentText = currentAttachments.length ? `\nAttachments: ${currentAttachments.map(attachmentSummary).join(", ")}` : "";
-      const prompt = [
-        { role: "system" as const, content: "You are Buddy from Little Red's Big Studio, a warm, sharp creative partner for music and YouTube. Use the conversation context. Never claim a generation happened unless the Studio verified the artifact. If attachments are supplied, analyze them when possible." },
+      const prompt: Array<{ role: "system" | "user" | "assistant"; content: unknown }> = [
+        { role: "system", content: "You are Buddy from Little Red's Big Studio, a warm, sharp creative partner for music and YouTube. Use the conversation context. Never claim a generation happened unless the Studio verified the artifact. If attachments are supplied, analyze them when possible." },
         ...next.map((m) => ({ role: m.role, content: m.content })),
       ];
       if (imageParts.length) {
-        const last = prompt[prompt.length - 1];
-        (last as { content: unknown }).content = [{ type: "text", text: `${clean || "Analyze these attachments."}${attachmentText}` }, ...imageParts];
-      } else if (attachmentText) {
-        (prompt[prompt.length - 1] as { content: unknown }).content = `${clean || "Analyze these attachments."}${attachmentText}`;
-      }
+        const last = prompt[prompt.length - 1]; last.content = [{ type: "text", text: `${clean || "Analyze these attachments."}${attachmentText}` }, ...imageParts];
+      } else if (attachmentText) prompt[prompt.length - 1].content = `${clean || "Analyze these attachments."}${attachmentText}`;
       const result = await runStudioJob("chat", { prompt, text: clean || "Analyze the attached files.", messages: prompt }, setStatus);
-      const reply = artifactText(result.value).replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
-      if (!reply) throw new Error("Buddy returned no usable response.");
-      setMessages((existing) => [...existing, { id: crypto.randomUUID(), role: "assistant", content: reply, createdAt: Date.now() }].slice(-50));
-      setStatus("Buddy is ready.");
-      setBuddyStatus("success", { message: "Buddy is ready." });
-      if (speakReply || liveRef.current) void speak(reply);
-    } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Buddy's free routes are temporarily unavailable.");
-      setBuddyStatus("error", { message: "Buddy could not complete that response." });
-    } finally {
-      currentAttachments.forEach(revokeBuddyAttachment);
-      busyRef.current = false;
-      setBusy(false);
-    }
+      const reply = artifactText(result.value).replace(/<think>[\s\S]*?<\/think>/gi, "").trim(); if (!reply) throw new Error("Buddy returned no usable response.");
+      setMessages((existing) => [...existing, { id: crypto.randomUUID(), role: "assistant" as const, content: reply, createdAt: Date.now() }].slice(-50)); setStatus("Buddy is ready."); setBuddyStatus("success", { message: "Buddy is ready." }); if (speakReply || liveRef.current) void speak(reply);
+    } catch (error) { setStatus(error instanceof Error ? error.message : "Buddy's free routes are temporarily unavailable."); setBuddyStatus("error", { message: "Buddy could not complete that response." }); }
+    finally { currentAttachments.forEach(revokeBuddyAttachment); busyRef.current = false; setBusy(false); }
   }
-
-  function stopAll() {
-    liveRef.current = false;
-    modeRef.current = "idle";
-    stopRecognition();
-    try { recorderRef.current?.stop(); } catch {}
-    stopMicrophone(streamRef.current);
-    streamRef.current = null;
-    setRecording(false);
-    audioRef.current?.pause();
-    window.speechSynthesis?.cancel();
-    speakingRef.current = false;
-    setBuddyStatus("idle");
-  }
-
-  async function toggleLive() {
-    if (liveRef.current) {
-      stopAll(); setLive(false); setStatus("Buddy call ended. Your conversation is still here."); return;
-    }
-    liveRef.current = true; setLive(true); setStatus("Connecting to Buddy…"); window.speechSynthesis?.resume();
-    await beginCapture("live");
-    if (!recognitionRef.current && !recorderRef.current) { liveRef.current = false; setLive(false); }
-  }
-
+  function stopAll() { liveRef.current = false; modeRef.current = "idle"; stopRecognition(); try { recorderRef.current?.stop(); } catch {} stopMicrophone(streamRef.current); streamRef.current = null; setRecording(false); audioRef.current?.pause(); window.speechSynthesis?.cancel(); speakingRef.current = false; setBuddyStatus("idle"); }
+  async function toggleLive() { if (liveRef.current) { stopAll(); setLive(false); setStatus("Buddy call ended. Your conversation is still here."); return; } liveRef.current = true; setLive(true); setStatus("Connecting to Buddy…"); window.speechSynthesis?.resume(); await beginCapture("live"); if (!recognitionRef.current && !recorderRef.current) { liveRef.current = false; setLive(false); } }
   function sendTyped() { void answer(input, true); }
   function sendTranscript() { const text = transcript.trim(); if (text) { setTranscript(""); void answer(text, true); } }
-  function addFiles(fileList: FileList | null) {
-    if (!fileList) return;
-    const added: BuddyAttachment[] = [];
-    for (const file of Array.from(fileList)) {
-      try { added.push(acceptBuddyFile(file)); } catch (error) { setStatus(error instanceof Error ? error.message : "Attachment could not be added."); }
-    }
-    setAttachments((existing) => [...existing, ...added].slice(0, 6));
-  }
+  function addFiles(fileList: FileList | null) { if (!fileList) return; const added: BuddyAttachment[] = []; for (const file of Array.from(fileList)) { try { added.push(acceptBuddyFile(file)); } catch (error) { setStatus(error instanceof Error ? error.message : "Attachment could not be added."); } } setAttachments((existing) => [...existing, ...added].slice(0, 6)); }
 
   return (
     <Panel eyebrow="BUDDY • LIVE" title="Call Buddy" icon={<Sparkles className="size-5" />} defaultOpen>
       <div className="relative overflow-hidden rounded-[1.7rem] border border-primary/30 bg-[radial-gradient(circle_at_50%_15%,oklch(0.35_0.14_25_/_0.65),transparent_48%),linear-gradient(145deg,oklch(0.07_0.02_20),oklch(0.15_0.04_20))] p-5 shadow-[0_24px_70px_oklch(0_0_0_/_0.42)] sm:p-7">
-        <div className="relative flex flex-col items-center text-center">
-          <div className={`relative size-32 rounded-full border border-primary/35 bg-black/35 p-2 shadow-[0_0_50px_oklch(0.58_0.24_26_/_0.25)] sm:size-40 ${live ? "animate-pulse-glow" : ""}`}>
-            <div className="buddy-aura absolute inset-3 rounded-full bg-primary/25 blur-xl" />
-            <img src={buddyReference} alt="Buddy" className="buddy-character-image relative h-full w-full object-contain" />
-          </div>
-          <div className="mt-4 flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.22em] text-primary"><span className={`size-2 rounded-full ${live ? "animate-pulse bg-primary" : "bg-muted-foreground/50"}`} />{live ? (recording ? "Listening" : busy ? "Thinking" : "Connected") : "Ready"}</div>
-          <h3 className="mt-2 font-display text-xl font-black sm:text-2xl">{live ? "Buddy is with you" : "Talk to Buddy"}</h3>
-          <p className="mt-1 max-w-md text-xs leading-5 text-muted-foreground">{live ? "Speak naturally. Buddy answers, speaks, and listens again." : "Type, attach files, record a message, or start a hands-free conversation."}</p>
-          <button type="button" onClick={() => void toggleLive()} className={`mt-5 flex min-h-12 items-center gap-2 rounded-full px-6 py-3 font-display text-sm font-black shadow-xl transition-transform active:scale-95 ${live ? "border border-primary/40 bg-background/70 text-foreground" : "crimson-gloss text-primary-foreground"}`}><Phone className="size-4" />{live ? "End Buddy Call" : "Call Buddy"}</button>
-        </div>
-
-        <div className="relative mt-5 grid gap-3 sm:grid-cols-2">
-          <div className="rounded-2xl border border-white/10 bg-white/[0.045] p-3"><div className="flex items-center justify-between"><span className="text-[10px] font-bold uppercase tracking-[0.16em] text-muted-foreground">Microphone</span><Mic className="size-4 text-primary" /></div><select aria-label="Microphone" value={micId} onChange={(e) => setMicId(e.target.value)} className="mt-2 w-full rounded-xl border border-border/60 bg-background/60 px-3 py-2 text-xs"><option value="">Automatic phone microphone</option>{micOptions.map((mic) => <option key={mic.id} value={mic.id}>{mic.label}</option>)}</select></div>
-          <div className="rounded-2xl border border-white/10 bg-white/[0.045] p-3"><div className="flex items-center justify-between"><span className="text-[10px] font-bold uppercase tracking-[0.16em] text-muted-foreground">Voice</span>{muted ? <VolumeX className="size-4 text-muted-foreground" /> : <Volume2 className="size-4 text-primary" />}</div><button type="button" onClick={() => setMuted((v) => !v)} className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl border border-border/60 bg-background/60 px-3 py-2 text-xs font-semibold">{muted ? "Voice muted" : "Voice on"}</button></div>
-        </div>
-
+        <div className="relative flex flex-col items-center text-center"><div className={`relative size-32 rounded-full border border-primary/35 bg-black/35 p-2 shadow-[0_0_50px_oklch(0.58_0.24_26_/_0.25)] sm:size-40 ${live ? "animate-pulse-glow" : ""}`}><div className="buddy-aura absolute inset-3 rounded-full bg-primary/25 blur-xl" /><img src={buddyReference} alt="Buddy" className="buddy-character-image relative h-full w-full object-contain" /></div><div className="mt-4 flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.22em] text-primary"><span className={`size-2 rounded-full ${live ? "animate-pulse bg-primary" : "bg-muted-foreground/50"}`} />{live ? (recording ? "Listening" : busy ? "Thinking" : "Connected") : "Ready"}</div><h3 className="mt-2 font-display text-xl font-black sm:text-2xl">{live ? "Buddy is with you" : "Talk to Buddy"}</h3><p className="mt-1 max-w-md text-xs leading-5 text-muted-foreground">{live ? "Speak naturally. Buddy answers, speaks, and listens again." : "Type, attach files, record a message, or start a hands-free conversation."}</p><button type="button" onClick={() => void toggleLive()} className={`mt-5 flex min-h-12 items-center gap-2 rounded-full px-6 py-3 font-display text-sm font-black shadow-xl transition-transform active:scale-95 ${live ? "border border-primary/40 bg-background/70 text-foreground" : "crimson-gloss text-primary-foreground"}`}><Phone className="size-4" />{live ? "End Buddy Call" : "Call Buddy"}</button></div>
+        <div className="relative mt-5 grid gap-3 sm:grid-cols-2"><div className="rounded-2xl border border-white/10 bg-white/[0.045] p-3"><div className="flex items-center justify-between"><span className="text-[10px] font-bold uppercase tracking-[0.16em] text-muted-foreground">Microphone</span><Mic className="size-4 text-primary" /></div><select aria-label="Microphone" value={micId} onChange={(e) => setMicId(e.target.value)} className="mt-2 w-full rounded-xl border border-border/60 bg-background/60 px-3 py-2 text-xs"><option value="">Automatic phone microphone</option>{micOptions.map((mic) => <option key={mic.id} value={mic.id}>{mic.label}</option>)}</select></div><div className="rounded-2xl border border-white/10 bg-white/[0.045] p-3"><div className="flex items-center justify-between"><span className="text-[10px] font-bold uppercase tracking-[0.16em] text-muted-foreground">Voice</span>{muted ? <VolumeX className="size-4 text-muted-foreground" /> : <Volume2 className="size-4 text-primary" />}</div><button type="button" onClick={() => setMuted((v) => !v)} className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl border border-border/60 bg-background/60 px-3 py-2 text-xs font-semibold">{muted ? "Voice muted" : "Voice on"}</button></div></div>
         {recording && <div className="mt-3 flex items-center justify-center gap-2 text-xs text-primary"><span className="size-2 animate-pulse rounded-full bg-primary" />{status}</div>}
-
-        <div className="mt-5 rounded-2xl border border-border/60 bg-background/55 p-3">
-          {attachments.length > 0 && <div className="mb-3 flex flex-wrap gap-2">{attachments.map((a) => <div key={a.id} className="relative flex items-center gap-2 rounded-xl border border-primary/20 bg-primary/5 px-2 py-2 text-xs">{a.type.startsWith("image/") ? <img src={a.url} alt={a.name} className="size-10 rounded-lg object-cover" /> : <span className="max-w-36 truncate">{a.name}</span>}<button type="button" aria-label={`Remove ${a.name}`} onClick={() => { revokeBuddyAttachment(a); setAttachments((items) => items.filter((item) => item.id !== a.id)); }}><X className="size-3.5" /></button></div>)}</div>}
-          <div className="flex gap-2"><input value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendTyped(); } }} placeholder="Type to Buddy…" className="min-w-0 flex-1 rounded-xl border border-border/60 bg-background/70 px-3 py-3 text-sm outline-none focus:border-primary" /><StudioButton onClick={sendTyped} disabled={busy || (!input.trim() && !attachments.length)}><Send className="size-4" /></StudioButton></div>
-          <div className="mt-3 flex flex-wrap gap-2">
-            <label className="inline-flex min-h-10 cursor-pointer items-center gap-2 rounded-xl border border-border/60 bg-background/60 px-3 py-2 text-xs font-semibold"><Paperclip className="size-4" />Attach<input className="sr-only" type="file" multiple accept={buddyAccept} onChange={(e) => { addFiles(e.target.files); e.currentTarget.value = ""; }} /></label>
-            <label className="inline-flex min-h-10 cursor-pointer items-center gap-2 rounded-xl border border-border/60 bg-background/60 px-3 py-2 text-xs font-semibold"><ImagePlus className="size-4" />Photo<input className="sr-only" type="file" accept="image/*" capture="environment" onChange={(e) => { addFiles(e.target.files); e.currentTarget.value = ""; }} /></label>
-            <StudioButton variant="ghost" onClick={() => void beginCapture("record")} disabled={recording || busy}><Mic className="size-4" />Record → Text</StudioButton>
-            {recording && <StudioButton variant="ghost" onClick={stopCapture}><MicOff className="size-4" />Stop</StudioButton>}
-            {transcript && <StudioButton variant="ghost" onClick={sendTranscript}><Send className="size-4" />Send transcript</StudioButton>}
-          </div>
-        </div>
-
-        <div className="mt-4 max-h-72 space-y-2 overflow-auto pr-1">{messages.length === 0 ? <p className="py-5 text-center text-xs text-muted-foreground">Buddy is ready when you are.</p> : messages.map((message) => <div key={message.id} className={`rounded-2xl px-4 py-3 text-sm ${message.role === "user" ? "ml-8 bg-primary/10" : "mr-8 bg-muted/60"}`}><div className="mb-1 text-[9px] font-bold uppercase tracking-[0.15em] text-muted-foreground">{message.role === "user" ? "You" : "Buddy"}</div>{message.content}{message.attachments?.length ? <div className="mt-2 text-[10px] text-muted-foreground">{message.attachments.map((a) => a.name).join(" • ")}</div> : null}</div>)}</div>
-        <div className="mt-3 text-center text-[10px] text-muted-foreground">{status}</div>
+        <div className="mt-5 rounded-2xl border border-border/60 bg-background/55 p-3">{attachments.length > 0 && <div className="mb-3 flex flex-wrap gap-2">{attachments.map((a) => <div key={a.id} className="relative flex items-center gap-2 rounded-xl border border-primary/20 bg-primary/5 px-2 py-2 text-xs">{a.type.startsWith("image/") ? <img src={a.url} alt={a.name} className="size-10 rounded-lg object-cover" /> : <span className="max-w-36 truncate">{a.name}</span>}<button type="button" aria-label={`Remove ${a.name}`} onClick={() => { revokeBuddyAttachment(a); setAttachments((items) => items.filter((item) => item.id !== a.id)); }}><X className="size-3.5" /></button></div>)}</div>}<div className="flex gap-2"><input value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendTyped(); } }} placeholder="Type to Buddy…" className="min-w-0 flex-1 rounded-xl border border-border/60 bg-background/70 px-3 py-3 text-sm outline-none focus:border-primary" /><StudioButton onClick={sendTyped} disabled={busy || (!input.trim() && !attachments.length)}><Send className="size-4" /></StudioButton></div><div className="mt-3 flex flex-wrap gap-2"><label className="inline-flex min-h-10 cursor-pointer items-center gap-2 rounded-xl border border-border/60 bg-background/60 px-3 py-2 text-xs font-semibold"><Paperclip className="size-4" />Attach<input className="sr-only" type="file" multiple accept={buddyAccept} onChange={(e) => { addFiles(e.target.files); e.currentTarget.value = ""; }} /></label><label className="inline-flex min-h-10 cursor-pointer items-center gap-2 rounded-xl border border-border/60 bg-background/60 px-3 py-2 text-xs font-semibold"><ImagePlus className="size-4" />Photo<input className="sr-only" type="file" accept="image/*" capture="environment" onChange={(e) => { addFiles(e.target.files); e.currentTarget.value = ""; }} /></label><StudioButton variant="ghost" onClick={() => void beginCapture("record")} disabled={recording || busy}><Mic className="size-4" />Record → Text</StudioButton>{recording && <StudioButton variant="ghost" onClick={stopCapture}><MicOff className="size-4" />Stop</StudioButton>}{transcript && <StudioButton variant="ghost" onClick={sendTranscript}><Send className="size-4" />Send transcript</StudioButton>}</div></div>
+        <div className="mt-4 max-h-72 space-y-2 overflow-auto pr-1">{messages.length === 0 ? <p className="py-5 text-center text-xs text-muted-foreground">Buddy is ready when you are.</p> : messages.map((message) => <div key={message.id} className={`rounded-2xl px-4 py-3 text-sm ${message.role === "user" ? "ml-8 bg-primary/10" : "mr-8 bg-muted/60"}`}><div className="mb-1 text-[9px] font-bold uppercase tracking-[0.15em] text-muted-foreground">{message.role === "user" ? "You" : "Buddy"}</div>{message.content}{message.attachments?.length ? <div className="mt-2 text-[10px] text-muted-foreground">{message.attachments.map((a) => a.name).join(" • ")}</div> : null}</div>)}</div><div className="mt-3 text-center text-[10px] text-muted-foreground">{status}</div>
       </div>
     </Panel>
   );
