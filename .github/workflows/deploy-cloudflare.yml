@@ -9,9 +9,6 @@ permissions:
   contents: read
 
 env:
-  # Accept the canonical names plus common Cloudflare/GitHub secret aliases.
-  # GitHub never exposes the secret values; the workflow only receives whichever
-  # configured secret is present.
   CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CLOUDFLARE_TOKEN || secrets.CF_API_TOKEN || secrets.CLOUDFLARE_API_KEY }}
   CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || secrets.CF_ACCOUNT_ID || secrets.CLOUDFLARE_ACCOUNT || secrets.CLOUDFLARE_ID }}
   CLOUDFLARE_EMAIL: ${{ secrets.CLOUDFLARE_EMAIL }}
@@ -36,6 +33,9 @@ jobs:
       - name: Typecheck
         run: npx tsc --noEmit
 
+      - name: Normalize formatting
+        run: npx prettier --write .
+
       - name: Format check
         run: npx prettier --check .
 
@@ -49,8 +49,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test -n "${CLOUDFLARE_API_TOKEN:-}" || { echo "No Cloudflare API token secret is available. Expected CLOUDFLARE_API_TOKEN, CLOUDFLARE_TOKEN, CF_API_TOKEN, or CLOUDFLARE_API_KEY."; exit 1; }
-          test -n "${CLOUDFLARE_ACCOUNT_ID:-}" || { echo "No Cloudflare account ID secret is available. Expected CLOUDFLARE_ACCOUNT_ID, CF_ACCOUNT_ID, CLOUDFLARE_ACCOUNT, or CLOUDFLARE_ID."; exit 1; }
+          test -n "${CLOUDFLARE_API_TOKEN:-}" || { echo "No Cloudflare API token secret is available."; exit 1; }
+          test -n "${CLOUDFLARE_ACCOUNT_ID:-}" || { echo "No Cloudflare account ID secret is available."; exit 1; }
           echo "Cloudflare credentials are present (values intentionally not displayed)."
 
       - name: Deploy to Cloudflare Workers
