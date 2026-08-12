@@ -3,7 +3,7 @@
 **Last updated:** 2026-08-12
 **Authoritative repository:** `GiggleLootCoin/little-reds-big-studio-f36b7ec4`
 **Branch:** `main`
-**Last observed main commit:** `d0dda5645481bcc6b093cf50924b621d10854bf1` (memory layer merged)
+**Current main commit at this update:** `52decf7e7cd27bc0be9d9e34d448c671ef98baee`
 **Production:** `https://little-reds-big-studio-f36b7ec4.gigglelootcoin.workers.dev`
 **Hosting:** Cloudflare Workers
 **Product:** Buddy-first, Android-first, free/open-first creative studio for musicians and YouTubers.
@@ -18,28 +18,39 @@
 - Keep free/open fallbacks available; public free GPU services may queue or fail.
 - Buddy must retain relevant user/project context across conversations through persistent storage rather than relying on one chat thread.
 - Keep development/engineering memory separate from Buddy's user memory/Creative DNA.
+- Browser/OS microphone permission cannot be bypassed; the app must distinguish permission failure from device-selection failure and recover where possible.
+- Voice cloning/conversion is only for a voice the user owns or is authorized to transform.
+
+## Recently implemented
+
+- Phone-call-style Buddy Live Chat with one primary call button, natural pause-based turn detection, real microphone capture, automatic microphone discovery, input-device preference/fallback, mute/end controls, and Record→Text plus Type modes.
+- Animated Buddy reference character is the focal point of the live-call UI and reacts through the existing Buddy presence state system.
+- Dedicated Buddy voice profile UI with real natural Qwen-compatible speaker choices, multilingual language selection, upload/record-your-own-voice workflow, local voice-sample persistence, and a verified voice-preview action using the voice-clone runtime.
+- Self-contained Studio logo usage on authentication and Buddy presence; stale asset-metadata imports that broke CI were removed.
+- Production finish plan saved at `docs/superpowers/plans/2026-08-12-production-finish.md`.
+- Current CI verification reached TypeScript success and the agentic validation workflow completed successfully after formatting; the formatting workflow committed `52decf7e7cd27bc0be9d9e34d448c671ef98baee`.
 
 ## Verified foundations
 
 - TanStack Start + Vite + TypeScript application.
 - Production-oriented Buddy orchestration and free/open route selection.
 - Supabase authentication and server-authoritative entitlement logic.
-- Android hands-free Buddy microphone/runtime work exists in the production codebase.
-- Cloudflare production deployment configuration exists.
-- Production CI has been hardened to validate TypeScript, formatting, linting and production build.
-- Studio branding was made self-contained so production does not depend on obsolete hosted logo metadata.
-- Permanent `.studio-memory/` handoff layer is now merged into `main`.
+- Cloudflare production deployment configuration.
+- Production CI validates TypeScript, formatting, linting and production build.
+- Permanent `.studio-memory/` handoff layer is merged into `main`.
+- Public Hugging Face route registry contains Qwen3-TTS, MOSS-TTS, Chatterbox, Seed-VC, Applio/RVC, ACE-Step, DiffRhythm, Qwen Image, LTX, Wan and ASR fallback families; public route metadata is not treated as execution proof.
 
 ## Current known verification gaps
 
-1. Live verification of the Buy Me a Coffee membership webhook secret/production membership flow is still required before calling membership fully production-verified.
-2. End-to-end Android runtime generation testing remains a required final verification gate.
-3. Remote free/open AI routes are candidates until live schema compatibility, execution, artifact return and artifact validation are confirmed.
+1. The real Android/browser runtime still needs a device-level smoke test for microphone permission, selected input, Live Chat turn-taking and one real generation artifact.
+2. Real public free-provider execution remains conditional on queue/availability; each exposed capability must be tested with a returned artifact before being called verified.
+3. Live verification of the Buy Me a Coffee membership webhook secret/production membership flow is still required before calling membership fully production-verified.
+4. Buddy Live Chat currently uses the selected personal voice profile for the dedicated voice-preview path; wiring that profile into the live-call TTS loop remains a final integration check.
 
 ## Current route families
 
 - Writing/reasoning: Qwen3 + browser-local fallback.
-- Voice: Qwen3-TTS, MOSS-TTS, Chatterbox, Seed-VC, Applio/RVC fallbacks.
+- Voice: Qwen3-TTS, MOSS-TTS, Chatterbox, Seed-VC and Applio/RVC fallbacks.
 - Music: ACE-Step 1.5 + DiffRhythm fallback.
 - Stems: Demucs.
 - Artwork: Qwen Image / Z Image Turbo / SDXL fallbacks.
@@ -48,7 +59,7 @@
 
 ## Immediate next action
 
-Close only the remaining real verification gaps. Do not rebuild already-validated infrastructure. Verify production membership webhook configuration and perform Android/runtime generation smoke tests; record exact evidence here and in `KNOWN-ISSUES.md`/`DEPLOYMENT.md`.
+Run the formatted current main through CI again, then perform real Android/runtime and public-provider artifact tests. Do not claim full production completion until those gates have evidence.
 
 ## Handoff rule
 
