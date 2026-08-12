@@ -23,6 +23,14 @@ export type Entitlement = {
   unlimited: boolean;
   buddy_unleashed: boolean;
 };
+export type ProfileRecord = {
+  id: string;
+  display_name: string;
+  avatar_url: string | null;
+  trial_started_at?: string | null;
+  created_at?: string;
+  updated_at?: string;
+};
 
 async function request<T>(path: string, init: RequestInit = {}, accessToken?: string): Promise<T> {
   const response = await fetch(`${SUPABASE_URL}${path}`, {
@@ -147,9 +155,9 @@ export async function updatePassword(password: string) {
     current.access_token,
   );
 }
-export async function getProfile(userId: string, token: string) {
-  const result = await request<Array<Record<string, unknown>>>(
-    `/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}&select=id,handle,display_name,about,avatar_url,banner_url,trial_started_at`,
+export async function getProfile(userId: string, token: string): Promise<ProfileRecord | null> {
+  const result = await request<ProfileRecord[]>(
+    `/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}&select=id,display_name,avatar_url,trial_started_at,created_at,updated_at`,
     {},
     token,
   );
@@ -157,10 +165,10 @@ export async function getProfile(userId: string, token: string) {
 }
 export async function updateProfile(
   userId: string,
-  values: Record<string, unknown>,
+  values: Pick<ProfileRecord, "display_name" | "avatar_url">,
   token: string,
 ) {
-  const result = await request<Array<Record<string, unknown>>>(
+  const result = await request<ProfileRecord[]>(
     `/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}`,
     { method: "PATCH", headers: { Prefer: "return=representation" }, body: JSON.stringify(values) },
     token,
