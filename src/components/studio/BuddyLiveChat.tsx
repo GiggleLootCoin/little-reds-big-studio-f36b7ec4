@@ -5,6 +5,7 @@ import { Panel, StudioButton } from "./ui";
 
 type Message = { role: "user" | "assistant"; content: string };
 const KEY = "lrbgs-buddy-chat";
+const MAX_STORED_MESSAGES = 200;
 
 export function BuddyLiveChat() {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -19,12 +20,15 @@ export function BuddyLiveChat() {
   const chunksRef = useRef<Blob[]>([]);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const liveRef = useRef(false);
+  const speakingRef = useRef(false);
+  const busyRef = useRef(false);
+
   useEffect(() => {
     try {
       const saved = JSON.parse(localStorage.getItem(KEY) || "[]") as Message[];
-      if (Array.isArray(saved)) setMessages(saved.slice(-30));
+      if (Array.isArray(saved)) setMessages(saved.slice(-MAX_STORED_MESSAGES));
     } catch {
-      /* ignore */
+      /* ignore corrupt browser cache */
     }
     return () => {
       liveRef.current = false;
@@ -40,57 +44,84 @@ export function BuddyLiveChat() {
       window.speechSynthesis?.cancel();
     };
   }, []);
+
   useEffect(() => {
-    localStorage.setItem(KEY, JSON.stringify(messages.slice(-30)));
+    localStorage.setItem(KEY, JSON.stringify(messages.slice(-MAX_STORED_MESSAGES)));
   }, [messages]);
 
+  const restartListening = () => {
+    if (!liveRef.current || busyRef.current || speakingRef.current || recorderRef.current) return;
+    window.setTimeout(() => {
+      if (!liveRef.current || busyRef.current || speakingRef.current || recorderRef.current) return;
+      void startRecorder();
+    }, 350);
+  };
+
   const speak = async (text: string) => {
-    if (muted) return;
+    if (muted || speakingRef.current) return;
+    speakingRef.current = true;
     try {
+      setStatus("Buddy is speaking…");
       const result = await runStudioJob(
         "tts",
         { text, target_text: text, language: "English" },
         setStatus,
       );
-      if (result.url) {
-        if (!audioRef.current) audioRef.current = new Audio();
-        audioRef.current.src = result.url;
-        await audioRef.current.play();
-        await new Promise<void>((resolve) => {
-          audioRef.current!.onended = () => resolve();
-          audioRef.current!.onerror = () => resolve();
+      if (!result.url) throw new Error("Buddy's natural voice route returned no playable audio.");
+
+      if (!audioRef.current) audioRef.current = new Audio();
+      audioRef.current.src = result.url;
+      await new Promise<void>((resolve, reject) => {
+        const audio = audioRef.current!;
+        const onEnded = () => {
+          cleanup();
+          resolve();
+        };
+        const onError = () => {
+          cleanup();
+          reject(new Error("Buddy's voice artifact could not be played."));
+        };
+        const cleanup = () => {
+          audio.removeEventListener("ended", onEnded);
+          audio.removeEventListener("error", onError);
+        };
+        audio.addEventListener("ended", onEnded, { once: true });
+        audio.addEventListener("error", onError, { once: true });
+        void audio.play().catch((error) => {
+          cleanup();
+          reject(error);
         });
-        return;
-      }
-    } catch {
-      /* browser voice fallback */
-    }
-    if ("speechSynthesis" in window)
-      await new Promise<void>((resolve) => {
-        window.speechSynthesis.cancel();
-        const u = new SpeechSynthesisUtterance(text);
-        u.rate = 0.98;
-        u.onend = () => resolve();
-        u.onerror = () => resolve();
-        window.speechSynthesis.speak(u);
       });
+    } catch (error) {
+      setStatus(
+        error instanceof Error
+          ? `${error.message} No robotic browser-voice fallback will be used.`
+          : "Buddy's natural voice is temporarily unavailable. No robotic browser-voice fallback will be used.",
+      );
+    } finally {
+      speakingRef.current = false;
+      restartListening();
+    }
   };
+
   const answer = async (text: string, speakReply = false) => {
     const clean = text.trim();
-    if (!clean || busy) return;
+    if (!clean || busyRef.current) return;
+    busyRef.current = true;
     setBusy(true);
     setStatus("Buddy is thinking…");
-    const next = [...messages, { role: "user" as const, content: clean }].slice(-16);
+    const next = [...messages, { role: "user" as const, content: clean }];
     setMessages(next);
     setInput("");
     try {
+      const context = next.slice(-32);
       const prompt = [
         {
           role: "system" as const,
           content:
             "You are Buddy from Little Red's Big Studio: a sharp, warm, funny creative partner for music and YouTube. Never claim an action happened unless the Studio actually returned a verified result. Be concise and useful.",
         },
-        ...next,
+        ...context,
       ];
       const result = await runStudioJob(
         "chat",
@@ -109,9 +140,12 @@ export function BuddyLiveChat() {
         error instanceof Error ? error.message : "Buddy's free routes are temporarily unavailable.",
       );
     } finally {
+      busyRef.current = false;
       setBusy(false);
+      if (liveRef.current && !speakingRef.current) restartListening();
     }
   };
+
   const stopRecorder = () => {
     try {
       recorderRef.current?.stop();
@@ -123,14 +157,9 @@ export function BuddyLiveChat() {
     streamRef.current = null;
     setListening(false);
   };
-  const restart = () => {
-    if (!liveRef.current || busy || recorderRef.current) return;
-    window.setTimeout(() => {
-      if (liveRef.current && !busy && !recorderRef.current) void startRecorder();
-    }, 500);
-  };
+
   const startRecorder = async () => {
-    if (!liveRef.current || busy || recorderRef.current) return;
+    if (!liveRef.current || busyRef.current || speakingRef.current || recorderRef.current) return;
     if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
       setStatus("This Android browser does not provide microphone recording.");
       return;
@@ -159,6 +188,7 @@ export function BuddyLiveChat() {
         setListening(false);
         void (async () => {
           try {
+            if (blob.size < 2048) throw new Error("I didn't get enough microphone audio. Try again.");
             setStatus("Buddy is understanding you…");
             const stt = await runStudioJob("speech-to-text", { audio: blob }, setStatus);
             const text = artifactText(stt.value);
@@ -167,9 +197,17 @@ export function BuddyLiveChat() {
           } catch (error) {
             setStatus(error instanceof Error ? error.message : "Speech recognition failed.");
           } finally {
-            restart();
+            restartListening();
           }
         })();
+      };
+      recorder.onerror = () => {
+        recorderRef.current = null;
+        stream.getTracks().forEach((t) => t.stop());
+        streamRef.current = null;
+        setListening(false);
+        setStatus("The microphone capture failed. Buddy will try again.");
+        restartListening();
       };
       recorderRef.current = recorder;
       recorder.start(250);
@@ -183,13 +221,16 @@ export function BuddyLiveChat() {
       setStatus("Microphone permission is required for Live Conversation.");
     }
   };
+
   const stopAll = () => {
     liveRef.current = false;
+    speakingRef.current = false;
     stopRecorder();
     audioRef.current?.pause();
     window.speechSynthesis?.cancel();
     setListening(false);
   };
+
   const toggleLive = () => {
     if (live) {
       stopAll();
@@ -227,11 +268,7 @@ export function BuddyLiveChat() {
           }}
           className="rounded-xl border border-border px-3 py-2 text-xs"
         >
-          {muted ? (
-            <VolumeX className="mr-2 inline size-4" />
-          ) : (
-            <Volume2 className="mr-2 inline size-4" />
-          )}
+          {muted ? <VolumeX className="mr-2 inline size-4" /> : <Volume2 className="mr-2 inline size-4" />}
           {muted ? "Voice muted" : "Buddy voice on"}
         </button>
       </div>
@@ -276,8 +313,7 @@ export function BuddyLiveChat() {
         </StudioButton>
       </form>
       <p className="mt-2 text-[0.65rem] text-muted-foreground">
-        Hands-free uses the Android microphone, free speech recognition, Buddy's free conversational
-        route and free voice routing, with browser speech as the final fallback.
+        Hands-free uses Android microphone capture, free speech recognition and Buddy's verified natural-voice routes. Browser speech is deliberately not used as a voice-quality fallback.
       </p>
     </Panel>
   );
