@@ -24,10 +24,12 @@
 ### Task 1: Make Buddy conversation state multimodal
 
 **Files:**
+
 - Modify: `src/components/studio/BuddyLiveChat.tsx`
 - Create: `src/lib/buddy-conversation.ts`
 
 **Interfaces:**
+
 - `BuddyAttachment`: `{ id:string; name:string; type:string; size:number; blob?:Blob; url?:string; status:"ready"|"processing"|"error" }`
 - `BuddyMessage`: `{ id:string; role:"user"|"assistant"; content:string; createdAt:number; attachments:BuddyAttachment[] }`
 - `sendBuddyMessage(message: BuddyMessage, history: BuddyMessage[]): Promise<{text:string; audioUrl?:string}>`
@@ -42,10 +44,12 @@
 ### Task 2: Finish Android microphone and hands-free loop
 
 **Files:**
+
 - Modify: `src/components/studio/BuddyLiveChat.tsx`
 - Modify: `src/lib/microphone.ts`
 
 **Interfaces:**
+
 - `beginCapture("live"|"record"): Promise<void>` uses browser SpeechRecognition first only when available, otherwise MediaRecorder + real STT.
 - `stopCapture(): void` stops recognition, recorder and tracks without losing transcript.
 
@@ -61,11 +65,13 @@
 ### Task 3: Add attachment picker and multimodal send pipeline
 
 **Files:**
+
 - Modify: `src/components/studio/BuddyLiveChat.tsx`
 - Create: `src/lib/buddy-attachments.ts`
 - Modify: relevant server chat route discovered during implementation
 
 **Interfaces:**
+
 - `acceptAttachment(file: File): Promise<BuddyAttachment>` validates size/type and creates a preview/object URL.
 - `prepareAttachments(files: File[]): Promise<BuddyAttachment[]>` returns ready metadata plus original Blob references for the active message.
 
@@ -82,11 +88,13 @@
 ### Task 4: Make chat responses real and context-aware
 
 **Files:**
+
 - Modify: current chat server route
 - Modify: `src/lib/studio-runtime.ts`
 - Modify: `src/lib/free-runners.ts`
 
 **Interfaces:**
+
 - Chat adapter accepts `{messages, attachments}` and returns `{text}`.
 
 - [ ] Inspect the existing Cloudflare chat route and ensure it accepts conversation history.
@@ -100,6 +108,7 @@
 ### Task 5: Harden TTS/STT as explicit capability adapters
 
 **Files:**
+
 - Modify: `src/lib/studio-runtime.ts`
 - Modify: existing `/api/ai/tts` and `/api/ai/*` routes
 - Modify: `src/lib/free-runners.ts`
@@ -116,6 +125,7 @@
 ### Task 6: Make every creative generation control map to a real capability
 
 **Files:**
+
 - Modify: `src/lib/free-runners.ts`
 - Modify: `src/lib/studio-runtime.ts`
 - Modify: `src/components/studio/FreeCreatePanel.tsx`
@@ -134,6 +144,7 @@
 ### Task 7: Add generated artifact history and safe reuse
 
 **Files:**
+
 - Create: `src/lib/artifact-history.ts`
 - Modify: `src/components/studio/FreeCreatePanel.tsx`
 - Modify: Buddy chat UI as needed
@@ -147,6 +158,7 @@
 ### Task 8: Final security, mobile UX, and reliability audit
 
 **Files:**
+
 - Audit all `src/**`, `functions/**`, `wrangler.jsonc`, `.github/workflows/**`, and package scripts.
 - Modify only files with a verified issue.
 
@@ -161,6 +173,7 @@
 ### Task 9: Production verification gate
 
 **Files:**
+
 - Modify tests/workflow only when an actual gap is found.
 
 - [ ] Run TypeScript check.

@@ -59,8 +59,9 @@ export async function fileToDataUrl(file: File): Promise<string> {
 }
 
 export function attachmentSummary(attachment: BuddyAttachment) {
-  const size = attachment.size < 1024 * 1024
-    ? `${Math.max(1, Math.round(attachment.size / 1024))} KB`
-    : `${(attachment.size / (1024 * 1024)).toFixed(1)} MB`;
+  const size =
+    attachment.size < 1024 * 1024
+      ? `${Math.max(1, Math.round(attachment.size / 1024))} KB`
+      : `${(attachment.size / (1024 * 1024)).toFixed(1)} MB`;
   return `${attachment.name} (${size})`;
 }
