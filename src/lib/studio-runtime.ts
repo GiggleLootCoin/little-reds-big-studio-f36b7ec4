@@ -112,7 +112,7 @@ function artifactUrl(v: unknown): string | null {
       if (u) return u;
     }
   if (v && typeof v === "object")
-    for (const key of ["url", "uri", "src", "path", "value", "data"]) {
+    for (const key of ["url", "uri", "src", "path", "value", "data", "video", "audio", "image", "file"]) {
       const u = artifactUrl((v as Record<string, unknown>)[key]);
       if (u) return u;
     }
@@ -133,7 +133,9 @@ function normalizeUrl(u: string | null, space: string) {
 }
 async function connectWithRetry(space: string): Promise<Client> {
   const id = spaceId(space);
-  const sources = typeof window === "undefined" ? [id] : [id, proxyOrigin(id)];
+  // Browser requests use the Studio-origin proxy first. This avoids CORS and
+  // keeps queued Gradio traffic on the same origin. Direct HF is a fallback.
+  const sources = typeof window === "undefined" ? [id] : [proxyOrigin(id), id];
   let last: unknown;
   for (const source of sources)
     for (let attempt = 0; attempt < 3; attempt++) {
@@ -252,12 +254,12 @@ async function runOn(provider: FreeRunner, input: StudioJobInput, capability: St
       last = error instanceof Error ? error.message : String(error);
     }
   }
-  throw new Error(last);
+  throw new Error(`${provider.name}: ${last}`);
 }
 function withTimeout<T>(promise: Promise<T>, ms: number, label: string) {
   let timer: number | undefined;
   const timeout = new Promise<never>((_, reject) => {
-    timer = window.setTimeout(() => reject(new Error(`${label} timed out`)), ms);
+    timer = window.setTimeout(() => reject(new Error(`${label} timed out after ${Math.round(ms / 1000)}s`)), ms);
   });
   return Promise.race([promise, timeout]).finally(() => {
     if (timer !== undefined) window.clearTimeout(timer);
@@ -293,6 +295,7 @@ export async function runStudioJob(
   const prepared = await prepareVoiceInput(capability, input);
   const providers = runnersFor(prepared.capability);
   let last = "No compatible free provider available";
+  const failures: string[] = [];
   for (const p of providers) {
     try {
       onStatus?.(`Connecting to ${p.name}…`);
@@ -305,10 +308,13 @@ export async function runStudioJob(
       return { ...result, capability };
     } catch (e) {
       last = e instanceof Error ? e.message : String(e);
-      onStatus?.(`${p.name} was unavailable; trying the next compatible route…`);
+      failures.push(last);
+      onStatus?.(`${p.name} failed: ${last}`);
     }
   }
-  throw new Error(`${capability} could not produce a usable result. ${last}`);
+  throw new Error(
+    `${capability} could not produce a usable result. ${failures.slice(0, 4).join(" | ") || last}`,
+  );
 }
 export function runtimeProviders(capability?: StudioCapability) {
   return capability ? runnersFor(capability) : FREE_RUNNERS;
