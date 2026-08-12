@@ -5,17 +5,11 @@ import {
   getStoredSession,
   refreshSession,
   signOut as signOutRemote,
+  type ProfileRecord,
   type SupabaseUser,
 } from "@/lib/supabase-rest";
 export type LocalUser = { id: string; email: string; user_metadata: { display_name: string } };
-export type Profile = {
-  id: string;
-  handle: string;
-  display_name: string;
-  about: string;
-  avatar_url: string | null;
-  banner_url: string | null;
-};
+export type Profile = ProfileRecord;
 const toUser = (u: SupabaseUser): LocalUser => ({
   id: u.id,
   email: u.email || "",
@@ -57,7 +51,7 @@ export function useProfile(userId: string | undefined) {
     setLoading(true);
     try {
       const p = await getProfile(id, s.access_token);
-      if (p) setProfile(p as Profile);
+      setProfile(p);
     } finally {
       setLoading(false);
     }
