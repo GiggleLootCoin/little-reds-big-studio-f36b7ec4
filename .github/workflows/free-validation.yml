@@ -2,7 +2,7 @@ name: Free Open Validation
 
 on:
   push:
-    branches: [main]
+    branches: [main, production-integration]
   pull_request:
     branches: [main]
 
@@ -21,7 +21,7 @@ jobs:
           node-version: 24
           cache: npm
       - name: Install
-        run: npm ci
+        run: npm install
       - name: Type-check
         run: npx tsc --noEmit
       - name: Format check
