@@ -204,16 +204,34 @@ async function runOn(provider: FreeRunner, input: StudioJobInput, capability: St
     .filter((x) => x.s > -10)
     .sort((a, b) => b.s - a.s);
   if (!candidates[0]) throw new Error("No compatible endpoint discovered");
-  const args = await Promise.all(
-    build(candidates[0].ep, input).map(async (v) =>
-      typeof Blob !== "undefined" && v instanceof Blob ? handle_file(v) : v,
-    ),
-  );
-  const r = await cl.predict(candidates[0].name, args);
-  const data = Array.isArray(r) ? r : (r?.data ?? r);
-  const url = normalizeUrl(artifactUrl(data), provider.url);
-  validateArtifact(capability, data, url);
-  return { capability, value: data, url, provider: provider.name } as StudioArtifact;
+
+  let last = "No endpoint produced a usable result";
+  for (const candidate of candidates) {
+    try {
+      const args = await Promise.all(
+        build(candidate.ep, input).map(async (v) =>
+          typeof Blob !== "undefined" && v instanceof Blob ? handle_file(v) : v,
+        ),
+      );
+      const r = await cl.predict(candidate.name, args);
+      const data = Array.isArray(r) ? r : (r?.data ?? r);
+      const url = normalizeUrl(artifactUrl(data), space);
+      validateArtifact(capability, data, url);
+      return { capability, value: data, url, provider: provider.name } as StudioArtifact;
+    } catch (error) {
+      last = error instanceof Error ? error.message : String(error);
+    }
+  }
+  throw new Error(last);
+}
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string) {
+  let timer: number | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = window.setTimeout(() => reject(new Error(`${label} timed out`)), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => {
+    if (timer !== undefined) window.clearTimeout(timer);
+  });
 }
 export async function runStudioJob(
   capability: StudioCapability,
@@ -225,7 +243,7 @@ export async function runStudioJob(
   for (const p of providers) {
     try {
       onStatus?.("Checking a compatible route…");
-      const result = await runOn(p, input, capability);
+      const result = await withTimeout(runOn(p, input, capability), 180000, `${p.name} route`);
       onStatus?.("Result verified.");
       return result;
     } catch (e) {
