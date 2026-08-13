@@ -6,6 +6,7 @@ import {
   clearBuddyVoiceClone,
   fileToVoiceDataUrl,
   getBuddyVoiceProfile,
+  getBuddyVoiceSample,
   saveBuddyVoiceProfile,
   saveBuddyVoiceSample,
 } from "@/lib/buddy-voice";
@@ -46,14 +47,12 @@ export function BuddyVoicePicker() {
 
       await saveBuddyVoiceSample(file);
 
-      // Get the exact words from the reference recording when possible. Qwen's
-      // ICL clone path is higher quality than speaker-vector-only cloning.
       let referenceTranscript = "";
       try {
         const stt = await runStudioJob("speech-to-text", { audio: file }, () => undefined);
         referenceTranscript = artifactText(stt.value).trim();
       } catch {
-        // x-vector-only remains available when transcription is unavailable.
+        // Qwen's x-vector-only mode remains available when transcription is unavailable.
       }
 
       update({
@@ -63,22 +62,32 @@ export function BuddyVoicePicker() {
         referenceTranscript,
       });
 
-      // A saved profile is not considered ready until the actual clone engine
-      // returns playable audio. This prevents a UI-only "saved" state.
+      const savedSample = await getBuddyVoiceSample();
+      if (!savedSample) throw new Error("The saved voice sample could not be retrieved.");
+
       const testText = "Hi. I'm Buddy, and this is my voice from Little Red's Big Studio.";
       const result = await runStudioJob(
-        "tts",
-        { text: testText, target_text: testText, language: "English" },
+        "voice-clone",
+        {
+          refAudio: savedSample,
+          referenceAudio: savedSample,
+          audio: savedSample,
+          referenceTranscript,
+          refText: referenceTranscript,
+          target_text: testText,
+          text: testText,
+          language: "English",
+          use_xvector_only: !referenceTranscript,
+          model_size: "0.6B",
+        },
         () => undefined,
       );
       if (!result.url) throw new Error("The clone engine returned no playable audio.");
 
-      const testAudio = new Audio(result.url);
-      await testAudio.play();
       setStatus(
         referenceTranscript
-          ? "Your voice was cloned and tested successfully. Buddy will use it now."
-          : "Your voice was cloned and tested successfully. Buddy will use it now. A transcript can improve clone quality further.",
+          ? "Your voice was cloned successfully. Press Test voice to hear it, and Buddy will use it now."
+          : "Your voice was cloned successfully using the emergency speaker-vector path. Press Test voice to hear it; a transcript can improve quality.",
       );
     } catch (error) {
       await clearBuddyVoiceClone();
@@ -117,13 +126,25 @@ export function BuddyVoicePicker() {
     try {
       const current = getBuddyVoiceProfile();
       const text = "Hi. I'm Buddy, and this is my voice from Little Red's Big Studio.";
-      const input: Record<string, unknown> = {
-        text,
-        target_text: text,
-        language: current.language,
-      };
       if (current.mode === "clone") {
-        const result = await runStudioJob("tts", input, () => undefined);
+        const savedSample = await getBuddyVoiceSample();
+        if (!savedSample) throw new Error("Your saved voice sample is unavailable. Please add it again.");
+        const result = await runStudioJob(
+          "voice-clone",
+          {
+            refAudio: savedSample,
+            referenceAudio: savedSample,
+            audio: savedSample,
+            referenceTranscript: current.referenceTranscript || "",
+            refText: current.referenceTranscript || "",
+            target_text: text,
+            text,
+            language: current.language || "English",
+            use_xvector_only: !current.referenceTranscript,
+            model_size: "0.6B",
+          },
+          () => undefined,
+        );
         if (!result.url) throw new Error("The saved clone returned no playable audio.");
         const audio = new Audio(result.url);
         await audio.play();
@@ -131,7 +152,13 @@ export function BuddyVoicePicker() {
         return;
       }
 
-      input.speaker = current.speaker;
+      const input: Record<string, unknown> = {
+        text,
+        target_text: text,
+        language: current.language || "English",
+        speaker: current.speaker,
+        model_size: "0.6B",
+      };
       try {
         const result = await runStudioJob("tts", input, () => undefined);
         if (result.url) {
