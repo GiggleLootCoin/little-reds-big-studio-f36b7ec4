@@ -63,6 +63,17 @@ export const FREE_RUNNERS: FreeRunner[] = [
     priority: 400,
   },
   {
+    id: "hf-cosyvoice3",
+    name: "CosyVoice 3",
+    kind: "public",
+    description: "Multilingual zero-shot cloning with expressive instruction control and streaming support.",
+    capabilities: ["tts", "voice-clone", "voice-swap"],
+    url: "https://huggingface.co/spaces/FunAudioLLM/Fun-CosyVoice3-0.5B",
+    notes:
+      "Verified official FunAudioLLM Space. Runtime must validate its live Gradio endpoints and actual playable audio before use.",
+    priority: 380,
+  },
+  {
     id: "hf-seed-vc",
     name: "Seed-VC",
     kind: "public",
