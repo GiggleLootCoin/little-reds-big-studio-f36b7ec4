@@ -39,7 +39,12 @@ export async function listMicrophones(): Promise<MicrophoneInfo[]> {
 export function chooseMicrophone(devices: MicrophoneInfo[], preferredId?: string) {
   if (!devices.length) return null;
   if (preferredId) return devices.find((device) => device.id === preferredId) ?? null;
-  return devices.find((device) => device.id === "default") ?? devices.find((device) => device.isDefault) ?? devices[0] ?? null;
+  return (
+    devices.find((device) => device.id === "default") ??
+    devices.find((device) => device.isDefault) ??
+    devices[0] ??
+    null
+  );
 }
 
 export async function requestMicrophone(deviceId?: string): Promise<MediaStream> {
@@ -80,10 +85,17 @@ export async function probeMicrophone(deviceId?: string): Promise<boolean> {
 
 export function classifyMicrophoneError(error: unknown): MicrophoneErrorKind {
   const name = error instanceof DOMException ? error.name : "";
-  const message = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
-  if (name === "NotAllowedError" || name === "SecurityError" || message.includes("permission")) return "permission";
+  const message =
+    error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
+  if (name === "NotAllowedError" || name === "SecurityError" || message.includes("permission"))
+    return "permission";
   if (typeof window !== "undefined" && !window.isSecureContext) return "insecure-context";
-  if (name === "NotFoundError" || name === "OverconstrainedError" || message.includes("no microphone")) return "no-device";
+  if (
+    name === "NotFoundError" ||
+    name === "OverconstrainedError" ||
+    message.includes("no microphone")
+  )
+    return "no-device";
   if (name === "NotSupportedError" || message.includes("not supported")) return "unsupported";
   return "unknown";
 }
