@@ -31,6 +31,8 @@ import {
 import { Panel, StudioButton } from "./ui";
 import buddyReference from "../../../file_0000000070e8824391d24367b5f22d59.png";
 import "./BuddyVisual.css";
+import { BuddyVoicePicker } from "./BuddyVoicePicker";
+import { getBuddyVoiceProfile } from "@/lib/buddy-voice";
 
 type Mode = "idle" | "live" | "record";
 type Message = {
@@ -343,7 +345,16 @@ export function BuddyLiveChat() {
     speakingRef.current = true;
     setBuddyStatus("working", { message: "Buddy is speaking…" });
     try {
-      const result = await runStudioJob("tts", { text, target_text: text }, setStatus);
+      const voice = getBuddyVoiceProfile();
+      const voiceInput: Record<string, unknown> = {
+        text,
+        target_text: text,
+        language: voice.language,
+        ...(voice.mode === "clone" && voice.referenceDataUrl
+          ? { referenceAudio: await (await fetch(voice.referenceDataUrl)).blob() }
+          : { speaker: voice.speaker }),
+      };
+      const result = await runStudioJob("tts", voiceInput, setStatus);
       if (!result.url) throw new Error("No voice artifact returned.");
       if (!audioRef.current) audioRef.current = new Audio();
       const audio = audioRef.current;
@@ -579,6 +590,7 @@ export function BuddyLiveChat() {
             {live ? "End Buddy Call" : "Call Buddy"}
           </button>
         </div>
+        <BuddyVoicePicker />
         <div className="relative mt-5 grid gap-3 sm:grid-cols-2">
           <div className="rounded-2xl border border-white/10 bg-white/[0.045] p-3">
             <div className="flex items-center justify-between">
