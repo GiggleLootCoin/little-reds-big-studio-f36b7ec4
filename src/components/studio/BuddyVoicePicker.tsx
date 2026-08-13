@@ -128,7 +128,8 @@ export function BuddyVoicePicker() {
       const text = "Hi. I'm Buddy, and this is my voice from Little Red's Big Studio.";
       if (current.mode === "clone") {
         const savedSample = await getBuddyVoiceSample();
-        if (!savedSample) throw new Error("Your saved voice sample is unavailable. Please add it again.");
+        if (!savedSample)
+          throw new Error("Your saved voice sample is unavailable. Please add it again.");
         const result = await runStudioJob(
           "voice-clone",
           {
