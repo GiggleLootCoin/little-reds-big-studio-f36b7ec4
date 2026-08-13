@@ -153,7 +153,9 @@ function legacyProfile(): Partial<BuddyVoiceProfile> | null {
 export function getBuddyVoiceProfile(): BuddyVoiceProfile {
   if (typeof window === "undefined") return DEFAULT_PROFILE;
   try {
-    const parsed = JSON.parse(localStorage.getItem(BUDDY_VOICE_KEY) || "null") as Partial<BuddyVoiceProfile> | null;
+    const parsed = JSON.parse(
+      localStorage.getItem(BUDDY_VOICE_KEY) || "null",
+    ) as Partial<BuddyVoiceProfile> | null;
     const selected = parsed ?? legacyProfile();
     return {
       ...DEFAULT_PROFILE,
@@ -203,7 +205,9 @@ if (typeof window !== "undefined" && "speechSynthesis" in window) {
     const guarded = synth as SpeechSynthesis & { __lrbgsGuarded?: boolean };
     guarded.__lrbgsGuarded = true;
     synth.speak = () => {
-      throw new Error("Buddy's verified voice renderer is unavailable; generic device speech is disabled.");
+      throw new Error(
+        "Buddy's verified voice renderer is unavailable; generic device speech is disabled.",
+      );
     };
     void originalSpeak;
   }
