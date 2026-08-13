@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Mic, MicOff, Paperclip, Phone, Send, Sparkles, Volume2, VolumeX, X } from "lucide-react";
+import { Mic, MicOff, Paperclip, Phone, Send, Sparkles, Volume2, VolumeX } from "lucide-react";
 import { artifactText, runStudioJob } from "@/lib/studio-runtime";
 import { setBuddyStatus } from "@/lib/buddy-presence";
 import { listMicrophones, requestMicrophone, stopMicrophone, describeMicrophoneError, type MicrophoneInfo } from "@/lib/microphone";
@@ -10,6 +10,8 @@ import "./BuddyVisual.css";
 
 type Message = { id: string; role: "user" | "assistant"; content: string; createdAt: number; attachments?: { id: string; name: string; type: string; size: number }[] };
 const KEY = "lrbgs-buddy-chat-v3";
+
+type MicPermission = "unknown" | "granted" | "denied";
 
 export function BuddyLiveChat() {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -22,6 +24,8 @@ export function BuddyLiveChat() {
   const [attachments, setAttachments] = useState<File[]>([]);
   const [micOptions, setMicOptions] = useState<MicrophoneInfo[]>([]);
   const [micId, setMicId] = useState("");
+  const [micPermission, setMicPermission] = useState<MicPermission>("unknown");
+  const [transcriptText, setTranscriptText] = useState("");
   const streamRef = useRef<MediaStream | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -40,6 +44,7 @@ export function BuddyLiveChat() {
       if (Array.isArray(saved)) setMessages(saved.slice(-50));
     } catch {}
     void refreshMicrophones();
+    void checkMicrophonePermission();
     return () => stopAll();
   }, []);
 
@@ -47,19 +52,31 @@ export function BuddyLiveChat() {
     try { localStorage.setItem(KEY, JSON.stringify(messages.slice(-50))); } catch {}
   }, [messages]);
 
+  async function checkMicrophonePermission() {
+    try {
+      if (!("permissions" in navigator) || !navigator.permissions?.query) return;
+      const permission = await navigator.permissions.query({ name: "microphone" as PermissionName });
+      setMicPermission(permission.state === "granted" ? "granted" : permission.state === "denied" ? "denied" : "unknown");
+      permission.onchange = () => setMicPermission(permission.state === "granted" ? "granted" : permission.state === "denied" ? "denied" : "unknown");
+    } catch {}
+  }
+
   async function refreshMicrophones() {
     try { setMicOptions(await listMicrophones()); } catch { setMicOptions([]); }
   }
 
   async function openMicrophone() {
     try {
+      setStatus("Opening your phone microphone…");
       const stream = await requestMicrophone(micId && micId !== "default" ? micId : undefined);
       const track = stream.getAudioTracks()[0];
       if (!track || track.readyState !== "live") throw new Error("No live microphone stream was provided.");
       streamRef.current = stream;
+      setMicPermission("granted");
       await refreshMicrophones();
       return stream;
     } catch (error) {
+      setMicPermission("denied");
       const message = describeMicrophoneError(error);
       setStatus(message);
       setBuddyStatus("error", { message });
@@ -114,6 +131,7 @@ export function BuddyLiveChat() {
 
   async function transcribe(blob: Blob) {
     if (!blob.size) throw new Error("I didn't catch any audio. Try again.");
+    setStatus("Transcribing what you said…");
     const result = await runStudioJob("speech-to-text", { audio: blob }, setStatus);
     const text = artifactText(result.value).trim();
     if (!text) throw new Error("I couldn't understand that. Try again.");
@@ -133,21 +151,28 @@ export function BuddyLiveChat() {
       chunksRef.current = [];
       recorderRef.current = null;
       setRecording(false);
-      if (!blob.size) { if (liveRef.current) setTimeout(() => void beginLive(), 250); return; }
-      void transcribe(blob).then((text) => liveMode ? answer(text, true) : setTranscriptText(text)).catch((error) => {
-        setStatus(error instanceof Error ? error.message : "Speech recognition failed.");
-        if (liveRef.current) setTimeout(() => void beginLive(), 500);
-      });
+      if (!blob.size) {
+        if (liveRef.current) setTimeout(() => void beginLive(), 250);
+        return;
+      }
+      void transcribe(blob)
+        .then((text) => {
+          setTranscriptText(text);
+          return answer(text, true);
+        })
+        .catch((error) => {
+          const message = error instanceof Error ? error.message : "Speech recognition failed.";
+          setStatus(message);
+          if (liveRef.current) setTimeout(() => void beginLive(), 500);
+        });
     };
     recorderRef.current = recorder;
     recorder.start(250);
     setRecording(true);
     setBuddyStatus("listening", { message: "Buddy is listening…" });
-    setStatus("Listening… speak naturally, then pause.");
+    setStatus(liveMode ? "Listening… pause naturally or tap End Buddy." : "Recording… tap Stop when you're finished.");
     if (liveMode) monitorSilence(stream);
   }
-
-  const [transcriptText, setTranscriptText] = useState("");
 
   async function beginLive() {
     if (!liveRef.current || busyRef.current || speakingRef.current || recording) return;
@@ -175,7 +200,11 @@ export function BuddyLiveChat() {
   }
 
   async function recordOnce() {
-    if (busyRef.current || recording || liveRef.current) return;
+    if (busyRef.current || liveRef.current) return;
+    if (recording) {
+      stopRecording();
+      return;
+    }
     const stream = await openMicrophone();
     if (!stream) return;
     try { startRecorder(stream, false); } catch (error) { setStatus(error instanceof Error ? error.message : "Microphone capture failed."); }
@@ -205,7 +234,7 @@ export function BuddyLiveChat() {
       const response = artifactText(result.value).trim();
       if (!response) throw new Error("Buddy did not return a response.");
       setMessages((current) => [...current, { id: crypto.randomUUID(), role: "assistant", content: response, createdAt: Date.now() }]);
-      setStatus(spoken ? "Buddy is responding…" : "Ready.");
+      setStatus("Buddy responded.");
       if (spoken || liveRef.current) await speak(response);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Buddy could not respond right now.";
@@ -231,9 +260,11 @@ export function BuddyLiveChat() {
       const audio = audioRef.current ?? new Audio();
       audioRef.current = audio;
       audio.src = result.url;
-      audio.onended = () => { speakingRef.current = false; setBuddyStatus("idle"); if (liveRef.current) setTimeout(() => void beginLive(), 180); };
-      audio.onerror = () => { throw new Error("Audio playback failed"); };
-      await audio.play();
+      await new Promise<void>((resolve, reject) => {
+        audio.onended = () => resolve();
+        audio.onerror = () => reject(new Error("Audio playback failed"));
+        void audio.play().catch(reject);
+      });
     } catch {
       if ("speechSynthesis" in window) {
         await new Promise<void>((resolve) => {
@@ -246,6 +277,7 @@ export function BuddyLiveChat() {
           window.speechSynthesis.speak(utterance);
         });
       }
+    } finally {
       speakingRef.current = false;
       setBuddyStatus("idle");
       if (liveRef.current) setTimeout(() => void beginLive(), 180);
@@ -282,10 +314,10 @@ export function BuddyLiveChat() {
 
         <div className="mt-4 flex flex-wrap gap-2">
           <button type="button" onClick={() => void toggleLive()} disabled={busy && !live} className={`flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl px-4 text-sm font-bold shadow-lg sm:flex-none ${live ? "bg-destructive text-destructive-foreground" : "crimson-gloss text-primary-foreground"}`}>
-            {live ? <Phone className="size-4" /> : <Phone className="size-4" />}{live ? "End Buddy" : "Call Buddy"}
+            <Phone className="size-4" />{live ? "End Buddy" : "Live Buddy"}
           </button>
-          <button type="button" onClick={() => recording ? stopRecording() : void recordOnce()} disabled={busy || live} className="flex min-h-11 items-center justify-center gap-2 rounded-xl border border-border bg-background/70 px-4 text-sm font-semibold">
-            {recording ? <MicOff className="size-4 text-primary" /> : <Mic className="size-4" />}{recording ? "Stop" : "Record"}
+          <button type="button" onClick={() => void recordOnce()} disabled={busy || live} className={`flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl border px-4 text-sm font-semibold sm:flex-none ${recording ? "border-primary bg-primary/10" : "border-border bg-background/70"}`}>
+            {recording ? <MicOff className="size-4 text-primary" /> : <Mic className="size-4" />}{recording ? "Stop & Send" : "Tap to Talk"}
           </button>
         </div>
 
@@ -293,6 +325,18 @@ export function BuddyLiveChat() {
           <span className={`size-2 rounded-full ${recording ? "bg-primary animate-pulse" : busy ? "bg-yellow-400 animate-pulse" : "bg-green-400"}`} />
           <span>{status}</span>
         </div>
+
+        {micPermission === "denied" && (
+          <div className="mt-3 rounded-xl border border-primary/30 bg-primary/5 p-3 text-xs">
+            <strong>Microphone access is blocked.</strong> Open Chrome site settings for this Studio, set <strong>Microphone</strong> to <strong>Allow</strong>, then tap <strong>Tap to Talk</strong> again.
+          </div>
+        )}
+
+        {micPermission !== "granted" && micPermission !== "denied" && (
+          <button type="button" onClick={() => void openMicrophone().then((stream) => { if (stream) { stopMicrophone(stream); streamRef.current = null; setStatus("Microphone ready. Tap to Talk when you're ready."); } })} className="mt-3 w-full rounded-xl border border-primary/30 bg-primary/5 px-3 py-2 text-xs font-semibold">
+            Enable microphone
+          </button>
+        )}
 
         {micOptions.length > 1 && (
           <label className="mt-3 block text-[10px] text-muted-foreground">Microphone
@@ -311,8 +355,7 @@ export function BuddyLiveChat() {
             <p className="whitespace-pre-wrap leading-5">{message.content}</p>
           </div>
         ))}
-        {transcriptText && <div className="rounded-xl border border-primary/20 bg-primary/5 p-3 text-xs">Transcription: {transcriptText}</div>}
-
+        {transcriptText && <div className="rounded-xl border border-primary/20 bg-primary/5 p-3 text-xs">You said: {transcriptText}</div>}
         {attachments.length > 0 && <div className="flex flex-wrap gap-2">{attachments.map((file, index) => <button key={`${file.name}-${index}`} type="button" onClick={() => setAttachments((current) => current.filter((_, i) => i !== index))} className="rounded-full border border-border px-3 py-1 text-[10px]">{file.name} ×</button>)}</div>}
 
         <div className="flex items-end gap-2 rounded-2xl border border-border bg-background/60 p-2">
@@ -321,9 +364,7 @@ export function BuddyLiveChat() {
             <input type="file" multiple accept="image/*,audio/*,video/*,.txt,.pdf" className="sr-only" onChange={(e) => handleFiles(e.target.files)} />
           </label>
           <textarea value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void answer(input); } }} placeholder="Talk to Buddy…" rows={1} className="min-h-10 flex-1 resize-none bg-transparent px-2 py-2 text-sm outline-none" />
-          <button type="button" onClick={() => void answer(input)} disabled={!input.trim() || busy} className="rounded-xl bg-primary p-2 text-primary-foreground disabled:opacity-40" aria-label="Send">
-            <Send className="size-5" />
-          </button>
+          <button type="button" onClick={() => void answer(input)} disabled={!input.trim() || busy} className="rounded-xl bg-primary p-2 text-primary-foreground disabled:opacity-40" aria-label="Send"><Send className="size-5" /></button>
         </div>
         <BuddyVoicePicker />
       </div>
