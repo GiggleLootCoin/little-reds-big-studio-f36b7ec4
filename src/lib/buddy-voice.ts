@@ -25,7 +25,9 @@ const DEFAULT_PROFILE: BuddyVoiceProfile = { mode: "preset", speaker: "Ryan", la
 export function getBuddyVoiceProfile(): BuddyVoiceProfile {
   if (typeof window === "undefined") return DEFAULT_PROFILE;
   try {
-    const parsed = JSON.parse(localStorage.getItem(BUDDY_VOICE_KEY) || "null") as Partial<BuddyVoiceProfile> | null;
+    const parsed = JSON.parse(
+      localStorage.getItem(BUDDY_VOICE_KEY) || "null",
+    ) as Partial<BuddyVoiceProfile> | null;
     return {
       ...DEFAULT_PROFILE,
       ...parsed,
@@ -44,7 +46,11 @@ export function saveBuddyVoiceProfile(profile: BuddyVoiceProfile) {
 
 export function clearBuddyVoiceClone() {
   const profile = getBuddyVoiceProfile();
-  saveBuddyVoiceProfile({ mode: "preset", speaker: profile.speaker || "Ryan", language: profile.language || "English" });
+  saveBuddyVoiceProfile({
+    mode: "preset",
+    speaker: profile.speaker || "Ryan",
+    language: profile.language || "English",
+  });
 }
 
 export async function fileToVoiceDataUrl(file: File): Promise<string> {
