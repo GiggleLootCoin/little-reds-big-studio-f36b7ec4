@@ -113,7 +113,9 @@ function fromBase64(value: string): ArrayBuffer {
 function isCapacityError(error: unknown) {
   const message = error instanceof Error ? error.message : String(error);
   return (
-    message.includes("3040") || message.toLowerCase().includes("capacity temporarily exceeded")
+    message.includes("3040") ||
+    message.toLowerCase().includes("capacity temporarily exceeded") ||
+    message.toLowerCase().includes("out of capacity")
   );
 }
 async function rawAudioResponse(result: unknown): Promise<Response | null> {
@@ -235,10 +237,36 @@ async function cloudflareAI(request: Request, env: ServerEnv): Promise<Response 
   try {
     if (capability === "speech-to-text") {
       if (!body.audioBase64) return jsonError("Audio is required for speech recognition.", 400);
-      const audio = fromBase64(body.audioBase64);
-      if (!audio.byteLength) return jsonError("The recorded audio was empty.", 400);
-      const result = await env.AI.run("@cf/openai/whisper-large-v3-turbo", audio);
-      return Response.json(result, { headers: { "cache-control": "no-store" } });
+      const audio = body.audioBase64.trim();
+      if (!audio) return jsonError("The recorded audio was empty.", 400);
+      const input = {
+        audio,
+        task: "transcribe",
+        ...(body.language && body.language !== "Auto" ? { language: body.language } : {}),
+        vad_filter: true,
+      };
+      let result: unknown;
+      try {
+        result = await env.AI.run("@cf/openai/whisper-large-v3-turbo", input);
+      } catch (primaryError) {
+        console.warn("Whisper Turbo failed; trying standard Whisper", primaryError);
+        try {
+          result = await env.AI.run("@cf/openai/whisper", audio);
+        } catch (secondaryError) {
+          console.warn("Standard Whisper failed", secondaryError);
+          return jsonError(
+            `Speech recognition temporarily unavailable. ${
+              isCapacityError(primaryError) || isCapacityError(secondaryError)
+                ? "The AI service is at capacity."
+                : "The audio request was rejected."
+            }`,
+            503,
+          );
+        }
+      }
+      const text = chatText(result);
+      if (!text) return jsonError("Whisper returned no usable transcription.", 502);
+      return Response.json({ text, transcription: text }, { headers: { "cache-control": "no-store" } });
     }
     if (capability === "image") {
       const form = new FormData();
