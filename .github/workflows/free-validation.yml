@@ -12,6 +12,7 @@ permissions:
 jobs:
   validate:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -20,12 +21,10 @@ jobs:
         with:
           node-version: 24
           cache: npm
-      - name: Install
-        run: npm install
+      - name: Install locked dependencies
+        run: npm ci
       - name: Type-check
         run: npx tsc --noEmit
-      - name: Normalize formatting
-        run: npx prettier --write .
       - name: Format check
         run: npx prettier --check .
       - name: Lint
