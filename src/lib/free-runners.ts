@@ -142,6 +142,16 @@ export const FREE_RUNNERS: FreeRunner[] = [
     priority: 300,
   },
   {
+    id: "hf-openai-whisper",
+    name: "Hugging Face OpenAI Whisper",
+    kind: "public",
+    description: "Independent Whisper speech-recognition fallback when Cloudflare ASR is unavailable.",
+    capabilities: ["speech-to-text", "transcription", "asr"],
+    url: "https://huggingface.co/spaces/openai/whisper",
+    notes: "Uses the public Gradio Whisper Space; subject to Space availability/rate limits.",
+    priority: 180,
+  },
+  {
     id: "hf-moss-tts-15",
     name: "MOSS-TTS v1.5",
     kind: "public",
