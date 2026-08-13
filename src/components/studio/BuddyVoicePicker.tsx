@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Mic2, Play, Trash2, UserRound, Volume2 } from "lucide-react";
-import { runStudioJob } from "@/lib/studio-runtime";
+import { artifactText, runStudioJob } from "@/lib/studio-runtime";
 import {
   BUDDY_VOICE_PRESETS,
   clearBuddyVoiceClone,
@@ -15,11 +15,7 @@ export function BuddyVoicePicker() {
   const [profile, setProfile] = useState(getBuddyVoiceProfile());
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState("Choose Buddy's voice first. You can change it anytime.");
-  useEffect(() => {
-    const onStorage = () => setProfile(getBuddyVoiceProfile());
-    window.addEventListener("storage", onStorage);
-    return () => window.removeEventListener("storage", onStorage);
-  }, []);
+
   const update = (patch: Partial<typeof profile>) => {
     const next = { ...profile, ...patch };
     setProfile(next);
@@ -30,6 +26,7 @@ export function BuddyVoicePicker() {
         : `${next.speaker} is selected for Buddy.`,
     );
   };
+
   const uploadClone = async (file: File) => {
     if (!file.type.startsWith("audio/")) return setStatus("Choose an audio file.");
     if (file.size > 3_500_000)
@@ -46,15 +43,56 @@ export function BuddyVoicePicker() {
       });
       if (!Number.isFinite(duration) || duration < 2 || duration > 30)
         throw new Error("Use a clear voice sample between 2 and 30 seconds.");
+
       await saveBuddyVoiceSample(file);
-      update({ mode: "clone", referenceDataUrl: dataUrl, referenceName: file.name });
-      setStatus("Voice sample saved. Testing the clone route is available from Preview.");
+
+      // Get the exact words from the reference recording when possible. Qwen's
+      // ICL clone path is higher quality than speaker-vector-only cloning.
+      let referenceTranscript = "";
+      try {
+        const stt = await runStudioJob("speech-to-text", { audio: file }, () => undefined);
+        referenceTranscript = artifactText(stt.value).trim();
+      } catch {
+        // x-vector-only remains available when transcription is unavailable.
+      }
+
+      update({
+        mode: "clone",
+        referenceDataUrl: dataUrl,
+        referenceName: file.name,
+        referenceTranscript,
+      });
+
+      // A saved profile is not considered ready until the actual clone engine
+      // returns playable audio. This prevents a UI-only "saved" state.
+      const testText = "Hi. I'm Buddy, and this is my voice from Little Red's Big Studio.";
+      const result = await runStudioJob(
+        "tts",
+        { text: testText, target_text: testText, language: "English" },
+        () => undefined,
+      );
+      if (!result.url) throw new Error("The clone engine returned no playable audio.");
+
+      const testAudio = new Audio(result.url);
+      await testAudio.play();
+      setStatus(
+        referenceTranscript
+          ? "Your voice was cloned and tested successfully. Buddy will use it now."
+          : "Your voice was cloned and tested successfully. Buddy will use it now. A transcript can improve clone quality further.",
+      );
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Voice sample could not be saved.");
+      await clearBuddyVoiceClone();
+      setProfile(getBuddyVoiceProfile());
+      setStatus(
+        error instanceof Error
+          ? `I couldn't create the voice from that sample yet. ${error.message}`
+          : "I couldn't create the voice from that sample yet. Try a clearer 5–15 second recording.",
+      );
     } finally {
       setBusy(false);
     }
   };
+
   const browserPreview = (text: string) => {
     if (!("speechSynthesis" in window))
       throw new Error("This browser does not provide speech playback.");
@@ -72,6 +110,7 @@ export function BuddyVoicePicker() {
     speechSynthesis.cancel();
     speechSynthesis.speak(u);
   };
+
   const preview = async () => {
     setBusy(true);
     setStatus("Testing Buddy's selected voice…");
@@ -83,28 +122,36 @@ export function BuddyVoicePicker() {
         target_text: text,
         language: current.language,
       };
-      if (current.mode === "clone" && current.referenceDataUrl)
-        input.referenceAudio = await (await fetch(current.referenceDataUrl)).blob();
-      else input.speaker = current.speaker;
+      if (current.mode === "clone") {
+        const result = await runStudioJob("tts", input, () => undefined);
+        if (!result.url) throw new Error("The saved clone returned no playable audio.");
+        const audio = new Audio(result.url);
+        await audio.play();
+        setStatus("Buddy's cloned voice is working.");
+        return;
+      }
+
+      input.speaker = current.speaker;
       try {
         const result = await runStudioJob("tts", input, () => undefined);
         if (result.url) {
           const audio = new Audio(result.url);
           await audio.play();
-          setStatus("Buddy's selected voice is working.");
+          setStatus(`${current.speaker} is working through Qwen3-TTS.`);
           return;
         }
       } catch {
-        /* use browser fallback */
+        /* use browser fallback only for preset preview */
       }
       browserPreview(text);
-      setStatus("Remote voice engine unavailable; device voice fallback is playing.");
+      setStatus("Qwen3-TTS is temporarily unavailable; device voice fallback is playing.");
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Voice preview could not be played.");
     } finally {
       setBusy(false);
     }
   };
+
   return (
     <div className="rounded-2xl border border-primary/30 bg-primary/5 p-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -121,6 +168,7 @@ export function BuddyVoicePicker() {
           <Play className="size-3.5" /> Test voice
         </StudioButton>
       </div>
+
       <div className="mt-3 grid grid-cols-2 gap-2">
         <button
           type="button"
@@ -145,6 +193,7 @@ export function BuddyVoicePicker() {
           />
         </label>
       </div>
+
       {profile.mode === "preset" ? (
         <select
           value={profile.speaker}
@@ -173,6 +222,7 @@ export function BuddyVoicePicker() {
           </button>
         </div>
       )}
+
       <p className="mt-2 text-[10px] text-muted-foreground" aria-live="polite">
         {busy ? "Working… " : ""}
         {status}
