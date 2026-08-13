@@ -1,0 +1,48 @@
+name: Security & Quality Gate
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  actions-security:
+    name: GitHub Actions security (zizmor)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Run zizmor
+        uses: zizmorcore/zizmor-action@v0.2.2
+        with:
+          persona: pedantic
+          min-severity: medium
+
+  application-quality:
+    name: Application quality
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci
+      - name: TypeScript
+        run: npx tsc --noEmit
+      - name: Prettier check
+        run: npx prettier --check .
+      - name: ESLint
+        run: npm run lint
+      - name: Dependency audit
+        run: npm audit --audit-level=high
+      - name: Production build
+        run: npm run build
