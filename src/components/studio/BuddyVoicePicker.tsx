@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Mic2, Play, Trash2, UserRound, Volume2, ExternalLink } from "lucide-react";
+import { Mic2, Play, Trash2, UserRound, Volume2 } from "lucide-react";
 import { artifactText, runStudioJob } from "@/lib/studio-runtime";
 import {
   BUDDY_MOODS,
@@ -15,8 +15,6 @@ import {
 import { StudioButton } from "./ui";
 
 const CLONE_TEXT = "Hi. I'm Buddy, and this is my voice from Little Red's Big Studio.";
-const GPU_LAB_URL =
-  "https://colab.research.google.com/github/GiggleLootCoin/little-reds-big-studio-f36b7ec4/blob/main/notebooks/Buddy_RVC_GPU_Lab_Android.ipynb";
 
 export function BuddyVoicePicker() {
   const [profile, setProfile] = useState(getBuddyVoiceProfile());
@@ -252,16 +250,6 @@ export function BuddyVoicePicker() {
           </select>
         </label>
       </div>
-      {profile.mode === "clone" && (
-        <a
-          href={GPU_LAB_URL}
-          target="_blank"
-          rel="noreferrer"
-          className="mt-2 flex items-center justify-center gap-2 rounded-xl border border-primary/30 bg-primary/10 px-3 py-2 text-[11px] font-bold text-primary"
-        >
-          <ExternalLink className="size-3.5" /> Build persistent Buddy RVC voice — free GPU Lab
-        </a>
-      )}
       <p className="mt-2 text-[10px] text-muted-foreground" aria-live="polite">
         {busy ? "Working… " : ""}
         {status}
