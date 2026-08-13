@@ -23,6 +23,7 @@ jobs:
         run: |
           git fetch origin 446d6dacd21053b4e5cdd7e5fac0eb2a2602c9f4 --depth=1
           git checkout 446d6dacd21053b4e5cdd7e5fac0eb2a2602c9f4 -- src/lib/studio-runtime.ts
+          sed -i 's/let payload: Record<string, unknown> =/const payload: Record<string, unknown> =/' src/lib/studio-runtime.ts
       - name: Format voice integration
         run: |
           npm install --ignore-scripts --legacy-peer-deps
