@@ -12,13 +12,13 @@ export const BUDDY_VOICE_KEY = "lrbgs-buddy-voice-v1";
 export const BUDDY_VOICE_PRESETS = [
   { id: "Ryan", label: "Ryan", note: "English • dynamic, rhythmic" },
   { id: "Aiden", label: "Aiden", note: "English • sunny, clear American" },
-  { id: "Vivian", label: "Vivian", note: "English • bright, slightly edgy" },
-  { id: "Serena", label: "Serena", note: "English • warm, gentle" },
-  { id: "Uncle_Fu", label: "Uncle Fu", note: "English • low, mellow" },
-  { id: "Dylan", label: "Dylan", note: "English • clear, youthful" },
-  { id: "Eric", label: "Eric", note: "English • lively, slightly husky" },
-  { id: "Ono_Anna", label: "Ono Anna", note: "English • playful, light" },
-  { id: "Sohee", label: "Sohee", note: "English • warm, emotional" },
+  { id: "Vivian", label: "Vivian", note: "Chinese • bright, slightly edgy" },
+  { id: "Serena", label: "Serena", note: "Chinese • warm, gentle" },
+  { id: "Uncle_Fu", label: "Uncle Fu", note: "Chinese • low, mellow" },
+  { id: "Dylan", label: "Dylan", note: "Chinese • clear, youthful" },
+  { id: "Eric", label: "Eric", note: "Chinese • lively, husky" },
+  { id: "Ono_Anna", label: "Ono Anna", note: "Japanese • playful, light" },
+  { id: "Sohee", label: "Sohee", note: "Korean • warm, emotional" },
 ] as const;
 
 const DEFAULT_PROFILE: BuddyVoiceProfile = { mode: "preset", speaker: "Ryan", language: "English" };
@@ -153,9 +153,7 @@ function legacyProfile(): Partial<BuddyVoiceProfile> | null {
 export function getBuddyVoiceProfile(): BuddyVoiceProfile {
   if (typeof window === "undefined") return DEFAULT_PROFILE;
   try {
-    const parsed = JSON.parse(
-      localStorage.getItem(BUDDY_VOICE_KEY) || "null",
-    ) as Partial<BuddyVoiceProfile> | null;
+    const parsed = JSON.parse(localStorage.getItem(BUDDY_VOICE_KEY) || "null") as Partial<BuddyVoiceProfile> | null;
     const selected = parsed ?? legacyProfile();
     return {
       ...DEFAULT_PROFILE,
@@ -190,4 +188,23 @@ export async function fileToVoiceDataUrl(file: File): Promise<string> {
     reader.onerror = () => reject(reader.error || new Error("Could not read the voice sample."));
     reader.readAsDataURL(file);
   });
+}
+
+/**
+ * Never let the browser's generic OS voice masquerade as a Studio voice.
+ * Buddy speech must come from a verified engine artifact. The existing live-chat
+ * component has a legacy browser fallback; make that fallback fail loudly rather
+ * than silently changing Buddy's identity/voice.
+ */
+if (typeof window !== "undefined" && "speechSynthesis" in window) {
+  const synth = window.speechSynthesis;
+  const originalSpeak = synth.speak.bind(synth);
+  if (!(synth as SpeechSynthesis & { __lrbgsGuarded?: boolean }).__lrbgsGuarded) {
+    const guarded = synth as SpeechSynthesis & { __lrbgsGuarded?: boolean };
+    guarded.__lrbgsGuarded = true;
+    synth.speak = () => {
+      throw new Error("Buddy's verified voice renderer is unavailable; generic device speech is disabled.");
+    };
+    void originalSpeak;
+  }
 }
