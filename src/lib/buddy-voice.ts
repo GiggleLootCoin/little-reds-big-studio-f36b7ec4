@@ -3,6 +3,8 @@ export type BuddyVoiceProfile = {
   mode: BuddyVoiceMode;
   speaker: string;
   language: string;
+  mood?: string;
+  tone?: string;
   referenceDataUrl?: string;
   referenceName?: string;
   referenceTranscript?: string;
@@ -10,18 +12,47 @@ export type BuddyVoiceProfile = {
 
 export const BUDDY_VOICE_KEY = "lrbgs-buddy-voice-v1";
 export const BUDDY_VOICE_PRESETS = [
-  { id: "Ryan", label: "Ryan", note: "English • dynamic, rhythmic" },
-  { id: "Aiden", label: "Aiden", note: "English • sunny, clear American" },
-  { id: "Vivian", label: "Vivian", note: "Chinese • bright, slightly edgy" },
-  { id: "Serena", label: "Serena", note: "Chinese • warm, gentle" },
-  { id: "Uncle_Fu", label: "Uncle Fu", note: "Chinese • low, mellow" },
-  { id: "Dylan", label: "Dylan", note: "Chinese • clear, youthful" },
-  { id: "Eric", label: "Eric", note: "Chinese • lively, husky" },
-  { id: "Ono_Anna", label: "Ono Anna", note: "Japanese • playful, light" },
-  { id: "Sohee", label: "Sohee", note: "Korean • warm, emotional" },
+  { id: "Ryan", label: "Jules", note: "English • bright, rhythmic, easygoing" },
+  { id: "Aiden", label: "Sunny", note: "English • clear, youthful, upbeat" },
+  { id: "Vivian", label: "Nova", note: "Multilingual • bright, crisp, expressive" },
+  { id: "Serena", label: "Sage", note: "Multilingual • warm, gentle, reassuring" },
+  { id: "Uncle_Fu", label: "Marlow", note: "Multilingual • low, mellow, grounded" },
+  { id: "Dylan", label: "Skye", note: "Multilingual • clear, youthful, lively" },
+  { id: "Eric", label: "Rook", note: "Multilingual • lively, husky, characterful" },
+  { id: "Ono_Anna", label: "Pippa", note: "Japanese • playful, light, animated" },
+  { id: "Sohee", label: "Mina", note: "Korean • warm, emotional, intimate" },
 ] as const;
 
-const DEFAULT_PROFILE: BuddyVoiceProfile = { mode: "preset", speaker: "Ryan", language: "English" };
+export const BUDDY_MOODS = [
+  { id: "natural", label: "Natural", note: "Easy, human, unforced" },
+  { id: "warm", label: "Warm", note: "Cosy and personable" },
+  { id: "calm", label: "Calm", note: "Steady and soothing" },
+  { id: "playful", label: "Playful", note: "Light, cheeky and fun" },
+  { id: "energetic", label: "Energetic", note: "Bright and lively" },
+  { id: "reassuring", label: "Reassuring", note: "Patient and comforting" },
+  { id: "excited", label: "Excited", note: "Genuinely enthusiastic" },
+  { id: "cinematic", label: "Cinematic", note: "Expressive and dramatic" },
+  { id: "serious", label: "Serious", note: "Focused and composed" },
+] as const;
+
+export const BUDDY_TONES = [
+  { id: "conversational", label: "Conversational", note: "Like a real back-and-forth" },
+  { id: "friendly", label: "Friendly", note: "Open and approachable" },
+  { id: "confident", label: "Confident", note: "Clear and assured" },
+  { id: "empathetic", label: "Empathetic", note: "Attentive and understanding" },
+  { id: "witty", label: "Witty", note: "Dry humour when it fits" },
+  { id: "direct", label: "Direct", note: "Straight to the useful bit" },
+  { id: "gentle", label: "Gentle", note: "Soft and considerate" },
+  { id: "professional", label: "Professional", note: "Polished and precise" },
+] as const;
+
+const DEFAULT_PROFILE: BuddyVoiceProfile = {
+  mode: "preset",
+  speaker: "Ryan",
+  language: "English",
+  mood: "natural",
+  tone: "conversational",
+};
 const DB_NAME = "little-reds-big-studio";
 const STORE = "voice-profile";
 const SAMPLE_KEY = "buddy-voice-sample";
@@ -139,6 +170,8 @@ function legacyProfile(): Partial<BuddyVoiceProfile> | null {
           mode: item.mode === "clone" ? "clone" : "preset",
           speaker: typeof item.speaker === "string" ? item.speaker : undefined,
           language: typeof item.language === "string" ? item.language : undefined,
+          mood: typeof item.mood === "string" ? item.mood : undefined,
+          tone: typeof item.tone === "string" ? item.tone : undefined,
           referenceTranscript:
             typeof item.referenceTranscript === "string" ? item.referenceTranscript : undefined,
         };
@@ -153,9 +186,7 @@ function legacyProfile(): Partial<BuddyVoiceProfile> | null {
 export function getBuddyVoiceProfile(): BuddyVoiceProfile {
   if (typeof window === "undefined") return DEFAULT_PROFILE;
   try {
-    const parsed = JSON.parse(
-      localStorage.getItem(BUDDY_VOICE_KEY) || "null",
-    ) as Partial<BuddyVoiceProfile> | null;
+    const parsed = JSON.parse(localStorage.getItem(BUDDY_VOICE_KEY) || "null") as Partial<BuddyVoiceProfile> | null;
     const selected = parsed ?? legacyProfile();
     return {
       ...DEFAULT_PROFILE,
@@ -163,6 +194,8 @@ export function getBuddyVoiceProfile(): BuddyVoiceProfile {
       mode: selected?.mode === "clone" ? "clone" : "preset",
       speaker: selected?.speaker || DEFAULT_PROFILE.speaker,
       language: selected?.language || DEFAULT_PROFILE.language,
+      mood: selected?.mood || DEFAULT_PROFILE.mood,
+      tone: selected?.tone || DEFAULT_PROFILE.tone,
     };
   } catch {
     return DEFAULT_PROFILE;
@@ -180,6 +213,8 @@ export async function clearBuddyVoiceClone() {
     mode: "preset",
     speaker: profile.speaker || "Ryan",
     language: profile.language || "English",
+    mood: profile.mood || "natural",
+    tone: profile.tone || "conversational",
   });
 }
 
@@ -192,12 +227,7 @@ export async function fileToVoiceDataUrl(file: File): Promise<string> {
   });
 }
 
-/**
- * Never let the browser's generic OS voice masquerade as a Studio voice.
- * Buddy speech must come from a verified engine artifact. The existing live-chat
- * component has a legacy browser fallback; make that fallback fail loudly rather
- * than silently changing Buddy's identity/voice.
- */
+/** Generic device speech must never masquerade as a Buddy voice. */
 if (typeof window !== "undefined" && "speechSynthesis" in window) {
   const synth = window.speechSynthesis;
   const originalSpeak = synth.speak.bind(synth);
@@ -205,9 +235,7 @@ if (typeof window !== "undefined" && "speechSynthesis" in window) {
     const guarded = synth as SpeechSynthesis & { __lrbgsGuarded?: boolean };
     guarded.__lrbgsGuarded = true;
     synth.speak = () => {
-      throw new Error(
-        "Buddy's verified voice renderer is unavailable; generic device speech is disabled.",
-      );
+      throw new Error("Buddy's verified voice renderer is unavailable; device speech is disabled.");
     };
     void originalSpeak;
   }
