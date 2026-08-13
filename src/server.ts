@@ -266,7 +266,10 @@ async function cloudflareAI(request: Request, env: ServerEnv): Promise<Response 
       }
       const text = chatText(result);
       if (!text) return jsonError("Whisper returned no usable transcription.", 502);
-      return Response.json({ text, transcription: text }, { headers: { "cache-control": "no-store" } });
+      return Response.json(
+        { text, transcription: text },
+        { headers: { "cache-control": "no-store" } },
+      );
     }
     if (capability === "image") {
       const form = new FormData();
