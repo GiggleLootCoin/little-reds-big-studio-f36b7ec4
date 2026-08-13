@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Mic2, Play, Trash2, UserRound, Volume2 } from "lucide-react";
+import { Mic2, Play, Trash2, UserRound, Volume2, ExternalLink } from "lucide-react";
 import { artifactText, runStudioJob } from "@/lib/studio-runtime";
 import {
   BUDDY_VOICE_PRESETS,
@@ -13,6 +13,8 @@ import {
 import { StudioButton } from "./ui";
 
 const CLONE_TEXT = "Hi. I'm Buddy, and this is my voice from Little Red's Big Studio.";
+const GPU_LAB_URL =
+  "https://colab.research.google.com/github/GiggleLootCoin/little-reds-big-studio-f36b7ec4/blob/main/notebooks/Buddy_RVC_GPU_Lab_Android.ipynb";
 
 export function BuddyVoicePicker() {
   const [profile, setProfile] = useState(getBuddyVoiceProfile());
@@ -99,13 +101,11 @@ export function BuddyVoicePicker() {
             : "The public voice service is temporarily unavailable.";
         const transient =
           /quota|zerogpu|capacity|temporarily|no endpoint|metadata|rate limit|429/i.test(message);
-        if (transient) {
-          setStatus(
-            "Your voice sample is safely saved on this device. The free clone service is temporarily unavailable; Test voice or Buddy will retry it later.",
-          );
-        } else {
-          setStatus(`Your voice sample is saved, but cloning is unavailable right now. ${message}`);
-        }
+        setStatus(
+          transient
+            ? "Your voice sample is safely saved on this device. Free GPU capacity is temporarily unavailable. Use the Buddy RVC GPU Lab below to build the persistent voice without relying on ZeroGPU."
+            : `Your voice sample is saved, but cloning is unavailable right now. ${message}`,
+        );
       }
     } catch (error) {
       setStatus(
@@ -136,7 +136,7 @@ export function BuddyVoicePicker() {
       if (current.mode === "clone") {
         const sample = await getBuddyVoiceSample();
         if (!sample)
-          throw new Error("Your saved voice sample is unavailable. Please add it again.");
+          throw new Error("Your saved Buddy voice sample is unavailable. Please add it again.");
         const url = await runClone(sample, current);
         const audio = new Audio(url);
         await audio.play();
@@ -165,7 +165,7 @@ export function BuddyVoicePicker() {
       }
       browserPreview(CLONE_TEXT);
       setStatus(
-        "The free voice engine is temporarily unavailable; your device voice is playing instead.",
+        "The free preset voice engine is temporarily unavailable; your device voice is playing instead.",
       );
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Voice preview could not be played.");
@@ -241,6 +241,16 @@ export function BuddyVoicePicker() {
             <Trash2 className="size-3.5" />
           </button>
         </div>
+      )}
+      {profile.mode === "clone" && (
+        <a
+          href={GPU_LAB_URL}
+          target="_blank"
+          rel="noreferrer"
+          className="mt-2 flex items-center justify-center gap-2 rounded-xl border border-primary/30 bg-primary/10 px-3 py-2 text-[11px] font-bold text-primary"
+        >
+          <ExternalLink className="size-3.5" /> Build persistent Buddy RVC voice — free GPU Lab
+        </a>
       )}
       <p className="mt-2 text-[10px] text-muted-foreground" aria-live="polite">
         {busy ? "Working… " : ""}
