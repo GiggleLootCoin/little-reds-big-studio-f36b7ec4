@@ -7,16 +7,21 @@ export type MicrophoneInfo = {
   isDefault: boolean;
 };
 
-/**
- * Android browsers sometimes expose SpeechRecognition separately from the
- * browser microphone permission path. Buddy's hands-free mode needs the same
- * physical phone input that MediaRecorder uses, so on Android we deliberately
- * use getUserMedia + MediaRecorder instead of the browser recognition service.
- * This avoids the common "works only when a headset is plugged in" failure.
- */
+/** Android: force Buddy through the real getUserMedia phone-mic path. */
 export function preferDeviceMicrophone(): boolean {
-  if (typeof navigator === "undefined") return false;
-  return /Android/i.test(navigator.userAgent);
+  return typeof navigator !== "undefined" && /Android/i.test(navigator.userAgent);
+}
+
+if (typeof window !== "undefined" && preferDeviceMicrophone()) {
+  const androidWindow = window as Window & {
+    SpeechRecognition?: unknown;
+    webkitSpeechRecognition?: unknown;
+  };
+  // Android's native SpeechRecognition can select a headset/communication
+  // input independently of getUserMedia. Buddy should use the OS-selected
+  // phone microphone instead, then send the captured audio to Studio STT.
+  androidWindow.SpeechRecognition = undefined;
+  androidWindow.webkitSpeechRecognition = undefined;
 }
 
 export async function listMicrophones(): Promise<MicrophoneInfo[]> {
@@ -49,9 +54,6 @@ export async function requestMicrophone(deviceId?: string): Promise<MediaStream>
     autoGainControl: true,
     channelCount: 1,
   };
-
-  // Never force a physical device when Android has not exposed one yet. The
-  // empty/default constraint asks the OS for its current built-in input.
   const constraints: MediaTrackConstraints = { ...base };
   if (deviceId && deviceId !== "default") constraints.deviceId = { exact: deviceId };
 
