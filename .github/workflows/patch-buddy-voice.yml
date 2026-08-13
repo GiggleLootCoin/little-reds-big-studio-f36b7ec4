@@ -1,0 +1,36 @@
+name: Patch Buddy Voice
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    if: github.actor != 'github-actions[bot]'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch Buddy
+        run: python3 scripts/patch-buddy-voice.py
+      - name: Commit and validate
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/components/studio/BuddyLiveChat.tsx
+          git diff --cached --quiet || git commit -m 'feat: connect Buddy voice selection to live TTS'
+          git push
+          npm install
+          npm run lint
+          npm run build
+      - name: Cleanup
+        if: always()
+        run: |
+          rm -f scripts/patch-buddy-voice.py .github/workflows/patch-buddy-voice.yml .github/buddy-voice-apply-trigger.txt
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -u scripts/patch-buddy-voice.py .github/workflows/patch-buddy-voice.yml .github/buddy-voice-apply-trigger.txt
+          git diff --cached --quiet || git commit -m 'chore: remove temporary voice patch tooling'
+          git push
