@@ -95,8 +95,12 @@ export function BuddyVoicePicker() {
         await runClone(savedSample);
         setStatus("Your voice was cloned successfully. Buddy will use it now.");
       } catch (error) {
-        const message = error instanceof Error ? error.message : "The public voice service is temporarily unavailable.";
-        const transient = /quota|zerogpu|capacity|temporarily|no endpoint|metadata|rate limit|429/i.test(message);
+        const message =
+          error instanceof Error
+            ? error.message
+            : "The public voice service is temporarily unavailable.";
+        const transient =
+          /quota|zerogpu|capacity|temporarily|no endpoint|metadata|rate limit|429/i.test(message);
         setStatus(
           transient
             ? "Your voice sample is safely saved on this device. The free renderer is temporarily unavailable; Buddy will keep the sample ready."
@@ -142,7 +146,11 @@ export function BuddyVoicePicker() {
       if (!result.url) throw new Error("The voice renderer returned no playable audio.");
       const audio = new Audio(result.url);
       await audio.play();
-      setStatus(current.mode === "clone" ? "Buddy's cloned voice is working." : "Buddy's selected voice is working.");
+      setStatus(
+        current.mode === "clone"
+          ? "Buddy's cloned voice is working."
+          : "Buddy's selected voice is working.",
+      );
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Voice preview could not be played.");
     } finally {
@@ -157,7 +165,9 @@ export function BuddyVoicePicker() {
           <Volume2 className="size-4 text-primary" />
           <div>
             <p className="text-xs font-bold uppercase tracking-[0.14em]">1. Choose Buddy's voice</p>
-            <p className="text-[10px] text-muted-foreground">Pick a voice now. Change it whenever you want.</p>
+            <p className="text-[10px] text-muted-foreground">
+              Pick a voice now. Change it whenever you want.
+            </p>
           </div>
         </div>
         <StudioButton variant="ghost" onClick={() => void preview()} disabled={busy}>
@@ -197,7 +207,9 @@ export function BuddyVoicePicker() {
           className="mt-2 w-full rounded-xl border border-border bg-background/70 px-3 py-2 text-xs"
         >
           {BUDDY_VOICE_PRESETS.map((voice) => (
-            <option key={voice.id} value={voice.id}>{voice.label} — {voice.note}</option>
+            <option key={voice.id} value={voice.id}>
+              {voice.label} — {voice.note}
+            </option>
           ))}
         </select>
       ) : (
@@ -225,7 +237,11 @@ export function BuddyVoicePicker() {
             onChange={(event) => update({ mood: event.target.value })}
             className="mt-1 w-full rounded-xl border border-border bg-background/70 px-3 py-2 text-xs font-normal text-foreground"
           >
-            {BUDDY_MOODS.map((item) => <option key={item.id} value={item.id}>{item.label} — {item.note}</option>)}
+            {BUDDY_MOODS.map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.label} — {item.note}
+              </option>
+            ))}
           </select>
         </label>
         <label className="text-[10px] font-semibold text-muted-foreground">
@@ -235,7 +251,11 @@ export function BuddyVoicePicker() {
             onChange={(event) => update({ tone: event.target.value })}
             className="mt-1 w-full rounded-xl border border-border bg-background/70 px-3 py-2 text-xs font-normal text-foreground"
           >
-            {BUDDY_TONES.map((item) => <option key={item.id} value={item.id}>{item.label} — {item.note}</option>)}
+            {BUDDY_TONES.map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.label} — {item.note}
+              </option>
+            ))}
           </select>
         </label>
       </div>
@@ -251,9 +271,12 @@ export function BuddyVoicePicker() {
         </a>
       )}
       <p className="mt-2 text-[10px] text-muted-foreground" aria-live="polite">
-        {busy ? "Working… " : ""}{status}
+        {busy ? "Working… " : ""}
+        {status}
       </p>
-      <p className="mt-1 text-[9px] text-muted-foreground">Only upload a voice you own or have permission to use.</p>
+      <p className="mt-1 text-[9px] text-muted-foreground">
+        Only upload a voice you own or have permission to use.
+      </p>
     </div>
   );
 }

@@ -186,7 +186,9 @@ function legacyProfile(): Partial<BuddyVoiceProfile> | null {
 export function getBuddyVoiceProfile(): BuddyVoiceProfile {
   if (typeof window === "undefined") return DEFAULT_PROFILE;
   try {
-    const parsed = JSON.parse(localStorage.getItem(BUDDY_VOICE_KEY) || "null") as Partial<BuddyVoiceProfile> | null;
+    const parsed = JSON.parse(
+      localStorage.getItem(BUDDY_VOICE_KEY) || "null",
+    ) as Partial<BuddyVoiceProfile> | null;
     const selected = parsed ?? legacyProfile();
     return {
       ...DEFAULT_PROFILE,
