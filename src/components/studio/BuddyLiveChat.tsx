@@ -304,12 +304,16 @@ export function BuddyLiveChat() {
 
   async function beginCapture(mode: Mode) {
     if (busyRef.current || speakingRef.current || recording) return;
+
+    // Hands-free prefers the browser's native speech path. On Android this lets
+    // the browser use the phone's built-in microphone without requiring a
+    // plugged-in headset and without depending on a remote STT provider.
+    if (mode === "live" && startBrowserRecognition("live")) return;
+
     const stream = streamRef.current?.active ? streamRef.current : await openMicrophone();
     if (!stream) return;
     if (mode === "live") {
-      // Hands-free deliberately uses a real microphone recording segment and the
-      // server-side Whisper route. This avoids Android/Web Speech implementations
-      // that appear to start but never deliver a usable transcript.
+      // Server STT remains the fallback on browsers without SpeechRecognition.
       startMediaRecorder("live", stream);
       window.setTimeout(() => {
         if (liveRef.current && recorderRef.current?.state === "recording") {
@@ -488,8 +492,16 @@ export function BuddyLiveChat() {
     }
     setLive(true);
     liveRef.current = true;
-    setStatus("Requesting your phone microphone…");
+    setStatus("Starting hands-free Buddy…");
     window.speechSynthesis?.resume();
+
+    // Do not require getUserMedia/MediaRecorder when native speech recognition
+    // is available. This is the direct phone-microphone path on supported Android browsers.
+    if (startBrowserRecognition("live")) {
+      setStatus("Microphone ready. Buddy is listening…");
+      return;
+    }
+
     const stream = await openMicrophone();
     if (!stream) {
       liveRef.current = false;
@@ -498,10 +510,10 @@ export function BuddyLiveChat() {
     }
     setStatus("Microphone ready. Buddy is listening…");
     await beginCapture("live");
-    if (!recorderRef.current) {
+    if (!recorderRef.current && !recognitionRef.current) {
       liveRef.current = false;
       setLive(false);
-      setStatus("Buddy could not start the phone microphone recorder. Try again.");
+      setStatus("Buddy could not start hands-free microphone input. Try again.");
     }
   }
   function sendTyped() {
@@ -528,216 +540,56 @@ export function BuddyLiveChat() {
   }
 
   return (
-    <Panel
-      eyebrow="BUDDY • LIVE"
-      title="Call Buddy"
-      icon={<Sparkles className="size-5" />}
-      defaultOpen
-    >
+    <Panel eyebrow="BUDDY • LIVE" title="Call Buddy" icon={<Sparkles className="size-5" />} defaultOpen>
       <div className="relative overflow-hidden rounded-[1.7rem] border border-primary/30 bg-[radial-gradient(circle_at_50%_15%,oklch(0.35_0.14_25_/_0.65),transparent_48%),linear-gradient(145deg,oklch(0.07_0.02_20),oklch(0.15_0.04_20))] p-5 shadow-[0_24px_70px_oklch(0_0_0_/_0.42)] sm:p-7">
         <div className="relative flex flex-col items-center text-center">
-          <div
-            className={`relative size-32 rounded-full border border-primary/35 bg-black/35 p-2 shadow-[0_0_50px_oklch(0.58_0.24_26_/_0.25)] sm:size-40 ${live ? "animate-pulse-glow" : ""}`}
-          >
+          <div className={`relative size-32 rounded-full border border-primary/35 bg-black/35 p-2 shadow-[0_0_50px_oklch(0.58_0.24_26_/_0.25)] sm:size-40 ${live ? "animate-pulse-glow" : ""}`}>
             <div className="buddy-aura absolute inset-3 rounded-full bg-primary/25 blur-xl" />
-            <img
-              src={buddyReference}
-              alt="Buddy"
-              className="buddy-character-image relative h-full w-full object-contain"
-            />
+            <img src={buddyReference} alt="Buddy" className="buddy-character-image relative h-full w-full object-contain" />
           </div>
           <div className="mt-4 flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.22em] text-primary">
-            <span
-              className={`size-2 rounded-full ${live ? "animate-pulse bg-primary" : "bg-muted-foreground/50"}`}
-            />
+            <span className={`size-2 rounded-full ${live ? "animate-pulse bg-primary" : "bg-muted-foreground/50"}`} />
             {live ? (recording ? "Listening" : busy ? "Thinking" : "Connected") : "Ready"}
           </div>
-          <h3 className="mt-2 font-display text-xl font-black sm:text-2xl">
-            {live ? "Buddy is with you" : "Talk to Buddy"}
-          </h3>
+          <h3 className="mt-2 font-display text-xl font-black sm:text-2xl">{live ? "Buddy is with you" : "Talk to Buddy"}</h3>
           <p className="mt-1 max-w-md text-xs leading-5 text-muted-foreground">
-            {live
-              ? "Speak naturally. Buddy answers, speaks, and listens again."
-              : "Type, attach files, record a message, or start a hands-free conversation."}
+            {live ? "Speak naturally. Buddy answers, speaks, and listens again." : "Type, attach files, record a message, or start a hands-free conversation."}
           </p>
-          <button
-            type="button"
-            onClick={() => void toggleLive()}
-            className={`mt-5 flex min-h-12 items-center gap-2 rounded-full px-6 py-3 font-display text-sm font-black shadow-xl transition-transform active:scale-95 ${live ? "border border-primary/40 bg-background/70 text-foreground" : "crimson-gloss text-primary-foreground"}`}
-          >
+          <button type="button" onClick={() => void toggleLive()} className={`mt-5 flex min-h-12 items-center gap-2 rounded-full px-6 py-3 font-display text-sm font-black shadow-xl transition-transform active:scale-95 ${live ? "border border-primary/40 bg-background/70 text-foreground" : "crimson-gloss text-primary-foreground"}`}>
             <Phone className="size-4" />
             {live ? "End Buddy Call" : "Call Buddy"}
           </button>
         </div>
         <div className="relative mt-5 grid gap-3 sm:grid-cols-2">
           <div className="rounded-2xl border border-white/10 bg-white/[0.045] p-3">
-            <div className="flex items-center justify-between">
-              <span className="text-[10px] font-bold uppercase tracking-[0.16em] text-muted-foreground">
-                Microphone
-              </span>
-              <Mic className="size-4 text-primary" />
-            </div>
-            <select
-              aria-label="Microphone"
-              value={micId}
-              onChange={(e) => setMicId(e.target.value)}
-              className="mt-2 w-full rounded-xl border border-border/60 bg-background/60 px-3 py-2 text-xs"
-            >
+            <div className="flex items-center justify-between"><span className="text-[10px] font-bold uppercase tracking-[0.16em] text-muted-foreground">Microphone</span><Mic className="size-4 text-primary" /></div>
+            <select aria-label="Microphone" value={micId} onChange={(e) => setMicId(e.target.value)} className="mt-2 w-full rounded-xl border border-border/60 bg-background/60 px-3 py-2 text-xs">
               <option value="">Automatic phone microphone</option>
-              {micOptions.map((mic) => (
-                <option key={mic.id} value={mic.id}>
-                  {mic.label}
-                </option>
-              ))}
+              {micOptions.map((mic) => <option key={mic.id} value={mic.id}>{mic.label}</option>)}
             </select>
           </div>
           <div className="rounded-2xl border border-white/10 bg-white/[0.045] p-3">
-            <div className="flex items-center justify-between">
-              <span className="text-[10px] font-bold uppercase tracking-[0.16em] text-muted-foreground">
-                Voice
-              </span>
-              {muted ? (
-                <VolumeX className="size-4 text-muted-foreground" />
-              ) : (
-                <Volume2 className="size-4 text-primary" />
-              )}
-            </div>
-            <button
-              type="button"
-              onClick={() => setMuted((v) => !v)}
-              className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl border border-border/60 bg-background/60 px-3 py-2 text-xs font-semibold"
-            >
-              {muted ? "Voice muted" : "Voice on"}
-            </button>
+            <div className="flex items-center justify-between"><span className="text-[10px] font-bold uppercase tracking-[0.16em] text-muted-foreground">Voice</span>{muted ? <VolumeX className="size-4 text-muted-foreground" /> : <Volume2 className="size-4 text-primary" />}</div>
+            <button type="button" onClick={() => setMuted((v) => !v)} className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl border border-border/60 bg-background/60 px-3 py-2 text-xs font-semibold">{muted ? "Voice muted" : "Voice on"}</button>
           </div>
         </div>
-        {recording && (
-          <div className="mt-3 flex items-center justify-center gap-2 text-xs text-primary">
-            <span className="size-2 animate-pulse rounded-full bg-primary" />
-            {status}
-          </div>
-        )}
+        {recording && <div className="mt-3 flex items-center justify-center gap-2 text-xs text-primary"><span className="size-2 animate-pulse rounded-full bg-primary" />{status}</div>}
         <div className="mt-5 rounded-2xl border border-border/60 bg-background/55 p-3">
-          {attachments.length > 0 && (
-            <div className="mb-3 flex flex-wrap gap-2">
-              {attachments.map((a) => (
-                <div
-                  key={a.id}
-                  className="relative flex items-center gap-2 rounded-xl border border-primary/20 bg-primary/5 px-2 py-2 text-xs"
-                >
-                  {a.type.startsWith("image/") ? (
-                    <img src={a.url} alt={a.name} className="size-10 rounded-lg object-cover" />
-                  ) : (
-                    <span className="max-w-36 truncate">{a.name}</span>
-                  )}
-                  <button
-                    type="button"
-                    aria-label={`Remove ${a.name}`}
-                    onClick={() => {
-                      revokeBuddyAttachment(a);
-                      setAttachments((items) => items.filter((item) => item.id !== a.id));
-                    }}
-                  >
-                    <X className="size-3.5" />
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
+          {attachments.length > 0 && <div className="mb-3 flex flex-wrap gap-2">{attachments.map((a) => <div key={a.id} className="relative flex items-center gap-2 rounded-xl border border-primary/20 bg-primary/5 px-2 py-2 text-xs">{a.type.startsWith("image/") ? <img src={a.url} alt={a.name} className="size-10 rounded-lg object-cover" /> : <span className="max-w-36 truncate">{a.name}</span>}<button type="button" aria-label={`Remove ${a.name}`} onClick={() => { revokeBuddyAttachment(a); setAttachments((items) => items.filter((item) => item.id !== a.id)); }}><X className="size-3.5" /></button></div>)}</div>}
           <div className="flex gap-2">
-            <input
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  sendTyped();
-                }
-              }}
-              placeholder="Type to Buddy…"
-              className="min-w-0 flex-1 rounded-xl border border-border/60 bg-background/70 px-3 py-3 text-sm outline-none focus:border-primary"
-            />
-            <StudioButton
-              onClick={sendTyped}
-              disabled={busy || (!input.trim() && !attachments.length)}
-            >
-              <Send className="size-4" />
-            </StudioButton>
+            <input value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendTyped(); } }} placeholder="Type to Buddy…" className="min-w-0 flex-1 rounded-xl border border-border/60 bg-background/70 px-3 py-3 text-sm outline-none focus:border-primary" />
+            <StudioButton onClick={sendTyped} disabled={busy || (!input.trim() && !attachments.length)}><Send className="size-4" /></StudioButton>
           </div>
           <div className="mt-3 flex flex-wrap gap-2">
-            <label className="inline-flex min-h-10 cursor-pointer items-center gap-2 rounded-xl border border-border/60 bg-background/60 px-3 py-2 text-xs font-semibold">
-              <Paperclip className="size-4" />
-              Attach
-              <input
-                className="sr-only"
-                type="file"
-                multiple
-                accept={buddyAccept}
-                onChange={(e) => {
-                  addFiles(e.target.files);
-                  e.currentTarget.value = "";
-                }}
-              />
-            </label>
-            <label className="inline-flex min-h-10 cursor-pointer items-center gap-2 rounded-xl border border-border/60 bg-background/60 px-3 py-2 text-xs font-semibold">
-              <ImagePlus className="size-4" />
-              Photo
-              <input
-                className="sr-only"
-                type="file"
-                accept="image/*"
-                capture="environment"
-                onChange={(e) => {
-                  addFiles(e.target.files);
-                  e.currentTarget.value = "";
-                }}
-              />
-            </label>
-            <StudioButton
-              variant="ghost"
-              onClick={() => void beginCapture("record")}
-              disabled={recording || busy}
-            >
-              <Mic className="size-4" />
-              Record → Text
-            </StudioButton>
-            {recording && (
-              <StudioButton variant="ghost" onClick={stopCapture}>
-                <MicOff className="size-4" />
-                Stop
-              </StudioButton>
-            )}
-            {transcript && (
-              <StudioButton variant="ghost" onClick={sendTranscript}>
-                <Send className="size-4" />
-                Send transcript
-              </StudioButton>
-            )}
+            <label className="inline-flex min-h-10 cursor-pointer items-center gap-2 rounded-xl border border-border/60 bg-background/60 px-3 py-2 text-xs font-semibold"><Paperclip className="size-4" />Attach<input className="sr-only" type="file" multiple accept={buddyAccept} onChange={(e) => { addFiles(e.target.files); e.currentTarget.value = ""; }} /></label>
+            <label className="inline-flex min-h-10 cursor-pointer items-center gap-2 rounded-xl border border-border/60 bg-background/60 px-3 py-2 text-xs font-semibold"><ImagePlus className="size-4" />Photo<input className="sr-only" type="file" accept="image/*" capture="environment" onChange={(e) => { addFiles(e.target.files); e.currentTarget.value = ""; }} /></label>
+            <StudioButton variant="ghost" onClick={() => void beginCapture("record")} disabled={recording || busy}><Mic className="size-4" />Record → Text</StudioButton>
+            {recording && <StudioButton variant="ghost" onClick={stopCapture}><MicOff className="size-4" />Stop</StudioButton>}
+            {transcript && <StudioButton variant="ghost" onClick={sendTranscript}><Send className="size-4" />Send transcript</StudioButton>}
           </div>
         </div>
         <div className="mt-4 max-h-72 space-y-2 overflow-auto pr-1">
-          {messages.length === 0 ? (
-            <p className="py-5 text-center text-xs text-muted-foreground">
-              Buddy is ready when you are.
-            </p>
-          ) : (
-            messages.map((message) => (
-              <div
-                key={message.id}
-                className={`rounded-2xl px-4 py-3 text-sm ${message.role === "user" ? "ml-8 bg-primary/10" : "mr-8 bg-muted/60"}`}
-              >
-                <div className="mb-1 text-[9px] font-bold uppercase tracking-[0.15em] text-muted-foreground">
-                  {message.role === "user" ? "You" : "Buddy"}
-                </div>
-                {message.content}
-                {message.attachments?.length ? (
-                  <div className="mt-2 text-[10px] text-muted-foreground">
-                    {message.attachments.map((a) => a.name).join(" • ")}
-                  </div>
-                ) : null}
-              </div>
-            ))
-          )}
+          {messages.length === 0 ? <p className="py-5 text-center text-xs text-muted-foreground">Buddy is ready when you are.</p> : messages.map((message) => <div key={message.id} className={`rounded-2xl px-4 py-3 text-sm ${message.role === "user" ? "ml-8 bg-primary/10" : "mr-8 bg-muted/60"}`}><div className="mb-1 text-[9px] font-bold uppercase tracking-[0.15em] text-muted-foreground">{message.role === "user" ? "You" : "Buddy"}</div>{message.content}{message.attachments?.length ? <div className="mt-2 text-[10px] text-muted-foreground">{message.attachments.map((a) => a.name).join(" • ")}</div> : null}</div>)}
         </div>
         <div className="mt-3 text-center text-[10px] text-muted-foreground">{status}</div>
       </div>
