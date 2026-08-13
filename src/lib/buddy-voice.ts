@@ -1,3 +1,5 @@
+import { Client } from "@gradio/client";
+
 export type BuddyVoiceMode = "preset" | "clone";
 export type BuddyVoiceProfile = {
   mode: BuddyVoiceMode;
@@ -227,6 +229,42 @@ export async function fileToVoiceDataUrl(file: File): Promise<string> {
     reader.onerror = () => reject(reader.error || new Error("Could not read the voice sample."));
     reader.readAsDataURL(file);
   });
+}
+
+function buddyStyleInstruction(profile: BuddyVoiceProfile): string {
+  const mood = profile.mood && profile.mood !== "natural" ? profile.mood : "natural";
+  const tone = profile.tone && profile.tone !== "conversational" ? profile.tone : "conversational";
+  if (mood === "natural" && tone === "conversational") return "";
+  return `Speak naturally with a ${mood} mood and a ${tone} tone. Keep the delivery human, nuanced, and conversational; do not sound exaggerated or robotic.`;
+}
+
+/**
+ * Qwen's CustomVoice endpoint has an explicit optional style-instruction slot.
+ * Keep this adapter here so the rest of Buddy remains provider-agnostic and
+ * users never have to know which renderer is speaking.
+ */
+const guardedClient = Client.prototype as unknown as {
+  predict: (endpoint: string, data?: unknown, ...rest: unknown[]) => Promise<unknown>;
+  __buddyStylePatched?: boolean;
+};
+if (!guardedClient.__buddyStylePatched) {
+  const originalPredict = guardedClient.predict;
+  guardedClient.predict = function (endpoint, data, ...rest) {
+    if (
+      endpoint === "/generate_custom_voice" &&
+      Array.isArray(data) &&
+      data.length >= 5 &&
+      typeof window !== "undefined"
+    ) {
+      const profile = getBuddyVoiceProfile();
+      const instruction = buddyStyleInstruction(profile);
+      const args = [...data];
+      args[3] = instruction;
+      return originalPredict.call(this, endpoint, args, ...rest);
+    }
+    return originalPredict.call(this, endpoint, data, ...rest);
+  };
+  guardedClient.__buddyStylePatched = true;
 }
 
 /** Generic device speech must never masquerade as a Buddy voice. */
