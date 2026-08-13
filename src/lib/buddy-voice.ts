@@ -5,19 +5,20 @@ export type BuddyVoiceProfile = {
   language: string;
   referenceDataUrl?: string;
   referenceName?: string;
+  referenceTranscript?: string;
 };
 
 export const BUDDY_VOICE_KEY = "lrbgs-buddy-voice-v1";
 export const BUDDY_VOICE_PRESETS = [
   { id: "Ryan", label: "Ryan", note: "English • dynamic, rhythmic" },
   { id: "Aiden", label: "Aiden", note: "English • sunny, clear American" },
-  { id: "Vivian", label: "Vivian", note: "Bright, slightly edgy" },
-  { id: "Serena", label: "Serena", note: "Warm, gentle" },
-  { id: "Uncle_Fu", label: "Uncle Fu", note: "Low, mellow" },
-  { id: "Dylan", label: "Dylan", note: "Clear, youthful" },
-  { id: "Eric", label: "Eric", note: "Lively, slightly husky" },
-  { id: "Ono_anna", label: "Ono Anna", note: "Playful, light" },
-  { id: "Sohee", label: "Sohee", note: "Warm, emotional" },
+  { id: "Vivian", label: "Vivian", note: "English • bright, slightly edgy" },
+  { id: "Serena", label: "Serena", note: "English • warm, gentle" },
+  { id: "Uncle_Fu", label: "Uncle Fu", note: "English • low, mellow" },
+  { id: "Dylan", label: "Dylan", note: "English • clear, youthful" },
+  { id: "Eric", label: "Eric", note: "English • lively, slightly husky" },
+  { id: "Ono_Anna", label: "Ono Anna", note: "English • playful, light" },
+  { id: "Sohee", label: "Sohee", note: "English • warm, emotional" },
 ] as const;
 
 const DEFAULT_PROFILE: BuddyVoiceProfile = { mode: "preset", speaker: "Ryan", language: "English" };
