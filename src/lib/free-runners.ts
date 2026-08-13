@@ -66,7 +66,8 @@ export const FREE_RUNNERS: FreeRunner[] = [
     id: "hf-cosyvoice3",
     name: "CosyVoice 3",
     kind: "public",
-    description: "Multilingual zero-shot cloning with expressive instruction control and streaming support.",
+    description:
+      "Multilingual zero-shot cloning with expressive instruction control and streaming support.",
     capabilities: ["tts", "voice-clone", "voice-swap"],
     url: "https://huggingface.co/spaces/FunAudioLLM/Fun-CosyVoice3-0.5B",
     notes:
