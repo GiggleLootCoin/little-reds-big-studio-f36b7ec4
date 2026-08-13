@@ -2,6 +2,8 @@ import { useState } from "react";
 import { Mic2, Play, Trash2, UserRound, Volume2, ExternalLink } from "lucide-react";
 import { artifactText, runStudioJob } from "@/lib/studio-runtime";
 import {
+  BUDDY_MOODS,
+  BUDDY_TONES,
   BUDDY_VOICE_PRESETS,
   clearBuddyVoiceClone,
   fileToVoiceDataUrl,
@@ -28,7 +30,7 @@ export function BuddyVoicePicker() {
     setStatus(
       next.mode === "clone"
         ? "Your saved voice is selected for Buddy."
-        : `${next.speaker} is selected for Buddy.`,
+        : `${BUDDY_VOICE_PRESETS.find((v) => v.id === next.speaker)?.label || next.speaker} is selected for Buddy.`,
     );
   };
 
@@ -43,9 +45,11 @@ export function BuddyVoicePicker() {
         refText: current.referenceTranscript || "",
         target_text: CLONE_TEXT,
         text: CLONE_TEXT,
-        language: current.language || "English",
+        language: current.language || "Auto",
         use_xvector_only: !current.referenceTranscript,
-        model_size: "0.6B",
+        model_size: "1.7B",
+        mood: current.mood,
+        tone: current.tone,
       },
       () => undefined,
     );
@@ -76,7 +80,7 @@ export function BuddyVoicePicker() {
         const stt = await runStudioJob("speech-to-text", { audio: file }, () => undefined);
         referenceTranscript = artifactText(stt.value).trim();
       } catch {
-        // Qwen's x-vector-only path does not require a transcript.
+        // Qwen can still clone in x-vector-only mode when no transcript route is available.
       }
       update({
         mode: "clone",
@@ -89,21 +93,13 @@ export function BuddyVoicePicker() {
 
       try {
         await runClone(savedSample);
-        setStatus(
-          referenceTranscript
-            ? "Your voice was cloned successfully. Buddy will use it now."
-            : "Your voice sample is saved and the clone is ready when the free engine is available.",
-        );
+        setStatus("Your voice was cloned successfully. Buddy will use it now.");
       } catch (error) {
-        const message =
-          error instanceof Error
-            ? error.message
-            : "The public voice service is temporarily unavailable.";
-        const transient =
-          /quota|zerogpu|capacity|temporarily|no endpoint|metadata|rate limit|429/i.test(message);
+        const message = error instanceof Error ? error.message : "The public voice service is temporarily unavailable.";
+        const transient = /quota|zerogpu|capacity|temporarily|no endpoint|metadata|rate limit|429/i.test(message);
         setStatus(
           transient
-            ? "Your voice sample is safely saved on this device. Free GPU capacity is temporarily unavailable. Use the Buddy RVC GPU Lab below to build the persistent voice without relying on ZeroGPU."
+            ? "Your voice sample is safely saved on this device. The free renderer is temporarily unavailable; Buddy will keep the sample ready."
             : `Your voice sample is saved, but cloning is unavailable right now. ${message}`,
         );
       }
@@ -118,55 +114,35 @@ export function BuddyVoicePicker() {
     }
   };
 
-  const browserPreview = (text: string) => {
-    if (!("speechSynthesis" in window))
-      throw new Error("This browser does not provide speech playback.");
-    const u = new SpeechSynthesisUtterance(text);
-    u.lang = profile.language || navigator.language || "en-US";
-    u.rate = 0.98;
-    speechSynthesis.cancel();
-    speechSynthesis.speak(u);
-  };
-
   const preview = async () => {
     setBusy(true);
     setStatus("Testing Buddy's selected voice…");
     try {
       const current = getBuddyVoiceProfile();
-      if (current.mode === "clone") {
-        const sample = await getBuddyVoiceSample();
-        if (!sample)
-          throw new Error("Your saved Buddy voice sample is unavailable. Please add it again.");
-        const url = await runClone(sample, current);
-        const audio = new Audio(url);
-        await audio.play();
-        setStatus("Buddy's cloned voice is working.");
-        return;
-      }
-      try {
-        const result = await runStudioJob(
-          "tts",
-          {
-            text: CLONE_TEXT,
-            target_text: CLONE_TEXT,
-            language: current.language || "English",
-            speaker: current.speaker,
-          },
-          () => undefined,
-        );
-        if (result.url) {
-          const audio = new Audio(result.url);
-          await audio.play();
-          setStatus(`${current.speaker} is working through the free voice engine.`);
-          return;
-        }
-      } catch {
-        // Device speech is an honest preset fallback.
-      }
-      browserPreview(CLONE_TEXT);
-      setStatus(
-        "The free preset voice engine is temporarily unavailable; your device voice is playing instead.",
+      const result = await runStudioJob(
+        current.mode === "clone" ? "voice-clone" : "tts",
+        current.mode === "clone"
+          ? {
+              target_text: CLONE_TEXT,
+              text: CLONE_TEXT,
+              language: current.language || "Auto",
+              mood: current.mood,
+              tone: current.tone,
+            }
+          : {
+              text: CLONE_TEXT,
+              target_text: CLONE_TEXT,
+              language: current.language || "English",
+              speaker: current.speaker,
+              mood: current.mood,
+              tone: current.tone,
+            },
+        () => undefined,
       );
+      if (!result.url) throw new Error("The voice renderer returned no playable audio.");
+      const audio = new Audio(result.url);
+      await audio.play();
+      setStatus(current.mode === "clone" ? "Buddy's cloned voice is working." : "Buddy's selected voice is working.");
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Voice preview could not be played.");
     } finally {
@@ -181,15 +157,14 @@ export function BuddyVoicePicker() {
           <Volume2 className="size-4 text-primary" />
           <div>
             <p className="text-xs font-bold uppercase tracking-[0.14em]">1. Choose Buddy's voice</p>
-            <p className="text-[10px] text-muted-foreground">
-              Pick a voice now. Change it whenever you want.
-            </p>
+            <p className="text-[10px] text-muted-foreground">Pick a voice now. Change it whenever you want.</p>
           </div>
         </div>
         <StudioButton variant="ghost" onClick={() => void preview()} disabled={busy}>
           <Play className="size-3.5" /> Test voice
         </StudioButton>
       </div>
+
       <div className="mt-3 grid grid-cols-2 gap-2">
         <button
           type="button"
@@ -214,6 +189,7 @@ export function BuddyVoicePicker() {
           />
         </label>
       </div>
+
       {profile.mode === "preset" ? (
         <select
           value={profile.speaker}
@@ -221,9 +197,7 @@ export function BuddyVoicePicker() {
           className="mt-2 w-full rounded-xl border border-border bg-background/70 px-3 py-2 text-xs"
         >
           {BUDDY_VOICE_PRESETS.map((voice) => (
-            <option key={voice.id} value={voice.id}>
-              {voice.label} — {voice.note}
-            </option>
+            <option key={voice.id} value={voice.id}>{voice.label} — {voice.note}</option>
           ))}
         </select>
       ) : (
@@ -242,6 +216,30 @@ export function BuddyVoicePicker() {
           </button>
         </div>
       )}
+
+      <div className="mt-2 grid grid-cols-2 gap-2">
+        <label className="text-[10px] font-semibold text-muted-foreground">
+          Mood
+          <select
+            value={profile.mood || "natural"}
+            onChange={(event) => update({ mood: event.target.value })}
+            className="mt-1 w-full rounded-xl border border-border bg-background/70 px-3 py-2 text-xs font-normal text-foreground"
+          >
+            {BUDDY_MOODS.map((item) => <option key={item.id} value={item.id}>{item.label} — {item.note}</option>)}
+          </select>
+        </label>
+        <label className="text-[10px] font-semibold text-muted-foreground">
+          Tone
+          <select
+            value={profile.tone || "conversational"}
+            onChange={(event) => update({ tone: event.target.value })}
+            className="mt-1 w-full rounded-xl border border-border bg-background/70 px-3 py-2 text-xs font-normal text-foreground"
+          >
+            {BUDDY_TONES.map((item) => <option key={item.id} value={item.id}>{item.label} — {item.note}</option>)}
+          </select>
+        </label>
+      </div>
+
       {profile.mode === "clone" && (
         <a
           href={GPU_LAB_URL}
@@ -253,12 +251,9 @@ export function BuddyVoicePicker() {
         </a>
       )}
       <p className="mt-2 text-[10px] text-muted-foreground" aria-live="polite">
-        {busy ? "Working… " : ""}
-        {status}
+        {busy ? "Working… " : ""}{status}
       </p>
-      <p className="mt-1 text-[9px] text-muted-foreground">
-        Only upload a voice you own or have permission to use.
-      </p>
+      <p className="mt-1 text-[9px] text-muted-foreground">Only upload a voice you own or have permission to use.</p>
     </div>
   );
 }
