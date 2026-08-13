@@ -1,0 +1,1 @@
+Buddy live conversation fix notes: the Live loop must not restart while the response pipeline is still marked busy. Live mode now requires a restart only after the response/TTS pipeline clears its busy/speaking guards. Tap-to-Talk has no fixed recording timeout. Live silence detection uses a longer natural pause window and must never impose a ten-minute message cutoff.
