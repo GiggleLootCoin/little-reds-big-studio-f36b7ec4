@@ -1,0 +1,1 @@
+Implementation target: Buddy Live must use Android Chrome microphone permission, MediaRecorder-based capture, no fixed ten-minute cutoff, Tap-to-Talk as deterministic fallback, and Live mode with natural turn detection. The response loop must restart listening only after STT, chat, and TTS have fully cleared their busy/speaking guards.
