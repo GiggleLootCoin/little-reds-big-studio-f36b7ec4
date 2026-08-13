@@ -21,13 +21,68 @@ export const BUDDY_VOICE_PRESETS = [
 ] as const;
 
 const DEFAULT_PROFILE: BuddyVoiceProfile = { mode: "preset", speaker: "Ryan", language: "English" };
+const DB_NAME = "little-reds-big-studio";
+const STORE = "voice-profile";
+const SAMPLE_KEY = "buddy-voice-sample";
+
+function openVoiceDb(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    if (typeof indexedDB === "undefined") return reject(new Error("IndexedDB is unavailable."));
+    const request = indexedDB.open(DB_NAME, 2);
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE);
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error || new Error("Could not open voice storage."));
+  });
+}
+
+export async function saveBuddyVoiceSample(blob: Blob): Promise<void> {
+  const db = await openVoiceDb();
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction(STORE, "readwrite");
+    tx.objectStore(STORE).put(blob, SAMPLE_KEY);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error || new Error("Could not save voice sample."));
+  });
+  db.close();
+}
+
+export async function getBuddyVoiceSample(): Promise<Blob | null> {
+  try {
+    const db = await openVoiceDb();
+    const blob = await new Promise<Blob | null>((resolve, reject) => {
+      const request = db.transaction(STORE, "readonly").objectStore(STORE).get(SAMPLE_KEY);
+      request.onsuccess = () => resolve(request.result instanceof Blob ? request.result : null);
+      request.onerror = () => reject(request.error);
+    });
+    db.close();
+    return blob;
+  } catch {
+    return null;
+  }
+}
+
+export async function clearBuddyVoiceSample(): Promise<void> {
+  try {
+    const db = await openVoiceDb();
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(STORE, "readwrite");
+      tx.objectStore(STORE).delete(SAMPLE_KEY);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+    db.close();
+  } catch {
+    /* best effort */
+  }
+}
 
 export function getBuddyVoiceProfile(): BuddyVoiceProfile {
   if (typeof window === "undefined") return DEFAULT_PROFILE;
   try {
-    const parsed = JSON.parse(
-      localStorage.getItem(BUDDY_VOICE_KEY) || "null",
-    ) as Partial<BuddyVoiceProfile> | null;
+    const parsed = JSON.parse(localStorage.getItem(BUDDY_VOICE_KEY) || "null") as Partial<BuddyVoiceProfile> | null;
     return {
       ...DEFAULT_PROFILE,
       ...parsed,
@@ -44,13 +99,10 @@ export function saveBuddyVoiceProfile(profile: BuddyVoiceProfile) {
   localStorage.setItem(BUDDY_VOICE_KEY, JSON.stringify(profile));
 }
 
-export function clearBuddyVoiceClone() {
+export async function clearBuddyVoiceClone() {
   const profile = getBuddyVoiceProfile();
-  saveBuddyVoiceProfile({
-    mode: "preset",
-    speaker: profile.speaker || "Ryan",
-    language: profile.language || "English",
-  });
+  await clearBuddyVoiceSample();
+  saveBuddyVoiceProfile({ mode: "preset", speaker: profile.speaker || "Ryan", language: profile.language || "English" });
 }
 
 export async function fileToVoiceDataUrl(file: File): Promise<string> {
