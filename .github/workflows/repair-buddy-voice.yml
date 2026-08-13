@@ -1,0 +1,47 @@
+name: Repair Buddy Voice
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - name: Restore known-good runtime
+        run: |
+          git fetch origin 446d6dacd21053b4e5cdd7e5fac0eb2a2602c9f4 --depth=1
+          git checkout 446d6dacd21053b4e5cdd7e5fac0eb2a2602c9f4 -- src/lib/studio-runtime.ts
+      - name: Format voice integration
+        run: |
+          npm install --ignore-scripts --legacy-peer-deps
+          npx prettier --write src/components/studio/BuddyVoicePicker.tsx src/lib/buddy-voice.ts src/lib/studio-runtime.ts
+      - name: Verify
+        run: |
+          npx tsc --noEmit
+          npm run lint
+          npm run build
+      - name: Commit verified repair
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/lib/studio-runtime.ts src/components/studio/BuddyVoicePicker.tsx src/lib/buddy-voice.ts
+          git diff --cached --quiet || git commit -m 'fix: restore voice runtime and validate Buddy voice controls'
+          git push
+      - name: Remove repair workflow
+        if: success()
+        run: |
+          git rm .github/workflows/repair-buddy-voice.yml
+          git commit -m 'chore: remove temporary voice repair workflow'
+          git push
