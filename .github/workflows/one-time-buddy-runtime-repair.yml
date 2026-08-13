@@ -1,0 +1,47 @@
+name: One-time Buddy runtime repair
+on:
+  push:
+    branches: [main]
+permissions:
+  contents: write
+jobs:
+  repair:
+    if: github.event.head_commit.message != 'fix: Buddy clone persistence and identity'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Repair Buddy runtime paths
+        shell: python
+        run: |
+          from pathlib import Path
+
+          vp = Path('src/components/studio/BuddyVoicePicker.tsx')
+          s = vp.read_text()
+          old = '''    } catch (error) {\n      await clearBuddyVoiceClone();\n      setProfile(getBuddyVoiceProfile());\n      setStatus(\n        error instanceof Error\n          ? `I couldn't create the voice from that sample yet. ${error.message}`\n          : "I couldn't create the voice from that sample yet. Try a clearer 5–15 second recording.",\n      );\n    } finally {'''
+          new = '''    } catch (error) {\n      // Keep the authorized sample/profile locally even when a public GPU/ZeroGPU\n      // provider is temporarily exhausted. A transient provider failure must not\n      // destroy the user's saved voice. The actual clone is retried by Test voice\n      // or when Buddy speaks.\n      const message = error instanceof Error ? error.message : "The public voice service is temporarily unavailable.";\n      const transient = /quota|zerogpu|capacity|temporarily|no endpoint|metadata/i.test(message);\n      if (transient) {\n        const current = getBuddyVoiceProfile();\n        setProfile(current);\n        setStatus(\n          "Your voice sample is saved on this device. The free voice-cloning service is temporarily unavailable; Buddy will retry automatically when it is available.",\n        );\n      } else {\n        await clearBuddyVoiceClone();\n        setProfile(getBuddyVoiceProfile());\n        setStatus(`I couldn't create the voice from that sample yet. ${message}`);\n      }\n    } finally {'''
+          if old not in s:
+              raise SystemExit('BuddyVoicePicker catch target not found')
+          vp.write_text(s.replace(old, new, 1))
+
+          lc = Path('src/components/studio/BuddyLiveChat.tsx')
+          s = lc.read_text()
+          old = '''      const history = [...messages, u]\n        .slice(-24)\n        .map((m) => ({ role: m.role, content: m.content }));'''
+          new = '''      const history = [\n        {\n          role: "system",\n          content:\n            "You are Buddy, Little Red's personal creative studio companion. Your name is Buddy. Never identify yourself as Qwen, an AI model, a provider, or a different assistant. Do not mention hidden model/provider machinery unless the user explicitly asks about the technology. Speak naturally, directly, and helpfully. You can use the user's conversation context and attached material when provided.",\n        },\n        ...[...messages, u].slice(-24).map((m) => ({ role: m.role, content: m.content })),\n      ];'''
+          if old not in s:
+              raise SystemExit('BuddyLiveChat history target not found')
+          s = s.replace(old, new, 1)
+
+          start = s.index('  async function speak(text: string) {')
+          end = s.index('  function stopAll() {', start)
+          replacement = '''  async function speak(text: string) {\n    if (muted || speakingRef.current) return;\n    speakingRef.current = true;\n    setBuddyStatus("working", { message: "Buddy is speaking…" });\n    try {\n      const v = getBuddyVoiceProfile();\n      let r;\n      if (v.mode === "clone") {\n        const sample = await getBuddyVoiceSample();\n        if (!sample) throw Error("Your saved Buddy voice sample is unavailable.");\n        r = await runStudioJob(\n          "voice-clone",\n          {\n            refAudio: sample,\n            referenceAudio: sample,\n            audio: sample,\n            referenceTranscript: v.referenceTranscript || "",\n            refText: v.referenceTranscript || "",\n            target_text: text,\n            text,\n            language: v.language || "English",\n            use_xvector_only: !v.referenceTranscript,\n            model_size: "0.6B",\n          },\n          setStatus,\n        );\n      } else {\n        r = await runStudioJob(\n          "tts",\n          {\n            text,\n            target_text: text,\n            language: v.language || "English",\n            speaker: v.speaker,\n          },\n          setStatus,\n        );\n      }\n      if (!r.url) throw Error("No usable Buddy voice was returned.");\n      const a = audio.current ?? new Audio();\n      audio.current = a;\n      a.src = r.url;\n      await new Promise<void>((ok, no) => {\n        a.onended = () => ok();\n        a.onerror = () => no(Error("Audio playback failed"));\n        void a.play().catch(no);\n      });\n    } catch {\n      // Browser speech is an honest fallback for playback only; it never pretends to\n      // be the user's cloned voice.\n      if ("speechSynthesis" in window)\n        await new Promise<void>((ok) => {\n          const u = new SpeechSynthesisUtterance(text);\n          u.lang = navigator.language || "en-US";\n          u.rate = 0.98;\n          u.onend = () => ok();\n          u.onerror = () => ok();\n          speechSynthesis.cancel();\n          speechSynthesis.speak(u);\n        });\n    } finally {\n      speakingRef.current = false;\n      setBuddyStatus("idle");\n      schedule(250);\n    }\n  }\n'''
+          lc.write_text(s[:start] + replacement + s[end:])
+
+          wf = Path('.github/workflows/one-time-buddy-runtime-repair.yml')
+          wf.unlink()
+      - name: Commit repair and remove one-time workflow
+        run: |
+          git config user.name 'Buddy Repair Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add src/components/studio/BuddyVoicePicker.tsx src/components/studio/BuddyLiveChat.tsx .github/workflows/one-time-buddy-runtime-repair.yml
+          git commit -m 'fix: Buddy clone persistence and identity'
+          git push
