@@ -6,6 +6,9 @@ import { saveVoiceSample } from "./voice-profile";
 export type { StudioArtifact, StudioCapability, StudioJobInput } from "./studio-runtime-impl";
 export { runtimeProviders } from "./studio-runtime-impl";
 
+const DEFAULT_CLONE_TEXT =
+  "Hi. I'm Buddy. This is my new voice. Let's make something brilliant together.";
+
 export function artifactText(value: unknown): string {
   if (typeof value === "string") return value.trim();
   if (Array.isArray(value)) return value.map(artifactText).find(Boolean) ?? "";
@@ -48,15 +51,17 @@ export async function runStudioJob(
     const sample = input.refAudio ?? input.referenceAudio ?? input.audio;
     if (!(sample instanceof Blob))
       throw new Error("A reference voice recording is required for a real clone.");
+
+    // The user never needs to type a transcript or a test sentence.
+    // Chatterbox clones directly from the reference recording, and Buddy supplies
+    // a private verification sentence automatically.
     const refText = String(
       input.refText ?? input.referenceText ?? input.referenceTranscript ?? "",
     ).trim();
-    const targetText = String(input.target_text ?? input.text ?? input.prompt ?? "").trim();
-    if (!targetText) throw new Error("Target speech text is empty.");
+    const targetText =
+      String(input.target_text ?? input.text ?? input.prompt ?? "").trim() || DEFAULT_CLONE_TEXT;
 
     onStatus?.("Creating a real custom voice from your recording…");
-    // Chatterbox performs reference-audio cloning directly; a transcript is optional.
-    // Do not block the primary clone path merely because automatic transcription failed.
     const result = await createRealVoiceClone(
       sample,
       refText,
