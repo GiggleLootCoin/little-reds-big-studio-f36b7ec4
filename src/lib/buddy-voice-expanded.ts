@@ -53,4 +53,4 @@ export const BUDDY_EXPANDED_VOICES: readonly BuddyExpandedVoice[] = [
  en("vesta","Hearthside","feminine","American","Natural, expressive, patient, empathetic","Feels like a good conversation in a warm kitchen."),
  en("zeus","Thunder Velvet","masculine","American","Deep, trustworthy, smooth","Big voice, soft edges. More velvet thunder than angry cloud."),
 ];
-export const BUDDY_EXPANDED_LANGUAGES = ["English","Spanish","French","German","Italian","Portuguese","Russian","Chinese","Japanese","Korean","Hindi","Arabic","Dutch"] as const;
+export const BUDDY_EXPANDED_LANGUAGES = ["English","Spanish","French","German","Italian","Portuguese","Russian","Chinese","Japanese","Korean","Hindi","Arabic"] as const;
