@@ -6,7 +6,7 @@ const QWEN_SPACE = "Qwen/Qwen3-TTS";
 const QWEN_CLONE_ENDPOINT = "/generate_voice_clone";
 const CPU_SPACE = "chienweichang/qwen3-tts-voice-clone-cpu";
 const CPU_PROXY = `/api/hf-space/${encodeURIComponent(CPU_SPACE)}`;
-const QWEN_LANGUAGES = new Set(["Auto","Chinese","English","Japanese","Korean","French","German","Spanish","Portuguese","Russian"]);
+const QWEN_LANGUAGES = new Set(["Auto", "Chinese", "English", "Japanese", "Korean", "French", "German", "Spanish", "Portuguese", "Russian"]);
 
 function cloneLanguage(value: string): string {
   const normalized = value.trim();
@@ -27,12 +27,12 @@ function samplesToWav(sampleRate: number, samples: number[]): Blob {
   }
   const buffer = new ArrayBuffer(44 + pcm.byteLength), view = new DataView(buffer);
   const write = (offset: number, text: string) => { for (let i = 0; i < text.length; i++) view.setUint8(offset + i, text.charCodeAt(i)); };
-  write(0,"RIFF"); view.setUint32(4,36+pcm.byteLength,true); write(8,"WAVE"); write(12,"fmt ");
-  view.setUint32(16,16,true); view.setUint16(20,1,true); view.setUint16(22,1,true);
-  view.setUint32(24,Math.round(sampleRate),true); view.setUint32(28,Math.round(sampleRate*2),true);
-  view.setUint16(32,2,true); view.setUint16(34,16,true); write(36,"data"); view.setUint32(40,pcm.byteLength,true);
-  new Uint8Array(buffer,44).set(new Uint8Array(pcm.buffer));
-  return new Blob([buffer],{type:"audio/wav"});
+  write(0, "RIFF"); view.setUint32(4, 36 + pcm.byteLength, true); write(8, "WAVE"); write(12, "fmt ");
+  view.setUint32(16, 16, true); view.setUint16(20, 1, true); view.setUint16(22, 1, true);
+  view.setUint32(24, Math.round(sampleRate), true); view.setUint32(28, Math.round(sampleRate * 2), true);
+  view.setUint16(32, 2, true); view.setUint16(34, 16, true); write(36, "data"); view.setUint32(40, pcm.byteLength, true);
+  new Uint8Array(buffer, 44).set(new Uint8Array(pcm.buffer));
+  return new Blob([buffer], { type: "audio/wav" });
 }
 
 async function outputToBlob(output: unknown): Promise<Blob> {
@@ -49,7 +49,7 @@ async function outputToBlob(output: unknown): Promise<Blob> {
   if (output && typeof output === "object") {
     const file = output as Record<string, unknown>;
     if (file.data && file.data !== output) { try { return await outputToBlob(file.data); } catch { /* continue */ } }
-    for (const key of ["url","path"]) {
+    for (const key of ["url", "path"]) {
       const value = file[key];
       if (typeof value === "string" && /^(https?:|blob:|data:)/i.test(value)) {
         const response = await fetch(value);
@@ -68,21 +68,30 @@ function validateGeneratedAudio(blob: Blob): void {
 }
 
 async function generateWithQwen(reference: Blob, refText: string, text: string, language: string): Promise<Blob> {
-  const app = await Client.connect(QWEN_SPACE, { events: ["data","status"] });
-  const job = app.submit(QWEN_CLONE_ENDPOINT, [handle_file(reference), refText.trim(), text.trim(), cloneLanguage(language), false, "1.7B"]);
-  let errorMessage = "";
-  for await (const message of job) {
-    if (message.type === "status" && message.stage === "error") errorMessage = message.message || "Qwen reported a generation error.";
-    if (message.type === "data") {
-      const data = message.data as unknown[];
-      if (!Array.isArray(data) || !data[0]) throw new Error("Qwen completed without clone audio.");
-      return outputToBlob(data[0]);
+  const app = await Client.connect(QWEN_SPACE, { events: ["data", "status"] });
+  const attempts: Array<[string, boolean]> = [["1.7B", false], ["0.6B", false], ["0.6B", true], ["1.7B", true]];
+  let last = "Qwen ended without returning clone audio.";
+  for (const [size, xVectorOnly] of attempts) {
+    try {
+      const job = app.submit(QWEN_CLONE_ENDPOINT, [handle_file(reference), refText.trim(), text.trim(), cloneLanguage(language), xVectorOnly, size]);
+      for await (const message of job) {
+        if (message.type === "status" && message.stage === "error") last = message.message || "Qwen reported a generation error.";
+        if (message.type === "data") {
+          const data = message.data as unknown[];
+          if (!Array.isArray(data) || !data[0]) throw new Error("Qwen completed without clone audio.");
+          const blob = await outputToBlob(data[0]);
+          validateGeneratedAudio(blob);
+          return blob;
+        }
+      }
+    } catch (error) {
+      last = error instanceof Error ? error.message : String(error);
     }
   }
-  throw new Error(errorMessage || "Qwen ended without returning clone audio.");
+  throw new Error(last);
 }
 
-async function fetchWithRetry(url: string, init: RequestInit, attempts = 3): Promise<Response> {
+async function fetchWithRetry(url: string, init: RequestInit, attempts = 4): Promise<Response> {
   let last: unknown;
   for (let i = 0; i < attempts; i++) {
     try {
@@ -95,45 +104,59 @@ async function fetchWithRetry(url: string, init: RequestInit, attempts = 3): Pro
   throw last instanceof Error ? last : new Error("Voice clone service unavailable.");
 }
 
+async function waitForCpuQwen(): Promise<void> {
+  let last = "CPU Qwen is unavailable.";
+  for (let i = 0; i < 8; i++) {
+    try {
+      const response = await fetch(`${CPU_PROXY}/api/status`, { cache: "no-store" });
+      if (response.ok) {
+        const data = (await response.json()) as { status?: string; message?: string };
+        if (data.status === "ready") return;
+        last = data.message || data.status || last;
+      } else last = `CPU Qwen status HTTP ${response.status}`;
+    } catch (error) { last = error instanceof Error ? error.message : String(error); }
+    await new Promise((resolve) => setTimeout(resolve, 5000));
+  }
+  throw new Error(`CPU Qwen did not become ready: ${last}`);
+}
+
 async function generateWithCpuQwen(reference: Blob, refText: string, text: string, language: string): Promise<Blob> {
+  await waitForCpuQwen();
   const form = new FormData();
   form.append("file", reference, "reference.wav");
   const upload = await fetchWithRetry(`${CPU_PROXY}/api/upload`, { method: "POST", body: form });
   if (!upload.ok) throw new Error(`CPU Qwen reference upload failed (${upload.status}).`);
   const uploaded = (await upload.json()) as { audio_id?: string };
   if (!uploaded.audio_id) throw new Error("CPU Qwen did not return a reference audio ID.");
-
   const clone = await fetchWithRetry(`${CPU_PROXY}/api/clone`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ ref_audio_id: uploaded.audio_id, ref_text: refText.trim(), target_text: text.trim(), language: cloneLanguage(language), x_vector_only: false }),
-  }, 2);
+  }, 3);
   if (!clone.ok) {
     const detail = (await clone.text()).slice(0, 300);
     throw new Error(`CPU Qwen clone failed (${clone.status})${detail ? `: ${detail}` : ""}`);
   }
   const generated = (await clone.json()) as { audio_id?: string; status?: string };
   if (!generated.audio_id || generated.status === "error") throw new Error("CPU Qwen completed without generated audio.");
-  const audio = await fetchWithRetry(`${CPU_PROXY}/api/download/${encodeURIComponent(generated.audio_id)}`, {}, 2);
+  const audio = await fetchWithRetry(`${CPU_PROXY}/api/download/${encodeURIComponent(generated.audio_id)}`, {}, 3);
   if (!audio.ok) throw new Error(`CPU Qwen generated audio could not be downloaded (${audio.status}).`);
-  return audio.blob();
+  const blob = await audio.blob();
+  validateGeneratedAudio(blob);
+  return blob;
 }
 
 export async function createRealVoiceClone(reference: Blob, refText: string, text: string, language = "English"): Promise<RealCloneResult> {
   if (!reference.size) throw new Error("The voice recording is empty.");
   if (!refText.trim()) throw new Error("Buddy needs the exact transcript of the reference recording before it can make a high-quality clone. Please enter or correct the transcript and try again.");
   if (!text.trim()) throw new Error("Target speech text is empty.");
-
   let primaryError: unknown;
   try {
     const blob = await generateWithQwen(reference, refText, text, language);
-    validateGeneratedAudio(blob);
-    return { url: URL.createObjectURL(blob), provider: "Qwen3-TTS Base 1.7B — official Space" };
+    return { url: URL.createObjectURL(blob), provider: "Qwen3-TTS Base — official Space" };
   } catch (error) { primaryError = error; }
-
   try {
     const blob = await generateWithCpuQwen(reference, refText, text, language);
-    validateGeneratedAudio(blob);
     return { url: URL.createObjectURL(blob), provider: "Qwen3-TTS Base 1.7B — CPU fallback" };
   } catch (fallbackError) {
     const primary = primaryError instanceof Error ? primaryError.message : String(primaryError);
