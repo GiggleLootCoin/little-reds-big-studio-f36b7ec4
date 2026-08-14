@@ -1,187 +1,90 @@
 export type RealCloneResult = { url: string; provider: string; voiceId?: string };
 
-const CHATTERBOX_SPACE = "ResembleAI/Chatterbox";
-const CHATTERBOX_PROXY = `/api/hf-space/${encodeURIComponent(CHATTERBOX_SPACE)}`;
 const DEFAULT_CLONE_TEXT =
-  "Hi. I'm Buddy. This is a voice clone test. The voice you supplied is speaking these words.";
+  "Hi. I'm Buddy. This is my new voice. Let's make something brilliant together.";
 
 function validateAudioBlob(blob: Blob): void {
-  if (!blob.size) throw new Error("The clone engine returned empty audio.");
-  if (blob.size < 4096) throw new Error("The clone engine returned an unusably small audio file.");
-  if (blob.type && !blob.type.toLowerCase().startsWith("audio/")) {
-    throw new Error(`The clone engine returned ${blob.type}, not audio.`);
+  if (!blob.size || blob.size < 4096) {
+    throw new Error("The voice clone engine returned empty or unusably small audio.");
   }
 }
 
-async function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
+async function blobToWav(blob: Blob): Promise<Blob> {
+  if (blob.type.toLowerCase().includes("wav")) return blob;
+  const AudioContextCtor = window.AudioContext ||
+    (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+  if (!AudioContextCtor) throw new Error("This browser cannot convert the recording to WAV.");
+  const context = new AudioContextCtor();
   try {
-    return await Promise.race([
-      promise,
-      new Promise<T>((_, reject) => {
-        timer = setTimeout(() => reject(new Error(`${label} timed out.`)), ms);
-      }),
-    ]);
+    const decoded = await context.decodeAudioData(await blob.arrayBuffer());
+    const sampleRate = 24000;
+    const length = Math.max(1, Math.ceil(decoded.duration * sampleRate));
+    const offline = new OfflineAudioContext(1, length, sampleRate);
+    const source = offline.createBufferSource();
+    source.buffer = decoded;
+    source.connect(offline.destination);
+    source.start();
+    const rendered = await offline.startRendering();
+    const samples = rendered.getChannelData(0);
+    const wav = new ArrayBuffer(44 + samples.length * 2);
+    const view = new DataView(wav);
+    const write = (offset: number, text: string) => {
+      for (let i = 0; i < text.length; i += 1) view.setUint8(offset + i, text.charCodeAt(i));
+    };
+    write(0, "RIFF");
+    view.setUint32(4, 36 + samples.length * 2, true);
+    write(8, "WAVE");
+    write(12, "fmt ");
+    view.setUint32(16, 16, true);
+    view.setUint16(20, 1, true);
+    view.setUint16(22, 1, true);
+    view.setUint32(24, sampleRate, true);
+    view.setUint32(28, sampleRate * 2, true);
+    view.setUint16(32, 2, true);
+    view.setUint16(34, 16, true);
+    write(36, "data");
+    view.setUint32(40, samples.length * 2, true);
+    for (let i = 0; i < samples.length; i += 1) {
+      const sample = Math.max(-1, Math.min(1, samples[i]));
+      view.setInt16(44 + i * 2, sample < 0 ? sample * 32768 : sample * 32767, true);
+    }
+    return new Blob([wav], { type: "audio/wav" });
   } finally {
-    if (timer) clearTimeout(timer);
+    await context.close().catch(() => undefined);
   }
 }
 
-function proxyPath(path: string): string {
-  return `${CHATTERBOX_PROXY}/${path.replace(/^\/+/, "")}`;
-}
-
-function absoluteAudioUrl(value: string): string {
-  if (/^https?:\/\/resembleai-chatterbox\.hf\.space\//i.test(value)) {
-    const url = new URL(value);
-    return proxyPath(`${url.pathname.replace(/^\/+/, "")}${url.search}`);
+async function blobToBase64(blob: Blob): Promise<string> {
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  let binary = "";
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(i, Math.min(i + chunk, bytes.length)));
   }
-  if (/^https?:\/\//i.test(value)) return value;
-  return proxyPath(value);
+  return btoa(binary);
 }
 
-async function uploadReference(reference: Blob): Promise<string> {
-  const form = new FormData();
-  form.append("files", reference, "voice-reference.wav");
-  const response = await withTimeout(
-    fetch(`${CHATTERBOX_PROXY}/gradio_api/upload`, { method: "POST", body: form }),
-    30000,
-    "Uploading reference voice",
-  );
+async function generateWithRealClone(reference: Blob, text: string): Promise<Blob> {
+  const wav = await blobToWav(reference);
+  if (wav.size < 4096) throw new Error("The voice sample is too short to clone.");
+  const audioBase64 = await blobToBase64(wav);
+  const response = await fetch("/api/ai/voice-clone", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ audioBase64, text: text.trim() || DEFAULT_CLONE_TEXT }),
+  });
   if (!response.ok) {
-    const detail = await response.text().catch(() => "");
-    throw new Error(
-      `Chatterbox reference upload failed (${response.status})${detail ? `: ${detail.slice(0, 240)}` : ""}.`,
-    );
-  }
-  const payload = (await response.json()) as unknown;
-  if (!Array.isArray(payload) || typeof payload[0] !== "string") {
-    throw new Error("Chatterbox did not return an uploaded reference path.");
-  }
-  return payload[0];
-}
-
-async function readCompletion(response: Response): Promise<unknown> {
-  if (!response.body) throw new Error("Chatterbox returned an empty generation stream.");
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-  let lastData: unknown;
-  const parseBlock = (block: string): unknown | undefined => {
-    const event = block
-      .split(/\r?\n/)
-      .find((line) => line.startsWith("event:"))
-      ?.slice(6)
-      .trim()
-      .toLowerCase();
-    const dataLine = block.split(/\r?\n/).find((line) => line.startsWith("data:"));
-    let data: unknown;
-    if (dataLine) {
-      const raw = dataLine.slice(5).trim();
-      if (raw && raw !== "null") {
-        try {
-          data = JSON.parse(raw);
-        } catch {
-          data = raw;
-        }
-        lastData = data;
-      }
+    let message = "Voice cloning failed.";
+    try {
+      const payload = (await response.json()) as { error?: string };
+      if (payload.error) message = payload.error;
+    } catch {
+      const detail = await response.text().catch(() => "");
+      if (detail) message = detail.slice(0, 500);
     }
-    if (event === "error")
-      throw new Error(typeof data === "string" ? data : "Chatterbox reported a generation error.");
-    if (event === "complete") return data ?? lastData;
-    return undefined;
-  };
-  while (true) {
-    const { done, value } = await reader.read();
-    buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
-    const blocks = buffer.split(/\r?\n\r?\n/);
-    buffer = blocks.pop() || "";
-    for (const block of blocks) {
-      const completed = parseBlock(block);
-      if (completed !== undefined) {
-        reader.cancel().catch(() => undefined);
-        return completed;
-      }
-    }
-    if (done) break;
+    throw new Error(message);
   }
-  if (buffer.trim()) {
-    const completed = parseBlock(buffer);
-    if (completed !== undefined) return completed;
-  }
-  throw new Error("Chatterbox ended without a completed generation event.");
-}
-
-async function outputToBlob(value: unknown): Promise<Blob> {
-  if (value instanceof Blob) return value;
-  if (typeof value === "string" && /^(https?:|blob:|data:)/i.test(value)) {
-    const response = await fetch(absoluteAudioUrl(value), { cache: "no-store" });
-    if (!response.ok) throw new Error(`Generated audio download failed (${response.status}).`);
-    return response.blob();
-  }
-  if (value && typeof value === "object") {
-    const object = value as Record<string, unknown>;
-    for (const key of ["url", "path"])
-      if (typeof object[key] === "string") return outputToBlob(String(object[key]));
-    for (const key of ["data", "value", "output", "result"])
-      if (object[key] !== undefined) {
-        try {
-          return await outputToBlob(object[key]);
-        } catch {
-          /* try next */
-        }
-      }
-  }
-  if (Array.isArray(value))
-    for (const item of value) {
-      try {
-        return await outputToBlob(item);
-      } catch {
-        /* try next */
-      }
-    }
-  throw new Error("The clone engine returned no downloadable audio artifact.");
-}
-
-async function generateWithChatterbox(reference: Blob, text: string): Promise<Blob> {
-  if (reference.size < 4096) throw new Error("The reference recording is too small to clone.");
-  const uploadedPath = await uploadReference(reference);
-  const request = await withTimeout(
-    fetch(`${CHATTERBOX_PROXY}/gradio_api/call/generate_tts_audio`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        // The live Space has seven inputs. gr.Audio(type="filepath") expects the uploaded filepath string directly.
-        data: [text.slice(0, 300), uploadedPath, 0.5, 0.8, 0, 0.5, false],
-      }),
-    }),
-    30000,
-    "Starting Chatterbox voice clone",
-  );
-  if (!request.ok) {
-    const detail = await request.text().catch(() => "");
-    throw new Error(
-      `Chatterbox clone request failed (${request.status})${detail ? `: ${detail.slice(0, 300)}` : ""}.`,
-    );
-  }
-  const start = (await request.json()) as { event_id?: string };
-  if (!start.event_id) throw new Error("Chatterbox did not return a generation event ID.");
-  const completion = await withTimeout(
-    fetch(
-      `${CHATTERBOX_PROXY}/gradio_api/call/generate_tts_audio/${encodeURIComponent(start.event_id)}`,
-    ),
-    180000,
-    "Chatterbox voice clone generation",
-  );
-  if (!completion.ok) {
-    const detail = await completion.text().catch(() => "");
-    throw new Error(
-      `Chatterbox generation failed (${completion.status})${detail ? `: ${detail.slice(0, 300)}` : ""}.`,
-    );
-  }
-  const result = await readCompletion(completion);
-  const blob = await outputToBlob(result);
+  const blob = await response.blob();
   validateAudioBlob(blob);
   return blob;
 }
@@ -193,7 +96,7 @@ export async function createRealVoiceClone(
   _language = "English",
 ): Promise<RealCloneResult> {
   if (!reference.size) throw new Error("The voice recording is empty.");
-  const blob = await generateWithChatterbox(reference, text.trim() || DEFAULT_CLONE_TEXT);
+  const blob = await generateWithRealClone(reference, text || DEFAULT_CLONE_TEXT);
   return { url: URL.createObjectURL(blob), provider: "Chatterbox — Resemble AI voice clone" };
 }
 
