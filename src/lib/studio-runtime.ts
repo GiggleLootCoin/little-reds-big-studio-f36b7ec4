@@ -1,7 +1,7 @@
 import type { StudioArtifact, StudioCapability, StudioJobInput } from "./studio-runtime-impl";
 import { createRealVoiceClone, speakWithRealVoiceClone } from "./real-voice-clone";
 import { getBuddyVoiceProfile, getBuddyVoiceSample, markBuddyCloneVerified } from "./buddy-voice";
-import { getVoiceSample, getVoiceTranscript } from "./voice-profile";
+import { saveVoiceSample } from "./voice-profile";
 
 export type { StudioArtifact, StudioCapability, StudioJobInput } from "./studio-runtime-impl";
 export { runtimeProviders } from "./studio-runtime-impl";
@@ -60,6 +60,10 @@ export async function runStudioJob(
       String(input.target_text ?? input.text ?? input.prompt ?? ""),
       String(input.language ?? "English"),
     );
+    // Keep the transcript and reference audio in the same storage path used by Buddy's
+    // subsequent speech responses. This prevents a clone from being marked READY while
+    // later responses cannot find its reference transcript.
+    await saveVoiceSample(sample, refText);
     await markBuddyCloneVerified(result.provider);
     onStatus?.("Real custom voice generated, audio validated, and clone marked ready.");
     return {
@@ -71,8 +75,9 @@ export async function runStudioJob(
   }
 
   if (capability === "tts" && customVoiceSelected()) {
-    const sample = await getVoiceSample();
-    const refText = await getVoiceTranscript();
+    const profile = getBuddyVoiceProfile();
+    const sample = await getBuddyVoiceSample();
+    const refText = (profile.referenceTranscript || "").trim();
     if (!sample || !refText) {
       throw new Error("The verified custom voice reference is incomplete. Generate the clone again before using it.");
     }
