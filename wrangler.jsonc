@@ -3,17 +3,17 @@
   "name": "little-reds-big-studio-f36b7ec4",
   "compatibility_date": "2026-08-12",
   "compatibility_flags": ["nodejs_compat"],
-  "main": "src/worker.ts",
+  "main": "dist/server/server.js",
   "assets": {
     "directory": "dist/client",
-    "binding": "ASSETS",
+    "binding": "ASSETS"
   },
   "ai": {
-    "binding": "AI",
+    "binding": "AI"
   },
   "observability": {
-    "enabled": true,
+    "enabled": true
   },
   "workers_dev": true,
-  "preview_urls": true,
+  "preview_urls": true
 }
