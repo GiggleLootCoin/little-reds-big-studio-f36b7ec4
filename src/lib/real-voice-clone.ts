@@ -50,7 +50,9 @@ async function uploadReference(reference: Blob): Promise<string> {
   );
   if (!response.ok) {
     const detail = await response.text().catch(() => "");
-    throw new Error(`Chatterbox reference upload failed (${response.status})${detail ? `: ${detail.slice(0, 240)}` : ""}.`);
+    throw new Error(
+      `Chatterbox reference upload failed (${response.status})${detail ? `: ${detail.slice(0, 240)}` : ""}.`,
+    );
   }
   const payload = (await response.json()) as unknown;
   if (!Array.isArray(payload) || typeof payload[0] !== "string") {
@@ -66,17 +68,27 @@ async function readCompletion(response: Response): Promise<unknown> {
   let buffer = "";
   let lastData: unknown;
   const parseBlock = (block: string): unknown | undefined => {
-    const event = block.split(/\r?\n/).find((line) => line.startsWith("event:"))?.slice(6).trim().toLowerCase();
+    const event = block
+      .split(/\r?\n/)
+      .find((line) => line.startsWith("event:"))
+      ?.slice(6)
+      .trim()
+      .toLowerCase();
     const dataLine = block.split(/\r?\n/).find((line) => line.startsWith("data:"));
     let data: unknown;
     if (dataLine) {
       const raw = dataLine.slice(5).trim();
       if (raw && raw !== "null") {
-        try { data = JSON.parse(raw); } catch { data = raw; }
+        try {
+          data = JSON.parse(raw);
+        } catch {
+          data = raw;
+        }
         lastData = data;
       }
     }
-    if (event === "error") throw new Error(typeof data === "string" ? data : "Chatterbox reported a generation error.");
+    if (event === "error")
+      throw new Error(typeof data === "string" ? data : "Chatterbox reported a generation error.");
     if (event === "complete") return data ?? lastData;
     return undefined;
   };
@@ -87,7 +99,10 @@ async function readCompletion(response: Response): Promise<unknown> {
     buffer = blocks.pop() || "";
     for (const block of blocks) {
       const completed = parseBlock(block);
-      if (completed !== undefined) { reader.cancel().catch(() => undefined); return completed; }
+      if (completed !== undefined) {
+        reader.cancel().catch(() => undefined);
+        return completed;
+      }
     }
     if (done) break;
   }
@@ -107,14 +122,25 @@ async function outputToBlob(value: unknown): Promise<Blob> {
   }
   if (value && typeof value === "object") {
     const object = value as Record<string, unknown>;
-    for (const key of ["url", "path"]) if (typeof object[key] === "string") return outputToBlob(String(object[key]));
-    for (const key of ["data", "value", "output", "result"]) if (object[key] !== undefined) {
-      try { return await outputToBlob(object[key]); } catch { /* try next */ }
+    for (const key of ["url", "path"])
+      if (typeof object[key] === "string") return outputToBlob(String(object[key]));
+    for (const key of ["data", "value", "output", "result"])
+      if (object[key] !== undefined) {
+        try {
+          return await outputToBlob(object[key]);
+        } catch {
+          /* try next */
+        }
+      }
+  }
+  if (Array.isArray(value))
+    for (const item of value) {
+      try {
+        return await outputToBlob(item);
+      } catch {
+        /* try next */
+      }
     }
-  }
-  if (Array.isArray(value)) for (const item of value) {
-    try { return await outputToBlob(item); } catch { /* try next */ }
-  }
   throw new Error("The clone engine returned no downloadable audio artifact.");
 }
 
@@ -135,18 +161,24 @@ async function generateWithChatterbox(reference: Blob, text: string): Promise<Bl
   );
   if (!request.ok) {
     const detail = await request.text().catch(() => "");
-    throw new Error(`Chatterbox clone request failed (${request.status})${detail ? `: ${detail.slice(0, 300)}` : ""}.`);
+    throw new Error(
+      `Chatterbox clone request failed (${request.status})${detail ? `: ${detail.slice(0, 300)}` : ""}.`,
+    );
   }
   const start = (await request.json()) as { event_id?: string };
   if (!start.event_id) throw new Error("Chatterbox did not return a generation event ID.");
   const completion = await withTimeout(
-    fetch(`${CHATTERBOX_PROXY}/gradio_api/call/generate_tts_audio/${encodeURIComponent(start.event_id)}`),
+    fetch(
+      `${CHATTERBOX_PROXY}/gradio_api/call/generate_tts_audio/${encodeURIComponent(start.event_id)}`,
+    ),
     180000,
     "Chatterbox voice clone generation",
   );
   if (!completion.ok) {
     const detail = await completion.text().catch(() => "");
-    throw new Error(`Chatterbox generation failed (${completion.status})${detail ? `: ${detail.slice(0, 300)}` : ""}.`);
+    throw new Error(
+      `Chatterbox generation failed (${completion.status})${detail ? `: ${detail.slice(0, 300)}` : ""}.`,
+    );
   }
   const result = await readCompletion(completion);
   const blob = await outputToBlob(result);
@@ -154,12 +186,22 @@ async function generateWithChatterbox(reference: Blob, text: string): Promise<Bl
   return blob;
 }
 
-export async function createRealVoiceClone(reference: Blob, _refText = "", text = DEFAULT_CLONE_TEXT, _language = "English"): Promise<RealCloneResult> {
+export async function createRealVoiceClone(
+  reference: Blob,
+  _refText = "",
+  text = DEFAULT_CLONE_TEXT,
+  _language = "English",
+): Promise<RealCloneResult> {
   if (!reference.size) throw new Error("The voice recording is empty.");
   const blob = await generateWithChatterbox(reference, text.trim() || DEFAULT_CLONE_TEXT);
   return { url: URL.createObjectURL(blob), provider: "Chatterbox — Resemble AI voice clone" };
 }
 
-export async function speakWithRealVoiceClone(reference: Blob, refText = "", text = DEFAULT_CLONE_TEXT, language = "English"): Promise<RealCloneResult> {
+export async function speakWithRealVoiceClone(
+  reference: Blob,
+  refText = "",
+  text = DEFAULT_CLONE_TEXT,
+  language = "English",
+): Promise<RealCloneResult> {
   return createRealVoiceClone(reference, refText, text, language);
 }
