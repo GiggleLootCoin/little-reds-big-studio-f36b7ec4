@@ -48,7 +48,8 @@ export const FREE_RUNNERS: FreeRunner[] = [
     description: "Primary free reference-audio cloning route with multilingual speaker similarity.",
     capabilities: ["voice-clone"],
     url: "https://huggingface.co/spaces/ResembleAI/Chatterbox-Multilingual-TTS-V3",
-    notes: "Primary clone route. Requires a live compatible Gradio endpoint and authorized reference audio.",
+    notes:
+      "Primary clone route. Requires a live compatible Gradio endpoint and authorized reference audio.",
     priority: 650,
   },
   {
@@ -58,7 +59,8 @@ export const FREE_RUNNERS: FreeRunner[] = [
     description: "English zero-shot reference-voice cloning fallback.",
     capabilities: ["voice-clone"],
     url: "https://huggingface.co/spaces/ResembleAI/Chatterbox",
-    notes: "Secondary clone route. Uses reference audio only when the user has permission to clone it.",
+    notes:
+      "Secondary clone route. Uses reference audio only when the user has permission to clone it.",
     priority: 600,
   },
   {
