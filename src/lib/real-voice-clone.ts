@@ -18,12 +18,11 @@ function blobToBase64(blob: Blob): Promise<string> {
 }
 
 async function jsonRequest(path: string, body: Record<string, unknown>): Promise<Response> {
-  const response = await fetch(path, {
+  return fetch(path, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
   });
-  return response;
 }
 
 async function audioResponse(response: Response, provider: string): Promise<RealCloneResult> {
@@ -48,29 +47,29 @@ async function audioResponse(response: Response, provider: string): Promise<Real
 
 export async function createRealVoiceClone(
   reference: Blob,
+  refText: string,
   text: string,
   language = "English",
 ): Promise<RealCloneResult> {
   if (reference.size === 0) throw new Error("The voice recording is empty.");
+  if (!refText.trim()) {
+    throw new Error("Add the exact words spoken in the reference recording. Qwen uses that transcript for its highest-quality clone mode.");
+  }
   const audioBase64 = await blobToBase64(reference);
   const response = await jsonRequest("/api/ai/voice-clone", {
     audioBase64,
-    text,
+    refText: refText.trim(),
+    text: text.trim(),
     language,
   });
-  return audioResponse(response, "Custom Voice Clone");
+  return audioResponse(response, "Qwen3-TTS Base voice clone");
 }
 
 export async function speakWithRealVoiceClone(
-  voiceId: string,
+  reference: Blob,
+  refText: string,
   text: string,
   language = "English",
 ): Promise<RealCloneResult> {
-  if (!voiceId) throw new Error("The verified custom voice ID is missing.");
-  const response = await jsonRequest("/api/ai/tts", {
-    text,
-    language,
-    voiceId,
-  });
-  return audioResponse(response, "Custom Voice Clone");
+  return createRealVoiceClone(reference, refText, text, language);
 }
