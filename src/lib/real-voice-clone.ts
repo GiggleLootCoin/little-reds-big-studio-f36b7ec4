@@ -54,7 +54,7 @@ async function uploadReference(reference: Blob): Promise<string> {
   if (!response.ok) {
     const detail = await response.text().catch(() => "");
     throw new Error(
-      `Chatterbox reference upload failed (${response.status})${detail ? `: ${detail.slice(0, 200)}` : ""}.`,
+      `Chatterbox reference upload failed (${response.status})${detail ? `: ${detail.slice(0, 240)}` : ""}.`,
     );
   }
   const payload = (await response.json()) as unknown;
@@ -65,28 +65,62 @@ async function uploadReference(reference: Blob): Promise<string> {
 }
 
 async function readCompletion(response: Response): Promise<unknown> {
-  const body = await withTimeout(response.text(), 180000, "Waiting for Chatterbox generation");
-  const blocks = body.split(/\n\n+/);
+  if (!response.body) throw new Error("Chatterbox returned an empty generation stream.");
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
   let lastData: unknown;
-  for (const block of blocks) {
-    const dataLine = block.split("\n").find((line) => line.startsWith("data:"));
-    if (!dataLine) continue;
-    const raw = dataLine.slice(5).trim();
-    if (!raw || raw === "null") continue;
-    try {
-      lastData = JSON.parse(raw);
-    } catch {
-      lastData = raw;
-    }
-    if (/event:\s*(complete|error)/.test(block)) {
-      if (/event:\s*error/.test(block)) {
-        throw new Error(typeof lastData === "string" ? lastData : "Chatterbox generation failed.");
+
+  const parseBlock = (block: string): unknown | undefined => {
+    const event = block
+      .split(/\r?\n/)
+      .find((line) => line.startsWith("event:"))
+      ?.slice(6)
+      .trim()
+      .toLowerCase();
+    const dataLine = block
+      .split(/\r?\n/)
+      .find((line) => line.startsWith("data:"));
+    let data: unknown;
+    if (dataLine) {
+      const raw = dataLine.slice(5).trim();
+      if (raw && raw !== "null") {
+        try {
+          data = JSON.parse(raw);
+        } catch {
+          data = raw;
+        }
+        lastData = data;
       }
-      return lastData;
     }
+    if (event === "error") {
+      const detail = typeof data === "string" ? data : "Chatterbox reported a generation error.";
+      throw new Error(detail);
+    }
+    if (event === "complete") return data ?? lastData;
+    return undefined;
+  };
+
+  while (true) {
+    const { done, value } = await reader.read();
+    buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
+    const blocks = buffer.split(/\r?\n\r?\n/);
+    buffer = blocks.pop() || "";
+    for (const block of blocks) {
+      const completed = parseBlock(block);
+      if (completed !== undefined) {
+        reader.cancel().catch(() => undefined);
+        return completed;
+      }
+    }
+    if (done) break;
   }
-  if (lastData !== undefined) return lastData;
-  throw new Error("Chatterbox returned no completed generation event.");
+
+  if (buffer.trim()) {
+    const completed = parseBlock(buffer);
+    if (completed !== undefined) return completed;
+  }
+  throw new Error("Chatterbox ended without a completed generation event.");
 }
 
 async function outputToBlob(value: unknown): Promise<Blob> {
@@ -126,24 +160,15 @@ async function outputToBlob(value: unknown): Promise<Blob> {
 async function generateWithChatterbox(reference: Blob, text: string): Promise<Blob> {
   if (reference.size < 4096) throw new Error("The reference recording is too small to clone.");
 
-  // The browser never talks to Hugging Face directly. The existing Worker proxy
-  // forwards upload, queued generation, and audio download, avoiding CORS and
-  // the unreliable Space metadata endpoint that caused the previous failures.
   const uploadedPath = await uploadReference(reference);
   const request = await withTimeout(
     fetch(`${CHATTERBOX_PROXY}/gradio_api/call/generate_tts_audio`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        data: [
-          text.slice(0, 300),
-          { path: uploadedPath, meta: { _type: "gradio.FileData" } },
-          0.5,
-          0.8,
-          0,
-          0.5,
-          false,
-        ],
+        // Current ResembleAI/Chatterbox API: text, reference audio,
+        // exaggeration, temperature, seed, CFG. No transcript is required.
+        data: [text.slice(0, 300), { path: uploadedPath, meta: { _type: "gradio.FileData" } }, 0.5, 0.8, 0, 0.5],
       }),
     }),
     30000,
@@ -152,7 +177,7 @@ async function generateWithChatterbox(reference: Blob, text: string): Promise<Bl
   if (!request.ok) {
     const detail = await request.text().catch(() => "");
     throw new Error(
-      `Chatterbox clone request failed (${request.status})${detail ? `: ${detail.slice(0, 240)}` : ""}.`,
+      `Chatterbox clone request failed (${request.status})${detail ? `: ${detail.slice(0, 300)}` : ""}.`,
     );
   }
 
@@ -160,16 +185,14 @@ async function generateWithChatterbox(reference: Blob, text: string): Promise<Bl
   if (!start.event_id) throw new Error("Chatterbox did not return a generation event ID.");
 
   const completion = await withTimeout(
-    fetch(
-      `${CHATTERBOX_PROXY}/gradio_api/call/generate_tts_audio/${encodeURIComponent(start.event_id)}`,
-    ),
+    fetch(`${CHATTERBOX_PROXY}/gradio_api/call/generate_tts_audio/${encodeURIComponent(start.event_id)}`),
     180000,
     "Chatterbox voice clone generation",
   );
   if (!completion.ok) {
     const detail = await completion.text().catch(() => "");
     throw new Error(
-      `Chatterbox generation failed (${completion.status})${detail ? `: ${detail.slice(0, 240)}` : ""}.`,
+      `Chatterbox generation failed (${completion.status})${detail ? `: ${detail.slice(0, 300)}` : ""}.`,
     );
   }
 
