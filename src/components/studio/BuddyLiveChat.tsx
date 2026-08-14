@@ -339,7 +339,9 @@ export function BuddyLiveChat() {
       });
     } catch (error) {
       if (v.mode !== "preset") {
-        setStatus(error instanceof Error ? error.message : "Buddy's cloned voice could not be generated.");
+        setStatus(
+          error instanceof Error ? error.message : "Buddy's cloned voice could not be generated.",
+        );
         throw error;
       }
       if ("speechSynthesis" in window)
