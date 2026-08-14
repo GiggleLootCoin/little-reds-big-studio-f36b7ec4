@@ -300,8 +300,8 @@ export function BuddyLiveChat() {
     if (muted || speakingRef.current) return;
     speakingRef.current = true;
     setBuddyStatus("working", { message: "Buddy is speaking…" });
+    const v = getBuddyVoiceProfile();
     try {
-      const v = getBuddyVoiceProfile();
       let r;
       if (v.mode === "clone") {
         const sample = await getBuddyVoiceSample();
@@ -337,7 +337,11 @@ export function BuddyLiveChat() {
         a.onerror = () => no(Error("Audio playback failed"));
         void a.play().catch(no);
       });
-    } catch {
+    } catch (error) {
+      if (v.mode !== "preset") {
+        setStatus(error instanceof Error ? error.message : "Buddy's cloned voice could not be generated.");
+        throw error;
+      }
       if ("speechSynthesis" in window)
         await new Promise<void>((ok) => {
           const u = new SpeechSynthesisUtterance(text);
