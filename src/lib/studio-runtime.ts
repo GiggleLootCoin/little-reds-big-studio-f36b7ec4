@@ -1,12 +1,13 @@
-import { Client, handle_file } from "@gradio/client";
 import type { FreeRunner } from "./free-runners";
 import { getBuddyVoiceSample, getBuddyVoiceProfile } from "./buddy-voice";
+import { Client, handle_file } from "@gradio/client";
 
 export type StudioCapability = string;
 export type StudioJobInput = Record<string, unknown>;
 export type StudioArtifact = { capability: StudioCapability; value: unknown; url?: string; provider?: string };
 
 const QWEN_TTS_SPACE = "Qwen/Qwen3-TTS";
+const QWEN_SPACE_ORIGIN = "https://qwen-qwen3-tts.hf.space";
 
 export function artifactText(value: unknown): string {
   if (typeof value === "string") return value.trim();
@@ -29,11 +30,21 @@ function inputText(input: StudioJobInput): string {
 }
 
 function audioUrl(value: unknown): string | undefined {
-  if (typeof value === "string" && /^https?:\/\//.test(value)) return value;
+  if (typeof value === "string") {
+    if (/^https?:\/\//i.test(value)) return value;
+    if (value.startsWith("/")) return new URL(value, QWEN_SPACE_ORIGIN).toString();
+    return undefined;
+  }
+  if (typeof Blob !== "undefined" && value instanceof Blob) return URL.createObjectURL(value);
   if (typeof value !== "object" || value === null) return undefined;
-  const candidate = value as { url?: unknown; path?: unknown };
-  if (typeof candidate.url === "string" && /^https?:\/\//.test(candidate.url)) return candidate.url;
-  if (typeof candidate.path === "string" && /^https?:\/\//.test(candidate.path)) return candidate.path;
+  const candidate = value as { url?: unknown; path?: unknown; data?: unknown };
+  for (const field of [candidate.url, candidate.path]) {
+    if (typeof field === "string") {
+      if (/^https?:\/\//i.test(field)) return field;
+      if (field.startsWith("/")) return new URL(field, QWEN_SPACE_ORIGIN).toString();
+    }
+  }
+  if (typeof Blob !== "undefined" && candidate.data instanceof Blob) return URL.createObjectURL(candidate.data);
   return undefined;
 }
 
@@ -46,14 +57,10 @@ async function runQwenVoiceClone(input: StudioJobInput, onStatus?: (status: stri
   const profile = getBuddyVoiceProfile();
   const language = typeof input.language === "string" && input.language ? input.language : profile.language;
   const transcript = typeof input.referenceTranscript === "string" ? input.referenceTranscript.trim() : profile.referenceTranscript?.trim() || "";
-  const useXVectorOnly = input.use_xvector_only === true || !transcript;
+  const useXVectorOnly = input.use_xvector_only === true ? true : !transcript;
 
   onStatus?.("Connecting to Qwen's free voice-clone engine…");
-  const client = await Client.connect(QWEN_TTS_SPACE, {
-    status_callback: (status) => {
-      if (status.status === "sleeping" || status.status === "building") onStatus?.("Waking the free voice engine…");
-    },
-  });
+  const client = await Client.connect(QWEN_TTS_SPACE);
   onStatus?.(useXVectorOnly ? "Cloning the speaker identity from your sample…" : "Cloning your voice with the sample and transcript…");
 
   const result = await client.predict("/generate_voice_clone", [
@@ -67,7 +74,7 @@ async function runQwenVoiceClone(input: StudioJobInput, onStatus?: (status: stri
   const outputs = Array.isArray(result.data) ? result.data : [result.data];
   const output = outputs[0];
   const url = audioUrl(output);
-  if (!url) throw new Error("Qwen completed the clone request but did not return playable audio.");
+  if (!url) throw new Error("Qwen completed the clone request but returned an unusable audio file.");
   return { capability: "voice-clone", value: output, url, provider: "Qwen3-TTS 1.7B Base" };
 }
 
@@ -84,7 +91,7 @@ async function runQwenPreset(input: StudioJobInput, onStatus?: (status: string) 
   const outputs = Array.isArray(result.data) ? result.data : [result.data];
   const output = outputs[0];
   const url = audioUrl(output);
-  if (!url) throw new Error("Qwen completed the voice request but did not return playable audio.");
+  if (!url) throw new Error("Qwen completed the voice request but returned an unusable audio file.");
   return { capability: "tts", value: output, url, provider: "Qwen3-TTS 1.7B CustomVoice" };
 }
 
