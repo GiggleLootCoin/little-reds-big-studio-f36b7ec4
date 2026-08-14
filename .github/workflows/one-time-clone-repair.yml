@@ -1,0 +1,47 @@
+name: One-time clone repair
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: !startsWith(github.event.head_commit.message, 'fix: repair qwen clone transport')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Patch Qwen clone transport
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('src/lib/studio-runtime-impl.ts')
+          s = p.read_text()
+          old = 'const sources = typeof window === "undefined" ? [id] : [proxyOrigin(id), id];'
+          new = 'const sources = typeof window === "undefined" ? [id] : [id, proxyOrigin(id)];'
+          if old not in s:
+              raise SystemExit('expected Gradio source ordering was not found')
+          s = s.replace(old, new, 1)
+          p.write_text(s)
+          PY
+      - name: Verify patch
+        run: |
+          grep -n 'const sources' src/lib/studio-runtime-impl.ts
+          npm install --package-lock-only --ignore-scripts
+          npx tsc --noEmit
+      - name: Commit repair
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/lib/studio-runtime-impl.ts package-lock.json
+          git commit -m 'fix: repair qwen clone transport'
+          git push
+      - name: Remove one-time workflow
+        run: |
+          git rm .github/workflows/one-time-clone-repair.yml
+          git commit -m 'chore: remove one-time clone repair workflow'
+          git push
