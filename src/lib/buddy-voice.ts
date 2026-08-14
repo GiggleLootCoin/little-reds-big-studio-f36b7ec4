@@ -37,7 +37,7 @@ export const BUDDY_VOICE_PRESETS = [
 ] as const;
 
 export const BUDDY_LANGUAGE_CATALOG = [
-  "Auto", "Chinese", "English", "Japanese", "Korean", "French", "German", "Spanish", "Portuguese", "Russian", "Italian",
+  "Auto", "Chinese", "English", "Japanese", "Korean", "French", "German", "Spanish", "Portuguese", "Russian",
 ] as const;
 
 export const BUDDY_MOODS = [
