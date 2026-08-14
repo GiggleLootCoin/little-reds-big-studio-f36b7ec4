@@ -2,13 +2,14 @@ import studioServer from "./server";
 
 type Env = { HF_TOKEN?: string };
 
-// Production voice-clone backend: Hugging Face Inference Providers -> Fal Chatterbox.
-// This route deliberately bypasses Cloudflare AI; Cloudflare AI does not provide reference-audio voice cloning.
+// Dedicated voice-cloning backend. Voice cloning must never be routed through
+// Cloudflare Workers AI; the clone capability is handled here and nowhere else.
 const CHATTERBOX_ROUTE = "https://router.huggingface.co/fal-ai/fal-ai/chatterbox/text-to-speech";
 const CLONE_TEXT = "Hi. I'm Buddy. This is my new voice. Let's make something brilliant together.";
 
 function decodeBase64(value: string): Uint8Array {
-  const binary = atob(value);
+  const raw = value.replace(/^data:[^;]+;base64,/, "");
+  const binary = atob(raw);
   const bytes = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
   return bytes;
@@ -90,7 +91,15 @@ async function generateWithHfChatterbox(
 }
 
 async function handleVoiceClone(request: Request, env: Env): Promise<Response> {
-  let body: { audioBase64?: string; text?: string };
+  let body: {
+    audioBase64?: string;
+    audio?: string;
+    refAudio?: string;
+    referenceAudio?: string;
+    text?: string;
+    target_text?: string;
+    prompt?: string;
+  };
   try {
     body = (await request.json()) as typeof body;
   } catch {
@@ -99,18 +108,22 @@ async function handleVoiceClone(request: Request, env: Env): Promise<Response> {
       { status: 400 },
     );
   }
-  if (!body.audioBase64) {
+
+  const encodedAudio = body.audioBase64 || body.audio || body.refAudio || body.referenceAudio;
+  if (!encodedAudio) {
     return Response.json({ ok: false, error: "A voice sample is required." }, { status: 400 });
   }
 
   try {
-    const bytes = decodeBase64(body.audioBase64);
+    const bytes = decodeBase64(encodedAudio);
     const audioBuffer = bytes.buffer.slice(
       bytes.byteOffset,
       bytes.byteOffset + bytes.byteLength,
     ) as ArrayBuffer;
     const referenceAudio = new Blob([audioBuffer], { type: "audio/wav" });
-    return await generateWithHfChatterbox(referenceAudio, body.text?.trim() || CLONE_TEXT, env);
+    const text =
+      body.text?.trim() || body.target_text?.trim() || body.prompt?.trim() || CLONE_TEXT;
+    return await generateWithHfChatterbox(referenceAudio, text, env);
   } catch (error) {
     return Response.json(
       { ok: false, error: error instanceof Error ? error.message : "Voice cloning failed." },
@@ -122,9 +135,28 @@ async function handleVoiceClone(request: Request, env: Env): Promise<Response> {
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext) {
     const url = new URL(request.url);
+
+    // New clone route.
     if (url.pathname === "/api/ai/voice-clone" && request.method === "POST") {
       return handleVoiceClone(request, env);
     }
+
+    // Compatibility bridge for older deployed UI bundles that still call the
+    // generic /api/ai endpoint with capability: "voice-clone". This MUST be
+    // intercepted before server.ts, otherwise server.ts correctly but unhelpfully
+    // says Cloudflare AI does not provide voice cloning.
+    if (url.pathname === "/api/ai" && request.method === "POST") {
+      try {
+        const body = (await request.clone().json()) as { capability?: string };
+        const capability = String(body.capability || "").toLowerCase().replace(/_/g, "-");
+        if (capability === "voice-clone" || capability === "voiceclone" || capability === "clone") {
+          return handleVoiceClone(request, env);
+        }
+      } catch {
+        // Let the normal API handler return its normal JSON error for malformed requests.
+      }
+    }
+
     return studioServer.fetch(request, env, ctx);
   },
 };
