@@ -1,7 +1,8 @@
 import studioServer from "./server";
 
 type Env = {
-  XAI_API_KEY?: string;
+  HF_TOKEN?: string;
+  QWEN_TTS_SPACE_URL?: string;
 };
 
 function decodeBase64(value: string): Uint8Array {
@@ -9,24 +10,23 @@ function decodeBase64(value: string): Uint8Array {
   return bytes;
 }
 
-function languageCode(value: unknown): string {
-  const raw = String(value || "en").trim().toLowerCase();
+function languageName(value: unknown): string {
+  const raw = String(value || "English").trim();
   const map: Record<string, string> = {
-    english: "en",
-    spanish: "es",
-    french: "fr",
-    german: "de",
-    dutch: "nl",
-    italian: "it",
-    portuguese: "pt",
-    russian: "ru",
-    chinese: "zh",
-    japanese: "ja",
-    korean: "ko",
-    hindi: "hi",
-    arabic: "ar",
+    en: "English",
+    es: "Spanish",
+    fr: "French",
+    de: "German",
+    it: "Italian",
+    pt: "Portuguese",
+    ru: "Russian",
+    zh: "Chinese",
+    ja: "Japanese",
+    ko: "Korean",
+    hi: "Hindi",
+    ar: "Arabic",
   };
-  return map[raw] || raw.split(/[-_]/)[0] || "en";
+  return map[raw.toLowerCase()] || raw;
 }
 
 function errorResponse(message: string, status = 500) {
@@ -36,121 +36,123 @@ function errorResponse(message: string, status = 500) {
   );
 }
 
-async function handleXaiClone(request: Request, env: Env): Promise<Response> {
-  if (!env.XAI_API_KEY) {
-    return errorResponse(
-      "Real custom voice cloning is not configured yet. Add XAI_API_KEY to this Worker under Settings → Variables and Secrets.",
-      503,
-    );
+function authHeaders(env: Env): HeadersInit {
+  return env.HF_TOKEN ? { Authorization: `Bearer ${env.HF_TOKEN}` } : {};
+}
+
+async function qwenUpload(space: string, audio: Blob, env: Env): Promise<string> {
+  const form = new FormData();
+  form.append("files", audio, "reference.wav");
+  const response = await fetch(`${space}/gradio_api/upload`, {
+    method: "POST",
+    headers: authHeaders(env),
+    body: form,
+  });
+  if (!response.ok) {
+    const detail = await response.text().catch(() => "");
+    throw new Error(`Qwen reference upload failed (${response.status}). ${detail.slice(0, 240)}`);
+  }
+  const files = (await response.json()) as unknown;
+  if (!Array.isArray(files) || typeof files[0] !== "string") {
+    throw new Error("Qwen returned no uploaded reference path.");
+  }
+  return files[0];
+}
+
+async function qwenClone(space: string, path: string, refText: string, text: string, language: string, env: Env) {
+  const fileData = {
+    path,
+    orig_name: "reference.wav",
+    meta: { _type: "gradio.FileData" },
+  };
+  const start = await fetch(`${space}/gradio_api/call/generate_voice_clone`, {
+    method: "POST",
+    headers: {
+      ...authHeaders(env),
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({
+      data: [fileData, refText, text, languageName(language), false, "1.7B"],
+    }),
+  });
+  if (!start.ok) {
+    const detail = await start.text().catch(() => "");
+    throw new Error(`Qwen clone job could not start (${start.status}). ${detail.slice(0, 300)}`);
+  }
+  const started = (await start.json()) as { event_id?: string };
+  if (!started.event_id) throw new Error("Qwen did not return a clone job ID.");
+
+  const result = await fetch(`${space}/gradio_api/call/generate_voice_clone/${started.event_id}`, {
+    headers: authHeaders(env),
+  });
+  if (!result.ok) {
+    const detail = await result.text().catch(() => "");
+    throw new Error(`Qwen clone job failed (${result.status}). ${detail.slice(0, 300)}`);
   }
 
-  let body: { audioBase64?: string; text?: string; language?: string };
+  const stream = await result.text();
+  const completeLines = stream.split(/\r?\n/).filter((line) => line.startsWith("data:") && line.trim() !== "data:");
+  if (!completeLines.length) throw new Error("Qwen returned no completed clone audio.");
+
+  let payload: unknown = null;
+  for (const line of completeLines.reverse()) {
+    try {
+      const parsed = JSON.parse(line.slice(5).trim()) as unknown;
+      if (Array.isArray(parsed)) {
+        payload = parsed;
+        break;
+      }
+    } catch {
+      /* keep looking for the complete event */
+    }
+  }
+  if (!Array.isArray(payload) || !payload[0]) throw new Error("Qwen completed without an audio artifact.");
+
+  const audio = payload[0] as { url?: string; path?: string } | string;
+  const audioUrl = typeof audio === "string" ? audio : audio.url;
+  if (!audioUrl) {
+    throw new Error("Qwen returned an audio object without a downloadable URL.");
+  }
+  return audioUrl.startsWith("http") ? audioUrl : `${space}/gradio_api/file=${audioUrl.replace(/^\//, "")}`;
+}
+
+async function handleQwenClone(request: Request, env: Env): Promise<Response> {
+  let body: { audioBase64?: string; refText?: string; text?: string; language?: string };
   try {
     body = (await request.json()) as typeof body;
   } catch {
     return errorResponse("The clone request was not valid JSON.", 400);
   }
 
-  if (!body.audioBase64) return errorResponse("A voice recording is required.", 400);
-  const text = String(body.text || "This is a short test of my own voice.").trim();
-  if (!text) return errorResponse("Clone preview text is empty.", 400);
+  if (!body.audioBase64) return errorResponse("A reference voice recording is required.", 400);
+  if (!body.refText?.trim()) return errorResponse("The exact transcript of the reference recording is required for the high-quality clone mode.", 400);
+  if (!body.text?.trim()) return errorResponse("Target text is required.", 400);
 
+  const space = String(env.QWEN_TTS_SPACE_URL || "https://qwen-qwen3-tts.hf.space").replace(/\/$/, "");
   const audio = new Blob([decodeBase64(body.audioBase64)], { type: "audio/wav" });
-  const form = new FormData();
-  form.append("name", "Personal Studio Voice");
-  form.append("description", "A verified personal voice for this studio account.");
-  form.append("language", languageCode(body.language));
-  form.append("use_case", "conversational");
-  form.append("tone", "friendly");
-  form.append("file", audio, "reference.wav");
 
-  const create = await fetch("https://api.x.ai/v1/custom-voices", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${env.XAI_API_KEY}` },
-    body: form,
-  });
-
-  if (!create.ok) {
-    const detail = await create.text().catch(() => "");
-    if (create.status === 403) {
-      return errorResponse(
-        "xAI's custom-voice creation API is not enabled for this key. Create the personal voice once in the xAI Voice console, then use its Voice ID here; the API can use that voice for Buddy even when API creation is gated.",
-        403,
-      );
+  try {
+    const path = await qwenUpload(space, audio, env);
+    const audioUrl = await qwenClone(space, path, body.refText.trim(), body.text.trim(), String(body.language || "English"), env);
+    const generated = await fetch(audioUrl, { headers: authHeaders(env) });
+    if (!generated.ok || !generated.body) {
+      throw new Error(`Qwen generated audio could not be downloaded (${generated.status}).`);
     }
-    return errorResponse(`xAI custom voice creation failed (${create.status}). ${detail.slice(0, 300)}`, 502);
+    const headers = new Headers(generated.headers);
+    headers.set("cache-control", "no-store");
+    headers.set("x-clone-provider", "Qwen3-TTS 1.7B Base");
+    headers.set("x-clone-verified", "true");
+    return new Response(generated.body, { status: 200, headers });
+  } catch (error) {
+    return errorResponse(error instanceof Error ? error.message : "Qwen voice cloning failed.", 502);
   }
-
-  const created = (await create.json()) as { voice_id?: string };
-  const voiceId = String(created.voice_id || "");
-  if (!voiceId) return errorResponse("xAI created the voice but returned no Voice ID.", 502);
-
-  const speech = await fetch("https://api.x.ai/v1/tts", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${env.XAI_API_KEY}`,
-      "content-type": "application/json",
-    },
-    body: JSON.stringify({
-      text,
-      voice_id: voiceId,
-      language: languageCode(body.language),
-    }),
-  });
-
-  if (!speech.ok) {
-    const detail = await speech.text().catch(() => "");
-    return errorResponse(`The custom voice was created, but preview synthesis failed (${speech.status}). ${detail.slice(0, 300)}`, 502);
-  }
-
-  const headers = new Headers(speech.headers);
-  headers.set("cache-control", "no-store");
-  headers.set("x-voice-id", voiceId);
-  headers.set("x-clone-provider", "xAI Custom Voice");
-  return new Response(speech.body, { status: 200, headers });
-}
-
-async function handleXaiTts(request: Request, env: Env, body: Record<string, unknown>): Promise<Response> {
-  if (!env.XAI_API_KEY) return errorResponse("xAI voice service is not configured.", 503);
-  const voiceId = String(body.voiceId || "").trim();
-  const text = String(body.text || body.prompt || "").trim();
-  if (!voiceId || !text) return errorResponse("A verified voice ID and text are required.", 400);
-  const response = await fetch("https://api.x.ai/v1/tts", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${env.XAI_API_KEY}`,
-      "content-type": "application/json",
-    },
-    body: JSON.stringify({
-      text,
-      voice_id: voiceId,
-      language: languageCode(body.language),
-    }),
-  });
-  if (!response.ok) {
-    const detail = await response.text().catch(() => "");
-    return errorResponse(`Custom voice playback failed (${response.status}). ${detail.slice(0, 300)}`, 502);
-  }
-  const headers = new Headers(response.headers);
-  headers.set("cache-control", "no-store");
-  headers.set("x-voice-id", voiceId);
-  headers.set("x-clone-provider", "xAI Custom Voice");
-  return new Response(response.body, { status: response.status, headers });
 }
 
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext) {
     const url = new URL(request.url);
     if (url.pathname === "/api/ai/voice-clone" && request.method === "POST") {
-      return handleXaiClone(request, env);
-    }
-    if (url.pathname === "/api/ai/tts" && request.method === "POST" && env.XAI_API_KEY) {
-      try {
-        const cloneBody = (await request.clone().json()) as Record<string, unknown>;
-        if (cloneBody.voiceId) return handleXaiTts(request, env, cloneBody);
-      } catch {
-        /* Delegate malformed/other requests to the existing runtime. */
-      }
+      return handleQwenClone(request, env);
     }
     return studioServer.fetch(request, env, ctx);
   },
