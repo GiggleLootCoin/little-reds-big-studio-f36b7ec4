@@ -1,5 +1,6 @@
 name: Deploy Little Red's Big Studio
 # Production deployment for the current Buddy runtime.
+# Explicit push + manual dispatch triggers keep the GitHub -> Cloudflare path active.
 on:
   push:
     branches: [main]
