@@ -1,0 +1,43 @@
+name: One-time Qwen clone transport
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.event.head_commit.message != 'fix: repair qwen clone transport'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch transport
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('src/lib/studio-runtime-impl.ts')
+          s = p.read_text()
+          old = 'const sources = typeof window === "undefined" ? [id] : [proxyOrigin(id), id];'
+          new = 'const sources = typeof window === "undefined" ? [id] : [id, proxyOrigin(id)];'
+          if old not in s:
+              raise SystemExit('Qwen source-order pattern not found')
+          p.write_text(s.replace(old, new, 1))
+          PY
+          grep -n 'const sources' src/lib/studio-runtime-impl.ts
+      - name: Commit
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/lib/studio-runtime-impl.ts
+          git commit -m 'fix: repair qwen clone transport'
+          git push
+      - name: Remove workflow
+        shell: bash
+        run: |
+          git rm .github/workflows/one-time-clone-transport.yml
+          git commit -m 'chore: remove one-time clone transport workflow'
+          git push
