@@ -2,8 +2,8 @@ import studioServer from "./server";
 
 type Env = { HF_TOKEN?: string };
 
-// Hugging Face's Fal provider route uses the provider prefix plus the Fal model id.
-// The previous route (/fal-ai/chatterbox) was not a Chatterbox generation endpoint.
+// Production voice-clone backend: Hugging Face Inference Providers -> Fal Chatterbox.
+// This route deliberately bypasses Cloudflare AI; Cloudflare AI does not provide reference-audio voice cloning.
 const CHATTERBOX_ROUTE = "https://router.huggingface.co/fal-ai/fal-ai/chatterbox/text-to-speech";
 const CLONE_TEXT = "Hi. I'm Buddy. This is my new voice. Let's make something brilliant together.";
 
@@ -31,8 +31,6 @@ async function generateWithHfChatterbox(
   const bytes = new Uint8Array(await referenceAudio.arrayBuffer());
   if (bytes.byteLength < 4096) throw new Error("The voice sample is too short or empty.");
 
-  // The Fal provider accepts audio_url as a data URI, so the Worker can send the
-  // user's short recording without exposing a storage URL or requiring CORS.
   let binary = "";
   const chunk = 0x8000;
   for (let i = 0; i < bytes.length; i += chunk) {
