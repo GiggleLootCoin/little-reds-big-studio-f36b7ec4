@@ -4,12 +4,15 @@ import type { StudioArtifact, StudioJobInput } from "./studio-runtime";
 const QWEN_TTS_SPACE = "Qwen/Qwen3-TTS";
 const MODEL_SIZE = "1.7B";
 
-function audioUrl(value: any): string | undefined {
+type AudioValue = { url?: unknown; path?: unknown };
+
+function audioUrl(value: unknown): string | undefined {
   if (!value) return undefined;
   if (typeof value === "string") return value;
-  if (typeof value.url === "string") return value.url;
-  if (typeof value.path === "string" && typeof value.url === "string") return value.url;
-  if (typeof value.path === "string" && /^https?:\/\//.test(value.path)) return value.path;
+  if (typeof value !== "object") return undefined;
+  const audio = value as AudioValue;
+  if (typeof audio.url === "string") return audio.url;
+  if (typeof audio.path === "string" && /^https?:\/\//.test(audio.path)) return audio.path;
   return undefined;
 }
 
@@ -27,7 +30,11 @@ export async function runStudioJob(
     throw new Error(`No free runtime is configured for ${capability}.`);
   }
 
-  onStatus?.(capability === "voice-clone" ? "Connecting to the free voice-clone engine…" : "Connecting to the free voice engine…");
+  onStatus?.(
+    capability === "voice-clone"
+      ? "Connecting to the free voice-clone engine…"
+      : "Connecting to the free voice engine…",
+  );
   const client = await Client.connect(QWEN_TTS_SPACE);
 
   if (capability === "voice-clone") {
