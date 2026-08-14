@@ -167,7 +167,7 @@ async function connect(space: string) {
   const id = spaceId(space);
   const existing = clients.get(id);
   if (existing) return existing;
-  const sources = typeof window === "undefined" ? [id] : [proxyOrigin(id), id];
+  const sources = typeof window === "undefined" ? [id] : [id, proxyOrigin(id)];
   const promise = (async () => {
     let last: unknown;
     for (const source of sources)
