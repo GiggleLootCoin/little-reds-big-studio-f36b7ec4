@@ -9,7 +9,18 @@ export function artifactText(value: unknown): string {
   if (typeof value === "string") return value.trim();
   if (Array.isArray(value)) return value.map(artifactText).find(Boolean) ?? "";
   if (value && typeof value === "object") {
-    for (const k of ["text", "response", "generated_text", "transcription", "transcript", "content", "value", "data", "output", "result"]) {
+    for (const k of [
+      "text",
+      "response",
+      "generated_text",
+      "transcription",
+      "transcript",
+      "content",
+      "value",
+      "data",
+      "output",
+      "result",
+    ]) {
       const t = artifactText((value as Record<string, unknown>)[k]);
       if (t) return t;
     }
