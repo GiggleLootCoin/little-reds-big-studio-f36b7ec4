@@ -120,7 +120,7 @@ export function BuddyVoicePicker() {
       recorder.start();
       setRecording(true);
       setStatus("Recording… speak naturally for 5–15 seconds, then tap Stop.");
-    } catch (error) {
+    } catch {
       setStatus(`${FAILURE} Microphone access was not granted.`);
     }
   };
