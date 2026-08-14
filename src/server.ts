@@ -204,6 +204,35 @@ function chatText(result: unknown): string {
   }
   return "";
 }
+function ttsLanguage(value: string | undefined): string {
+  const raw = String(value || "en").trim().toLowerCase();
+  const map: Record<string, string> = {
+    english: "en",
+    en: "en",
+    spanish: "es",
+    es: "es",
+    french: "fr",
+    fr: "fr",
+    german: "de",
+    de: "de",
+    italian: "it",
+    it: "it",
+    portuguese: "pt",
+    pt: "pt",
+    chinese: "zh",
+    mandarin: "zh",
+    zh: "zh",
+    japanese: "ja",
+    ja: "ja",
+    korean: "ko",
+    ko: "ko",
+    hindi: "hi",
+    hi: "hi",
+    arabic: "ar",
+    ar: "ar",
+  };
+  return map[raw] || raw.split(/[-_]/)[0] || "en";
+}
 async function cloudflareAI(request: Request, env: ServerEnv): Promise<Response | null> {
   const url = new URL(request.url);
   if (!url.pathname.startsWith(AI_PREFIX)) return null;
@@ -288,14 +317,17 @@ async function cloudflareAI(request: Request, env: ServerEnv): Promise<Response 
       return image;
     }
     if (capability === "tts") {
+      let lastError: unknown;
       try {
         const result = await env.AI.run("@cf/myshell-ai/melotts", {
           prompt,
-          lang: body.language || "en",
+          lang: ttsLanguage(body.language),
         });
         const audio = await rawAudioResponse(result);
         if (audio) return audio;
+        lastError = new Error("MeloTTS returned no audio");
       } catch (error) {
+        lastError = error;
         if (!isCapacityError(error)) console.warn("MeloTTS failed; trying Aura-2", error);
       }
       try {
@@ -306,17 +338,29 @@ async function cloudflareAI(request: Request, env: ServerEnv): Promise<Response 
         });
         const audio = await rawAudioResponse(aura);
         if (audio) return audio;
+        lastError = new Error("Aura-2 returned no audio");
       } catch (error) {
+        lastError = error;
         console.warn("Aura-2 failed; trying Aura-1", error);
       }
-      const aura1 = await env.AI.run("@cf/deepgram/aura-1", {
-        text: prompt,
-        encoding: "mp3",
-        speaker: body.speaker || "asteria",
-      });
-      const audio = await rawAudioResponse(aura1);
-      if (!audio) return jsonError("TTS providers returned no usable audio.", 502);
-      return audio;
+      try {
+        const aura1 = await env.AI.run("@cf/deepgram/aura-1", {
+          text: prompt,
+          encoding: "mp3",
+          speaker: body.speaker || "asteria",
+        });
+        const audio = await rawAudioResponse(aura1);
+        if (audio) return audio;
+        lastError = new Error("Aura-1 returned no audio");
+      } catch (error) {
+        lastError = error;
+      }
+      return jsonError(
+        `TTS providers returned no usable audio.${
+          isCapacityError(lastError) ? " The AI service is at capacity." : ""
+        }`,
+        503,
+      );
     }
     if (capability === "chat") {
       const messages =
