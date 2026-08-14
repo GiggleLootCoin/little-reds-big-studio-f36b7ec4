@@ -290,14 +290,14 @@ async function runQwen(
   const ref = await handle_file(sample);
   const refText = String(input.referenceTranscript ?? input.refText ?? "");
   let last: unknown;
-  for (const size of [String(input.model_size ?? "0.6B"), "1.7B"])
+  for (const size of [String(input.model_size ?? "1.7B"), "0.6B"])
     try {
       const r = await cl.predict("/generate_voice_clone", [
         ref,
         refText,
         text,
         String(input.language ?? "English"),
-        !refText,
+        false,
         size,
       ]);
       const value = Array.isArray(r) ? r : ((r as { data?: unknown[] }).data ?? r);
@@ -365,6 +365,8 @@ async function prepareVoice(capability: StudioCapability, input: StudioJobInput)
   const next = { ...input };
   if (profile.language && profile.language !== "Auto") next.language = profile.language;
   if (profile.mode === "clone") {
+    if (!profile.cloneVerified) throw new Error("Your custom voice is not verified yet. Generate and verify the clone first.");
+    if (!profile.referenceTranscript?.trim()) throw new Error("Your custom voice needs a verified reference transcript before Buddy can speak with it.");
     const sample = await getBuddyVoiceSample();
     if (!sample) throw new Error("Your saved Buddy voice sample is unavailable. Record it again.");
     next.audio = sample;
