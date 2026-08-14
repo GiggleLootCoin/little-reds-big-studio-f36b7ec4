@@ -11,7 +11,8 @@ function validateAudioBlob(blob: Blob): void {
 
 async function blobToWav(blob: Blob): Promise<Blob> {
   if (blob.type.toLowerCase().includes("wav")) return blob;
-  const AudioContextCtor = window.AudioContext ||
+  const AudioContextCtor =
+    window.AudioContext ||
     (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
   if (!AudioContextCtor) throw new Error("This browser cannot convert the recording to WAV.");
   const context = new AudioContextCtor();
