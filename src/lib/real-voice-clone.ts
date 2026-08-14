@@ -1,8 +1,6 @@
-import { Client, handle_file } from "@gradio/client";
-
 export type RealCloneResult = { url: string; provider: string; voiceId?: string };
 
-const CHATTERBOX_SPACE = "ResembleAI/Chatterbox";
+const CHATTERBOX_BASE = "https://resembleai-chatterbox.hf.space";
 const DEFAULT_CLONE_TEXT =
   "Hi. I'm Buddy. This is a voice clone test. The voice you supplied is speaking these words.";
 
@@ -12,101 +10,6 @@ function validateAudioBlob(blob: Blob): void {
   if (blob.type && !blob.type.toLowerCase().startsWith("audio/")) {
     throw new Error(`The clone engine returned ${blob.type}, not audio.`);
   }
-}
-
-function audioTupleToWav(sampleRate: number, raw: unknown): Blob {
-  if (!Number.isFinite(sampleRate) || sampleRate <= 0) {
-    throw new Error("The clone engine returned an invalid audio sample rate.");
-  }
-
-  let samples: Float32Array | Int16Array;
-  if (raw instanceof Float32Array) samples = raw;
-  else if (raw instanceof Int16Array) samples = raw;
-  else if (ArrayBuffer.isView(raw)) {
-    const view = raw as ArrayBufferView;
-    if (view.byteLength === 0) throw new Error("The clone engine returned empty waveform data.");
-    if (view.byteLength % 2 !== 0)
-      throw new Error("The clone engine returned malformed waveform data.");
-    samples = new Int16Array(view.buffer.slice(view.byteOffset, view.byteOffset + view.byteLength));
-  } else if (Array.isArray(raw)) samples = Float32Array.from(raw.map(Number));
-  else throw new Error("The clone engine returned waveform data in an unsupported format.");
-
-  if (!samples.length) throw new Error("The clone engine returned no waveform samples.");
-  const pcm = new Int16Array(samples.length);
-  if (samples instanceof Int16Array) pcm.set(samples);
-  else {
-    let peak = 0;
-    for (const value of samples) peak = Math.max(peak, Math.abs(Number(value)));
-    for (let i = 0; i < samples.length; i += 1) {
-      const value = Number(samples[i]);
-      const normalized = peak > 1 ? value / 32768 : value;
-      pcm[i] = Math.max(-32768, Math.min(32767, Math.round(normalized * 32767)));
-    }
-  }
-
-  const dataBytes = pcm.byteLength;
-  const buffer = new ArrayBuffer(44 + dataBytes);
-  const view = new DataView(buffer);
-  const writeAscii = (offset: number, text: string) => {
-    for (let i = 0; i < text.length; i += 1) view.setUint8(offset + i, text.charCodeAt(i));
-  };
-  writeAscii(0, "RIFF");
-  view.setUint32(4, 36 + dataBytes, true);
-  writeAscii(8, "WAVE");
-  writeAscii(12, "fmt ");
-  view.setUint32(16, 16, true);
-  view.setUint16(20, 1, true);
-  view.setUint16(22, 1, true);
-  view.setUint32(24, Math.round(sampleRate), true);
-  view.setUint32(28, Math.round(sampleRate) * 2, true);
-  view.setUint16(32, 2, true);
-  view.setUint16(34, 16, true);
-  writeAscii(36, "data");
-  view.setUint32(40, dataBytes, true);
-  new Int16Array(buffer, 44).set(pcm);
-  return new Blob([buffer], { type: "audio/wav" });
-}
-
-async function outputToBlob(value: unknown): Promise<Blob> {
-  if (value instanceof Blob) return value;
-  if (Array.isArray(value) && value.length === 2 && typeof value[0] === "number") {
-    return audioTupleToWav(value[0], value[1]);
-  }
-  if (typeof value === "string" && /^(https?:|blob:|data:)/i.test(value)) {
-    const response = await fetch(value, { cache: "no-store" });
-    if (!response.ok) throw new Error(`Generated audio download failed (${response.status}).`);
-    return response.blob();
-  }
-  if (value && typeof value === "object") {
-    const object = value as Record<string, unknown>;
-    if (typeof object.url === "string") return outputToBlob(object.url);
-    if (typeof object.path === "string") {
-      if (/^(https?:|blob:|data:)/i.test(object.path)) return outputToBlob(object.path);
-      const path = object.path.replace(/^\/+/, "");
-      return outputToBlob(
-        `https://resembleai-chatterbox.hf.space/file=${encodeURIComponent(path)}`,
-      );
-    }
-    for (const key of ["data", "value", "output", "result"]) {
-      if (object[key] !== undefined) {
-        try {
-          return await outputToBlob(object[key]);
-        } catch {
-          // Try the next representation.
-        }
-      }
-    }
-  }
-  if (Array.isArray(value)) {
-    for (const item of value) {
-      try {
-        return await outputToBlob(item);
-      } catch {
-        // Try the next output.
-      }
-    }
-  }
-  throw new Error("The clone engine returned no downloadable audio artifact.");
 }
 
 async function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
@@ -123,41 +26,142 @@ async function withTimeout<T>(promise: Promise<T>, ms: number, label: string): P
   }
 }
 
+function absoluteUrl(value: string): string {
+  if (/^https?:\/\//i.test(value)) return value;
+  return `${CHATTERBOX_BASE}/${value.replace(/^\/+/, "")}`;
+}
+
+async function uploadReference(reference: Blob): Promise<string> {
+  const form = new FormData();
+  form.append("files", reference, "voice-reference.wav");
+  const response = await withTimeout(
+    fetch(`${CHATTERBOX_BASE}/gradio_api/upload`, {
+      method: "POST",
+      body: form,
+    }),
+    30000,
+    "Uploading reference voice",
+  );
+  if (!response.ok) {
+    throw new Error(`Chatterbox reference upload failed (${response.status}).`);
+  }
+  const payload = (await response.json()) as unknown;
+  if (!Array.isArray(payload) || typeof payload[0] !== "string") {
+    throw new Error("Chatterbox did not return an uploaded reference path.");
+  }
+  return payload[0];
+}
+
+async function readCompletion(response: Response): Promise<unknown> {
+  const body = await withTimeout(response.text(), 180000, "Waiting for Chatterbox generation");
+  const events = body.split(/\n\n+/);
+  let lastData: unknown;
+  for (const block of events) {
+    const dataLine = block
+      .split("\n")
+      .find((line) => line.startsWith("data:"));
+    if (!dataLine) continue;
+    const raw = dataLine.slice(5).trim();
+    if (!raw || raw === "null") continue;
+    try {
+      lastData = JSON.parse(raw);
+    } catch {
+      lastData = raw;
+    }
+    if (/event:\s*(complete|error)/.test(block)) {
+      if (/event:\s*error/.test(block)) {
+        throw new Error(typeof lastData === "string" ? lastData : "Chatterbox generation failed.");
+      }
+      return lastData;
+    }
+  }
+  if (lastData !== undefined) return lastData;
+  throw new Error("Chatterbox returned no completed generation event.");
+}
+
+async function outputToBlob(value: unknown): Promise<Blob> {
+  if (value instanceof Blob) return value;
+  if (typeof value === "string" && /^(https?:|blob:|data:)/i.test(value)) {
+    const response = await fetch(value, { cache: "no-store" });
+    if (!response.ok) throw new Error(`Generated audio download failed (${response.status}).`);
+    return response.blob();
+  }
+  if (value && typeof value === "object") {
+    const object = value as Record<string, unknown>;
+    for (const key of ["url", "path"]) {
+      if (typeof object[key] === "string") return outputToBlob(absoluteUrl(object[key] as string));
+    }
+    for (const key of ["data", "value", "output", "result"]) {
+      if (object[key] !== undefined) {
+        try {
+          return await outputToBlob(object[key]);
+        } catch {
+          // Try the next representation.
+        }
+      }
+    }
+  }
+  if (Array.isArray(value)) {
+    // Direct Gradio completion data is normally [audioOutput].
+    for (const item of value) {
+      try {
+        return await outputToBlob(item);
+      } catch {
+        // Try the next output representation.
+      }
+    }
+  }
+  throw new Error("The clone engine returned no downloadable audio artifact.");
+}
+
 async function generateWithChatterbox(reference: Blob, text: string): Promise<Blob> {
   if (reference.size < 4096) throw new Error("The reference recording is too small to clone.");
 
-  const client = await withTimeout(
-    Client.connect(CHATTERBOX_SPACE),
+  // Do not use @gradio/client here. The public Space can be healthy while its
+  // metadata endpoint is temporarily unavailable. Direct Gradio HTTP calls
+  // bypass that metadata dependency completely.
+  const uploadedPath = await uploadReference(reference);
+  const request = await withTimeout(
+    fetch(`${CHATTERBOX_BASE}/gradio_api/call/generate_tts_audio`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        data: [
+          text.slice(0, 300),
+          { path: uploadedPath, meta: { _type: "gradio.FileData" } },
+          0.5,
+          0.8,
+          0,
+          0.5,
+          false,
+        ],
+      }),
+    }),
     30000,
-    "Connecting to Chatterbox",
+    "Starting Chatterbox voice clone",
   );
-
-  // The current official ResembleAI/Chatterbox Space exposes exactly six inputs
-  // on /generate_tts_audio. There is no vad_trim_input parameter. Sending the
-  // obsolete seventh field caused the public Space call to fail instead of
-  // generating audio, which was the concrete cause of the previous failures.
-  const payload = {
-    text_input: text.slice(0, 300),
-    audio_prompt_path_input: handle_file(reference),
-    exaggeration_input: 0.5,
-    temperature_input: 0.8,
-    seed_num_input: 0,
-    cfgw_input: 0.5,
-  };
-
-  try {
-    const response = await withTimeout(
-      client.predict("/generate_tts_audio", payload),
-      180000,
-      "Chatterbox voice clone generation",
-    );
-    const blob = await outputToBlob(response?.data);
-    validateAudioBlob(blob);
-    return blob;
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    throw new Error(`Chatterbox could not generate the clone: ${message}`);
+  if (!request.ok) {
+    const detail = await request.text().catch(() => "");
+    throw new Error(`Chatterbox clone request failed (${request.status})${detail ? `: ${detail.slice(0, 240)}` : ""}.`);
   }
+
+  const start = (await request.json()) as { event_id?: string };
+  if (!start.event_id) throw new Error("Chatterbox did not return a generation event ID.");
+
+  const completion = await withTimeout(
+    fetch(`${CHATTERBOX_BASE}/gradio_api/call/generate_tts_audio/${encodeURIComponent(start.event_id)}`),
+    180000,
+    "Chatterbox voice clone generation",
+  );
+  if (!completion.ok) {
+    const detail = await completion.text().catch(() => "");
+    throw new Error(`Chatterbox generation failed (${completion.status})${detail ? `: ${detail.slice(0, 240)}` : ""}.`);
+  }
+
+  const result = await readCompletion(completion);
+  const blob = await outputToBlob(result);
+  validateAudioBlob(blob);
+  return blob;
 }
 
 export async function createRealVoiceClone(
