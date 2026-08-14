@@ -266,17 +266,3 @@ if (!guardedClient.__buddyStylePatched) {
   };
   guardedClient.__buddyStylePatched = true;
 }
-
-/** Generic device speech must never masquerade as a Buddy voice. */
-if (typeof window !== "undefined" && "speechSynthesis" in window) {
-  const synth = window.speechSynthesis;
-  const originalSpeak = synth.speak.bind(synth);
-  if (!(synth as SpeechSynthesis & { __lrbgsGuarded?: boolean }).__lrbgsGuarded) {
-    const guarded = synth as SpeechSynthesis & { __lrbgsGuarded?: boolean };
-    guarded.__lrbgsGuarded = true;
-    synth.speak = () => {
-      throw new Error("Buddy's verified voice renderer is unavailable; device speech is disabled.");
-    };
-    void originalSpeak;
-  }
-}
