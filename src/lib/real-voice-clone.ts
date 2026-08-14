@@ -27,10 +27,18 @@ function cloneLanguage(value: string): string {
 }
 
 function numericSamples(value: unknown): number[] | null {
-  if (value instanceof Float32Array || value instanceof Float64Array || value instanceof Int16Array) {
+  if (
+    value instanceof Float32Array ||
+    value instanceof Float64Array ||
+    value instanceof Int16Array
+  ) {
     return Array.from(value, Number);
   }
-  if (Array.isArray(value) && value.length && value.every((x) => typeof x === "number" && Number.isFinite(x))) {
+  if (
+    Array.isArray(value) &&
+    value.length &&
+    value.every((x) => typeof x === "number" && Number.isFinite(x))
+  ) {
     return value as number[];
   }
   return null;
@@ -74,7 +82,8 @@ async function outputToBlob(output: unknown): Promise<Blob> {
 
   if (typeof output === "string" && /^https?:\/\//i.test(output)) {
     const response = await fetch(output);
-    if (!response.ok) throw new Error(`The clone audio could not be downloaded (${response.status}).`);
+    if (!response.ok)
+      throw new Error(`The clone audio could not be downloaded (${response.status}).`);
     return response.blob();
   }
 
@@ -91,13 +100,15 @@ async function outputToBlob(output: unknown): Promise<Blob> {
     const url = typeof file.url === "string" ? file.url : undefined;
     if (url) {
       const response = await fetch(url);
-      if (!response.ok) throw new Error(`The clone audio could not be downloaded (${response.status}).`);
+      if (!response.ok)
+        throw new Error(`The clone audio could not be downloaded (${response.status}).`);
       return response.blob();
     }
     const path = typeof file.path === "string" ? file.path : undefined;
     if (path && /^https?:\/\//i.test(path)) {
       const response = await fetch(path);
-      if (!response.ok) throw new Error(`The clone audio could not be downloaded (${response.status}).`);
+      if (!response.ok)
+        throw new Error(`The clone audio could not be downloaded (${response.status}).`);
       return response.blob();
     }
   }
@@ -136,7 +147,9 @@ function validateGeneratedAudio(blob: Blob): void {
     throw new Error(`The clone engine returned an unexpected artifact type: ${blob.type}.`);
   }
   if (blob.size < 4096) {
-    throw new Error("The clone engine returned an audio artifact that is too small to be a usable voice sample.");
+    throw new Error(
+      "The clone engine returned an audio artifact that is too small to be a usable voice sample.",
+    );
   }
 }
 

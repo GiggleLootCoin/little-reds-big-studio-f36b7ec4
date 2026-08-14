@@ -63,9 +63,7 @@ console.error = (...args: unknown[]) => {
 };
 
 if (typeof globalThis.addEventListener === "function") {
-  globalThis.addEventListener("error", (event: ErrorEvent) =>
-    record(event.error ?? event),
-  );
+  globalThis.addEventListener("error", (event: ErrorEvent) => record(event.error ?? event));
   globalThis.addEventListener("unhandledrejection", (event: PromiseRejectionEvent) =>
     record(event.reason),
   );

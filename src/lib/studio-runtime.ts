@@ -85,7 +85,8 @@ export async function runStudioJob(
         );
       } catch (fallbackError) {
         const first = qwenError instanceof Error ? qwenError.message : "Qwen clone failed.";
-        const second = fallbackError instanceof Error ? fallbackError.message : "Clone fallback failed.";
+        const second =
+          fallbackError instanceof Error ? fallbackError.message : "Clone fallback failed.";
         throw new Error(`${first} ${second}`);
       }
     }
@@ -102,7 +103,9 @@ export async function runStudioJob(
     const sample = await getBuddyVoiceSample();
     const refText = (profile.referenceTranscript || "").trim();
     if (!sample || !refText) {
-      throw new Error("The verified custom voice reference is incomplete. Generate the clone again before using it.");
+      throw new Error(
+        "The verified custom voice reference is incomplete. Generate the clone again before using it.",
+      );
     }
     onStatus?.("Speaking with the verified custom voice…");
     const result = await speakWithRealVoiceClone(

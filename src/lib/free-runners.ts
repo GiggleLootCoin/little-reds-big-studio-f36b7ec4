@@ -48,7 +48,8 @@ export const FREE_RUNNERS: FreeRunner[] = [
     description: "Primary real reference-voice cloning and Qwen preset voice route.",
     capabilities: ["tts", "voice-clone"],
     url: "https://huggingface.co/spaces/Qwen/Qwen3-TTS",
-    notes: "Primary clone route. Uses the real Qwen3-TTS Base 1.7B clone endpoint; no silent preset fallback.",
+    notes:
+      "Primary clone route. Uses the real Qwen3-TTS Base 1.7B clone endpoint; no silent preset fallback.",
     priority: 700,
   },
   {

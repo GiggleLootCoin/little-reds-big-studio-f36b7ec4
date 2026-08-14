@@ -112,12 +112,15 @@ async function qwenClone(
       /* keep looking for the completed event */
     }
   }
-  if (!Array.isArray(payload) || !payload[0]) throw new Error("Qwen completed without an audio artifact.");
+  if (!Array.isArray(payload) || !payload[0])
+    throw new Error("Qwen completed without an audio artifact.");
 
   const audio = payload[0] as { url?: string; path?: string } | string;
   const audioUrl = typeof audio === "string" ? audio : audio.url;
   if (!audioUrl) throw new Error("Qwen returned an audio object without a downloadable URL.");
-  return audioUrl.startsWith("http") ? audioUrl : `${space}/gradio_api/file=${audioUrl.replace(/^\//, "")}`;
+  return audioUrl.startsWith("http")
+    ? audioUrl
+    : `${space}/gradio_api/file=${audioUrl.replace(/^\//, "")}`;
 }
 
 async function handleQwenClone(request: Request, env: Env): Promise<Response> {
@@ -129,24 +132,42 @@ async function handleQwenClone(request: Request, env: Env): Promise<Response> {
   }
 
   if (!body.audioBase64) return errorResponse("A reference voice recording is required.", 400);
-  if (!body.refText?.trim()) return errorResponse("The exact transcript of the reference recording is required for the high-quality clone mode.", 400);
+  if (!body.refText?.trim())
+    return errorResponse(
+      "The exact transcript of the reference recording is required for the high-quality clone mode.",
+      400,
+    );
   if (!body.text?.trim()) return errorResponse("Target text is required.", 400);
 
-  const space = String(env.QWEN_TTS_SPACE_URL || "https://qwen-qwen3-tts.hf.space").replace(/\/$/, "");
+  const space = String(env.QWEN_TTS_SPACE_URL || "https://qwen-qwen3-tts.hf.space").replace(
+    /\/$/,
+    "",
+  );
   const audio = new Blob([decodeBase64(body.audioBase64)], { type: "audio/wav" });
 
   try {
     const path = await qwenUpload(space, audio, env);
-    const audioUrl = await qwenClone(space, path, body.refText.trim(), body.text.trim(), String(body.language || "English"), env);
+    const audioUrl = await qwenClone(
+      space,
+      path,
+      body.refText.trim(),
+      body.text.trim(),
+      String(body.language || "English"),
+      env,
+    );
     const generated = await fetch(audioUrl, { headers: authHeaders(env) });
-    if (!generated.ok || !generated.body) throw new Error(`Qwen generated audio could not be downloaded (${generated.status}).`);
+    if (!generated.ok || !generated.body)
+      throw new Error(`Qwen generated audio could not be downloaded (${generated.status}).`);
     const headers = new Headers(generated.headers);
     headers.set("cache-control", "no-store");
     headers.set("x-clone-provider", "Qwen3-TTS 1.7B Base");
     headers.set("x-clone-verified", "true");
     return new Response(generated.body, { status: 200, headers });
   } catch (error) {
-    return errorResponse(error instanceof Error ? error.message : "Qwen voice cloning failed.", 502);
+    return errorResponse(
+      error instanceof Error ? error.message : "Qwen voice cloning failed.",
+      502,
+    );
   }
 }
 
