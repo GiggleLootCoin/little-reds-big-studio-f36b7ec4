@@ -54,24 +54,47 @@ export async function runStudioJob(
     if (!refText) {
       throw new Error("A verified transcript is required before the real clone can be generated.");
     }
-    const result = await createRealVoiceClone(
-      sample,
-      refText,
-      String(input.target_text ?? input.text ?? input.prompt ?? ""),
-      String(input.language ?? "English"),
-    );
-    // Keep the transcript and reference audio in the same storage path used by Buddy's
-    // subsequent speech responses. This prevents a clone from being marked READY while
-    // later responses cannot find its reference transcript.
+    const targetText = String(input.target_text ?? input.text ?? input.prompt ?? "").trim();
+    if (!targetText) throw new Error("Target speech text is empty.");
+
+    let result: StudioArtifact;
+    try {
+      const qwen = await createRealVoiceClone(
+        sample,
+        refText,
+        targetText,
+        String(input.language ?? "English"),
+      );
+      result = {
+        capability: "voice-clone",
+        value: qwen,
+        url: qwen.url,
+        provider: qwen.provider,
+      };
+    } catch (qwenError) {
+      // Qwen is the preferred high-fidelity route. If its public Space is busy or
+      // temporarily unavailable, use the validated Hugging Face clone pool instead
+      // of pretending a failed clone succeeded or falling back to a generic TTS voice.
+      onStatus?.("Qwen is busy; trying the verified multilingual clone fallback…");
+      const mod = await import("./studio-runtime-impl");
+      try {
+        result = await mod.runStudioJob(
+          "voice-clone",
+          { ...input, refText, referenceTranscript: refText, target_text: targetText },
+          onStatus,
+        );
+      } catch (fallbackError) {
+        const first = qwenError instanceof Error ? qwenError.message : "Qwen clone failed.";
+        const second = fallbackError instanceof Error ? fallbackError.message : "Clone fallback failed.";
+        throw new Error(`${first} ${second}`);
+      }
+    }
+
+    if (!result.url) throw new Error("The clone engine returned no playable audio.");
     await saveVoiceSample(sample, refText);
     await markBuddyCloneVerified(result.provider);
     onStatus?.("Real custom voice generated, audio validated, and clone marked ready.");
-    return {
-      capability: "voice-clone",
-      value: result,
-      url: result.url,
-      provider: result.provider,
-    };
+    return result;
   }
 
   if (capability === "tts" && customVoiceSelected()) {
