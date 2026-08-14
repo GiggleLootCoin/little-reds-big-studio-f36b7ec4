@@ -80,7 +80,7 @@ async function outputToBlob(output: unknown): Promise<Blob> {
     if (samples) return samplesToWav(output[0], samples);
   }
 
-  if (typeof output === "string" && /^https?:\/\//i.test(output)) {
+  if (typeof output === "string" && /^(https?:|blob:|data:)/i.test(output)) {
     const response = await fetch(output);
     if (!response.ok)
       throw new Error(`The clone audio could not be downloaded (${response.status}).`);
@@ -105,7 +105,7 @@ async function outputToBlob(output: unknown): Promise<Blob> {
       return response.blob();
     }
     const path = typeof file.path === "string" ? file.path : undefined;
-    if (path && /^https?:\/\//i.test(path)) {
+    if (path && /^(https?:|blob:|data:)/i.test(path)) {
       const response = await fetch(path);
       if (!response.ok)
         throw new Error(`The clone audio could not be downloaded (${response.status}).`);
@@ -122,7 +122,9 @@ async function generateWithQwen(
   text: string,
   language: string,
 ): Promise<Blob> {
-  const app = await Client.connect(QWEN_SPACE, { status_callback: () => undefined });
+  const app = await Client.connect(QWEN_SPACE, {
+    status_callback: () => undefined,
+  });
   const result = await app.predict(QWEN_CLONE_ENDPOINT, [
     handle_file(reference),
     refText.trim(),
