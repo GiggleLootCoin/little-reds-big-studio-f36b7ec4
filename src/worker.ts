@@ -21,7 +21,11 @@ function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise
   ]);
 }
 
-async function generateWithHfChatterbox(referenceAudio: Blob, text: string, env: Env): Promise<Response> {
+async function generateWithHfChatterbox(
+  referenceAudio: Blob,
+  text: string,
+  env: Env,
+): Promise<Response> {
   if (!env.HF_TOKEN) throw new Error("Hugging Face voice service is not configured.");
 
   const bytes = new Uint8Array(await referenceAudio.arrayBuffer());
@@ -72,10 +76,12 @@ async function generateWithHfChatterbox(referenceAudio: Blob, text: string, env:
   if (!audioUrlResult) throw new Error("Chatterbox completed without returning audio.");
 
   const audio = await withTimeout(fetch(audioUrlResult), 30000, "Downloading cloned audio");
-  if (!audio.ok || !audio.body) throw new Error(`Chatterbox returned unusable audio (${audio.status}).`);
+  if (!audio.ok || !audio.body)
+    throw new Error(`Chatterbox returned unusable audio (${audio.status}).`);
 
   const length = Number(audio.headers.get("content-length") || 0);
-  if (length > 0 && length < 4096) throw new Error("Chatterbox returned an unusably small audio file.");
+  if (length > 0 && length < 4096)
+    throw new Error("Chatterbox returned an unusably small audio file.");
 
   const headers = new Headers(audio.headers);
   headers.set("content-type", audio.headers.get("content-type") || "audio/wav");
@@ -90,7 +96,10 @@ async function handleVoiceClone(request: Request, env: Env): Promise<Response> {
   try {
     body = (await request.json()) as typeof body;
   } catch {
-    return Response.json({ ok: false, error: "The clone request was not valid JSON." }, { status: 400 });
+    return Response.json(
+      { ok: false, error: "The clone request was not valid JSON." },
+      { status: 400 },
+    );
   }
   if (!body.audioBase64) {
     return Response.json({ ok: false, error: "A voice sample is required." }, { status: 400 });
@@ -98,7 +107,10 @@ async function handleVoiceClone(request: Request, env: Env): Promise<Response> {
 
   try {
     const bytes = decodeBase64(body.audioBase64);
-    const audioBuffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+    const audioBuffer = bytes.buffer.slice(
+      bytes.byteOffset,
+      bytes.byteOffset + bytes.byteLength,
+    ) as ArrayBuffer;
     const referenceAudio = new Blob([audioBuffer], { type: "audio/wav" });
     return await generateWithHfChatterbox(referenceAudio, body.text?.trim() || CLONE_TEXT, env);
   } catch (error) {
