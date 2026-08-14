@@ -65,12 +65,17 @@ jobs:
           for i in 1 2 3 4 5 6 7 8 9 10; do
             code=$(curl -L -sS --max-time 20 -o /tmp/studio.html -w '%{http_code}' "$PRODUCTION_URL/?deploy_sha=${GITHUB_SHA}") || code=000
             if [ "$code" = "200" ] && grep -qiE "Buddy|Little Red" /tmp/studio.html; then
-              echo "Production smoke test passed: HTTP 200 and Buddy/Studio content detected."
-              exit 0
+              echo "Production page smoke test passed."
+              break
             fi
             echo "Attempt $i: HTTP $code; waiting for deployment propagation..."
             sleep 5
+            if [ "$i" = "10" ]; then exit 1; fi
           done
-          echo "Production smoke test failed"
-          cat /tmp/studio.html 2>/dev/null || true
-          exit 1
+
+          clone_code=$(curl -L -sS --max-time 20 -o /tmp/clone-health.json -w '%{http_code}' "$PRODUCTION_URL/api/ai/voice-clone?deploy_sha=${GITHUB_SHA}") || clone_code=000
+          test "$clone_code" = "200" || { echo "Voice-clone health endpoint returned HTTP $clone_code"; cat /tmp/clone-health.json 2>/dev/null || true; exit 1; }
+          grep -q '"capability":"voice-clone"' /tmp/clone-health.json || { echo "Wrong capability in deployed clone endpoint"; cat /tmp/clone-health.json; exit 1; }
+          grep -q '"backend":"huggingface-fal-chatterbox"' /tmp/clone-health.json || { echo "Wrong voice-clone backend deployed"; cat /tmp/clone-health.json; exit 1; }
+          grep -q '"transcriptRequired":false' /tmp/clone-health.json || { echo "Clone endpoint still requires a transcript"; cat /tmp/clone-health.json; exit 1; }
+          echo "Production voice-clone backend verified: Hugging Face/Fal Chatterbox; transcript not required."
