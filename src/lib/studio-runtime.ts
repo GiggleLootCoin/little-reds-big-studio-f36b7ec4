@@ -1,5 +1,5 @@
 import type { StudioArtifact, StudioCapability, StudioJobInput } from "./studio-runtime-impl";
-import { speakWithRealVoiceClone } from "./real-voice-clone";
+import { createRealVoiceClone, speakWithRealVoiceClone } from "./real-voice-clone";
 
 export type { StudioArtifact, StudioCapability, StudioJobInput } from "./studio-runtime-impl";
 export { runtimeProviders } from "./studio-runtime-impl";
@@ -37,11 +37,45 @@ function savedCloneId(): string | null {
   }
 }
 
+function saveCloneId(id: string | undefined) {
+  if (!id || typeof window === "undefined") return;
+  try {
+    localStorage.setItem("lrbgs-buddy-clone-voice-id", id);
+  } catch {
+    /* best effort */
+  }
+}
+
 export async function runStudioJob(
   capability: StudioCapability,
   input: StudioJobInput,
   onStatus?: (s: string) => void,
 ): Promise<StudioArtifact> {
+  if (capability === "voice-clone") {
+    const sample = input.refAudio ?? input.referenceAudio ?? input.audio;
+    if (sample instanceof Blob) {
+      try {
+        onStatus?.("Creating a real custom voice from the reference recording…");
+        const result = await createRealVoiceClone(
+          sample,
+          String(input.target_text ?? input.text ?? input.prompt ?? "This is a real test of my custom voice."),
+          String(input.language ?? "English"),
+        );
+        saveCloneId(result.voiceId);
+        onStatus?.("Real custom voice created and previewed.");
+        return {
+          capability: "voice-clone",
+          value: result,
+          url: result.url,
+          provider: result.provider,
+        };
+      } catch (error) {
+        console.warn("Primary custom voice clone failed; trying the existing provider pool", error);
+        onStatus?.("Primary custom voice service unavailable; trying the backup clone engines…");
+      }
+    }
+  }
+
   if (capability === "tts") {
     const voiceId = savedCloneId();
     if (voiceId) {
@@ -60,11 +94,12 @@ export async function runStudioJob(
           provider: result.provider,
         };
       } catch (error) {
-        onStatus?.("Custom voice unavailable; using the selected preset voice.");
         console.warn("Verified custom voice failed; falling back to preset TTS", error);
+        onStatus?.("Custom voice unavailable; using the selected preset voice.");
       }
     }
   }
+
   const mod = await import("./studio-runtime-impl");
   return mod.runStudioJob(capability, input, onStatus);
 }
