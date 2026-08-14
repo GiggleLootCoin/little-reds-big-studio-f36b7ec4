@@ -114,7 +114,10 @@ async function withTimeout<T>(promise: Promise<T>, ms: number, label: string): P
     return await Promise.race([
       promise,
       new Promise<T>((_, reject) => {
-        timer = window.setTimeout(() => reject(new Error(`${label} timed out after ${Math.round(ms / 1000)} seconds.`)), ms);
+        timer = window.setTimeout(
+          () => reject(new Error(`${label} timed out after ${Math.round(ms / 1000)} seconds.`)),
+          ms,
+        );
       }),
     ]);
   } finally {
@@ -166,7 +169,11 @@ async function generateWithQwen(
         }
         throw new Error("Qwen completed without clone audio.");
       })();
-      return await withTimeout(consume, 65000, `Qwen ${size}${xVectorOnly ? " x-vector" : " ICL"} clone`);
+      return await withTimeout(
+        consume,
+        65000,
+        `Qwen ${size}${xVectorOnly ? " x-vector" : " ICL"} clone`,
+      );
     } catch (error) {
       last = error instanceof Error ? error.message : String(error);
     }
@@ -195,7 +202,11 @@ async function waitForCpuQwen(): Promise<void> {
     try {
       const response = await fetch(`${CPU_PROXY}/api/status`, { cache: "no-store" });
       if (response.ok) {
-        const data = (await response.json()) as { status?: string; message?: string; device?: string };
+        const data = (await response.json()) as {
+          status?: string;
+          message?: string;
+          device?: string;
+        };
         if (data.status === "ready") return;
         last = data.message || data.status || last;
       } else last = `CPU Qwen status HTTP ${response.status}`;
@@ -251,11 +262,7 @@ async function generateWithCpuQwen(
   if (!generated.audio_id || generated.status === "error")
     throw new Error("CPU Qwen completed without generated audio.");
   const audio = await withTimeout(
-    fetchWithRetry(
-      `${CPU_PROXY}/api/download/${encodeURIComponent(generated.audio_id)}`,
-      {},
-      3,
-    ),
+    fetchWithRetry(`${CPU_PROXY}/api/download/${encodeURIComponent(generated.audio_id)}`, {}, 3),
     30000,
     "Downloading the CPU Qwen clone",
   );
