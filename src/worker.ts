@@ -121,8 +121,7 @@ async function handleVoiceClone(request: Request, env: Env): Promise<Response> {
       bytes.byteOffset + bytes.byteLength,
     ) as ArrayBuffer;
     const referenceAudio = new Blob([audioBuffer], { type: "audio/wav" });
-    const text =
-      body.text?.trim() || body.target_text?.trim() || body.prompt?.trim() || CLONE_TEXT;
+    const text = body.text?.trim() || body.target_text?.trim() || body.prompt?.trim() || CLONE_TEXT;
     return await generateWithHfChatterbox(referenceAudio, text, env);
   } catch (error) {
     return Response.json(
@@ -148,7 +147,9 @@ export default {
     if (url.pathname === "/api/ai" && request.method === "POST") {
       try {
         const body = (await request.clone().json()) as { capability?: string };
-        const capability = String(body.capability || "").toLowerCase().replace(/_/g, "-");
+        const capability = String(body.capability || "")
+          .toLowerCase()
+          .replace(/_/g, "-");
         if (capability === "voice-clone" || capability === "voiceclone" || capability === "clone") {
           return handleVoiceClone(request, env);
         }
