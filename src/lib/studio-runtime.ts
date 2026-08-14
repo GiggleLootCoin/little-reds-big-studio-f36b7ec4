@@ -1,4 +1,4 @@
-import { Client } from "@gradio/client";
+import { Client, handle_file } from "@gradio/client";
 import type { FreeRunner } from "./free-runners";
 import { getBuddyVoiceSample, getBuddyVoiceProfile } from "./buddy-voice";
 
@@ -21,35 +21,20 @@ export function artifactText(value: unknown): string {
 }
 
 function inputText(input: StudioJobInput): string {
-  for (const key of ["text", "prompt", "input", "message", "content"]) {
+  for (const key of ["text", "prompt", "input", "message", "content", "target_text"]) {
     const value = input[key];
     if (typeof value === "string" && value.trim()) return value.trim();
   }
   return "";
 }
 
-async function dataUrlToBlob(value: string): Promise<Blob | null> {
-  const match = value.match(/^data:([^;,]+)?;base64,(.+)$/);
-  if (!match) return null;
-  const binary = atob(match[2]);
-  const bytes = new Uint8Array(binary.length);
-  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
-  return new Blob([bytes], { type: match[1] || "audio/wav" });
-}
-
-async function resolveAudio(value: unknown): Promise<Blob | string | null> {
-  if (value instanceof Blob) return value;
-  if (typeof value === "string") {
-    if (value.startsWith("data:")) return (await dataUrlToBlob(value)) || value;
-    if (/^https?:\/\//.test(value)) return value;
-  }
-  if (value && typeof value === "object") {
-    const candidate = value as { url?: unknown; path?: unknown; data?: unknown };
-    if (typeof candidate.url === "string") return candidate.url;
-    if (typeof candidate.path === "string") return candidate.path;
-    if (candidate.data instanceof Blob) return candidate.data;
-  }
-  return null;
+function audioUrl(value: unknown): string | undefined {
+  if (typeof value === "string" && /^https?:\/\//.test(value)) return value;
+  if (typeof value !== "object" || value === null) return undefined;
+  const candidate = value as { url?: unknown; path?: unknown };
+  if (typeof candidate.url === "string" && /^https?:\/\//.test(candidate.url)) return candidate.url;
+  if (typeof candidate.path === "string" && /^https?:\/\//.test(candidate.path)) return candidate.path;
+  return undefined;
 }
 
 async function runQwenVoiceClone(input: StudioJobInput, onStatus?: (status: string) => void): Promise<StudioArtifact> {
@@ -60,29 +45,30 @@ async function runQwenVoiceClone(input: StudioJobInput, onStatus?: (status: stri
 
   const profile = getBuddyVoiceProfile();
   const language = typeof input.language === "string" && input.language ? input.language : profile.language;
-  const transcript = typeof input.referenceTranscript === "string" ? input.referenceTranscript : "";
+  const transcript = typeof input.referenceTranscript === "string" ? input.referenceTranscript.trim() : profile.referenceTranscript?.trim() || "";
+  const useXVectorOnly = input.use_xvector_only === true || !transcript;
 
-  onStatus?.("Connecting to Buddy's voice engine…");
-  const client = await Client.connect(QWEN_TTS_SPACE);
-  onStatus?.("Creating the voice clone…");
+  onStatus?.("Connecting to Qwen's free voice-clone engine…");
+  const client = await Client.connect(QWEN_TTS_SPACE, {
+    status_callback: (status) => {
+      if (status.status === "sleeping" || status.status === "building") onStatus?.("Waking the free voice engine…");
+    },
+  });
+  onStatus?.(useXVectorOnly ? "Cloning the speaker identity from your sample…" : "Cloning your voice with the sample and transcript…");
 
-  let lastError: unknown = null;
-  for (const args of [
-    [sample, transcript, text, language, true, 1.7],
-    [sample, transcript, text, language, true],
-    [sample, transcript, text, language],
-  ]) {
-    try {
-      const result = await client.predict("/generate_voice_clone", args);
-      const outputs = Array.isArray(result.data) ? result.data : [result.data];
-      const audio = await resolveAudio(outputs[0]);
-      if (audio) return { capability: "tts", value: audio, url: typeof audio === "string" ? audio : undefined, provider: "Qwen3-TTS" };
-      lastError = new Error("Qwen returned no playable audio artifact.");
-    } catch (error) {
-      lastError = error;
-    }
-  }
-  throw lastError instanceof Error ? lastError : new Error("Buddy's voice clone service did not return audio.");
+  const result = await client.predict("/generate_voice_clone", [
+    handle_file(sample),
+    transcript,
+    text,
+    language,
+    useXVectorOnly,
+    "1.7B",
+  ]);
+  const outputs = Array.isArray(result.data) ? result.data : [result.data];
+  const output = outputs[0];
+  const url = audioUrl(output);
+  if (!url) throw new Error("Qwen completed the clone request but did not return playable audio.");
+  return { capability: "voice-clone", value: output, url, provider: "Qwen3-TTS 1.7B Base" };
 }
 
 async function runQwenPreset(input: StudioJobInput, onStatus?: (status: string) => void): Promise<StudioArtifact> {
@@ -91,13 +77,15 @@ async function runQwenPreset(input: StudioJobInput, onStatus?: (status: string) 
   const profile = getBuddyVoiceProfile();
   const language = typeof input.language === "string" && input.language ? input.language : profile.language;
   const speaker = typeof input.speaker === "string" && input.speaker ? input.speaker : profile.speaker;
-  onStatus?.("Creating Buddy's voice…");
+  const instruct = typeof input.instruct === "string" ? input.instruct : [profile.mood, profile.tone].filter(Boolean).join(", ");
+  onStatus?.("Creating Buddy's selected voice…");
   const client = await Client.connect(QWEN_TTS_SPACE);
-  const result = await client.predict("/generate_custom_voice", [text, language, speaker, "", 1.7]);
+  const result = await client.predict("/generate_custom_voice", [text, language, speaker, instruct, "1.7B"]);
   const outputs = Array.isArray(result.data) ? result.data : [result.data];
-  const audio = await resolveAudio(outputs[0]);
-  if (!audio) throw new Error("Qwen returned no playable audio artifact.");
-  return { capability: "tts", value: audio, url: typeof audio === "string" ? audio : undefined, provider: "Qwen3-TTS" };
+  const output = outputs[0];
+  const url = audioUrl(output);
+  if (!url) throw new Error("Qwen completed the voice request but did not return playable audio.");
+  return { capability: "tts", value: output, url, provider: "Qwen3-TTS 1.7B CustomVoice" };
 }
 
 export async function runStudioJob(capability: StudioCapability, input: StudioJobInput, onStatus?: (status: string) => void): Promise<StudioArtifact> {
