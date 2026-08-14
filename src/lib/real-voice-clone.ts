@@ -53,7 +53,9 @@ async function uploadReference(reference: Blob): Promise<string> {
   );
   if (!response.ok) {
     const detail = await response.text().catch(() => "");
-    throw new Error(`Chatterbox reference upload failed (${response.status})${detail ? `: ${detail.slice(0, 200)}` : ""}.`);
+    throw new Error(
+      `Chatterbox reference upload failed (${response.status})${detail ? `: ${detail.slice(0, 200)}` : ""}.`,
+    );
   }
   const payload = (await response.json()) as unknown;
   if (!Array.isArray(payload) || typeof payload[0] !== "string") {
@@ -149,20 +151,26 @@ async function generateWithChatterbox(reference: Blob, text: string): Promise<Bl
   );
   if (!request.ok) {
     const detail = await request.text().catch(() => "");
-    throw new Error(`Chatterbox clone request failed (${request.status})${detail ? `: ${detail.slice(0, 240)}` : ""}.`);
+    throw new Error(
+      `Chatterbox clone request failed (${request.status})${detail ? `: ${detail.slice(0, 240)}` : ""}.`,
+    );
   }
 
   const start = (await request.json()) as { event_id?: string };
   if (!start.event_id) throw new Error("Chatterbox did not return a generation event ID.");
 
   const completion = await withTimeout(
-    fetch(`${CHATTERBOX_PROXY}/gradio_api/call/generate_tts_audio/${encodeURIComponent(start.event_id)}`),
+    fetch(
+      `${CHATTERBOX_PROXY}/gradio_api/call/generate_tts_audio/${encodeURIComponent(start.event_id)}`,
+    ),
     180000,
     "Chatterbox voice clone generation",
   );
   if (!completion.ok) {
     const detail = await completion.text().catch(() => "");
-    throw new Error(`Chatterbox generation failed (${completion.status})${detail ? `: ${detail.slice(0, 240)}` : ""}.`);
+    throw new Error(
+      `Chatterbox generation failed (${completion.status})${detail ? `: ${detail.slice(0, 240)}` : ""}.`,
+    );
   }
 
   const result = await readCompletion(completion);
