@@ -78,9 +78,7 @@ async function readCompletion(response: Response): Promise<unknown> {
       ?.slice(6)
       .trim()
       .toLowerCase();
-    const dataLine = block
-      .split(/\r?\n/)
-      .find((line) => line.startsWith("data:"));
+    const dataLine = block.split(/\r?\n/).find((line) => line.startsWith("data:"));
     let data: unknown;
     if (dataLine) {
       const raw = dataLine.slice(5).trim();
@@ -168,7 +166,14 @@ async function generateWithChatterbox(reference: Blob, text: string): Promise<Bl
       body: JSON.stringify({
         // Current ResembleAI/Chatterbox API: text, reference audio,
         // exaggeration, temperature, seed, CFG. No transcript is required.
-        data: [text.slice(0, 300), { path: uploadedPath, meta: { _type: "gradio.FileData" } }, 0.5, 0.8, 0, 0.5],
+        data: [
+          text.slice(0, 300),
+          { path: uploadedPath, meta: { _type: "gradio.FileData" } },
+          0.5,
+          0.8,
+          0,
+          0.5,
+        ],
       }),
     }),
     30000,
@@ -185,7 +190,9 @@ async function generateWithChatterbox(reference: Blob, text: string): Promise<Bl
   if (!start.event_id) throw new Error("Chatterbox did not return a generation event ID.");
 
   const completion = await withTimeout(
-    fetch(`${CHATTERBOX_PROXY}/gradio_api/call/generate_tts_audio/${encodeURIComponent(start.event_id)}`),
+    fetch(
+      `${CHATTERBOX_PROXY}/gradio_api/call/generate_tts_audio/${encodeURIComponent(start.event_id)}`,
+    ),
     180000,
     "Chatterbox voice clone generation",
   );
