@@ -237,7 +237,15 @@ async function runCloudflare(
     speaker: input.speaker,
     messages: input.messages,
   };
-  if (input.audio instanceof Blob) payload.audio = input.audio;
+  if (input.audio instanceof Blob) {
+    const bytes = new Uint8Array(await input.audio.arrayBuffer());
+    let binary = "";
+    const chunkSize = 0x8000;
+    for (let i = 0; i < bytes.length; i += chunkSize) {
+      binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+    }
+    payload.audioBase64 = btoa(binary);
+  }
   const response = await fetch(provider.url, {
     method: "POST",
     body: JSON.stringify(payload),
