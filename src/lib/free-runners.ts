@@ -38,7 +38,8 @@ export const FREE_RUNNERS: FreeRunner[] = [
     description: "Server-side multilingual Buddy speech with automatic model fallback.",
     capabilities: ["tts"],
     url: "/api/ai/tts",
-    notes: "Uses Cloudflare Workers AI MeloTTS with Deepgram Aura fallbacks; no browser-side Space dependency.",
+    notes:
+      "Uses Cloudflare Workers AI MeloTTS with Deepgram Aura fallbacks; no browser-side Space dependency.",
     priority: 500,
   },
   {

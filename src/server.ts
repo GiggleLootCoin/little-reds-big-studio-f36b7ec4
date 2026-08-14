@@ -205,7 +205,9 @@ function chatText(result: unknown): string {
   return "";
 }
 function ttsLanguage(value: string | undefined): string {
-  const raw = String(value || "en").trim().toLowerCase();
+  const raw = String(value || "en")
+    .trim()
+    .toLowerCase();
   const map: Record<string, string> = {
     english: "en",
     en: "en",
