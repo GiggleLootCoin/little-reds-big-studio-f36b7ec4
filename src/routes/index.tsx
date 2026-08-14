@@ -4,7 +4,7 @@ import { Compass, Film, Mic2, SlidersHorizontal, Users } from "lucide-react";
 import { AnimatedBackground } from "@/components/studio/AnimatedBackground";
 import { BuddyWelcome } from "@/components/studio/BuddyWelcome";
 import { BuddyLiveChat } from "@/components/studio/BuddyLiveChat";
-import { VoiceProfilePanel } from "@/components/studio/VoiceProfilePanel";
+import { BuddyVoicePicker } from "@/components/studio/BuddyVoicePicker";
 import { EntitlementBanner } from "@/components/studio/EntitlementBanner";
 import { Chip, openStudioPanel } from "@/components/studio/ui";
 import { NextMoves } from "@/components/studio/Dashboard";
@@ -127,10 +127,7 @@ function Studio() {
             Buddy online
           </span>
         </div>
-        <nav
-          aria-label="Studio sections"
-          className="mx-auto hidden w-full max-w-6xl gap-1 px-3 pb-2 sm:flex sm:px-5"
-        >
+        <nav aria-label="Studio sections" className="mx-auto hidden w-full max-w-6xl gap-1 px-3 pb-2 sm:flex sm:px-5">
           {TABS.map((t) => {
             const Icon = t.icon;
             return (
@@ -159,16 +156,13 @@ function Studio() {
             <BuddyLiveChat />
             <EntitlementBanner />
             <BuddyWelcome onChoose={chooseBuddyTask} />
-            <VoiceProfilePanel />
+            <BuddyVoicePicker />
             <div className="grid gap-4 lg:grid-cols-[minmax(0,1.35fr)_minmax(300px,0.65fr)] lg:items-start">
               <FreeEngineDeck onOpenCreate={() => go("write")} />
               <section className="rounded-2xl border border-border/60 bg-background/45 p-4 backdrop-blur-md sm:p-5">
-                <h2 className="font-display text-sm font-bold uppercase tracking-[0.18em]">
-                  Your project
-                </h2>
+                <h2 className="font-display text-sm font-bold uppercase tracking-[0.18em]">Your project</h2>
                 <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                  Start anywhere. Buddy keeps the workflow moving while the engine deck gives you
-                  direct free fallbacks.
+                  Start anywhere. Buddy keeps the workflow moving while the engine deck gives you direct free fallbacks.
                 </p>
                 <div className="mt-4 flex flex-wrap gap-2">
                   <Chip>Android-first</Chip>
@@ -179,28 +173,21 @@ function Studio() {
             </div>
             <section className="space-y-3">
               <div>
-                <h2 className="font-display text-sm font-semibold uppercase tracking-[0.2em] text-foreground">
-                  Your next move
-                </h2>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Pick a goal. The machinery stays backstage.
-                </p>
+                <h2 className="font-display text-sm font-semibold uppercase tracking-[0.2em] text-foreground">Your next move</h2>
+                <p className="mt-1 text-xs text-muted-foreground">Pick a goal. The machinery stays backstage.</p>
               </div>
               <NextMoves onJump={jump} />
             </section>
             <section className="glass-panel rounded-2xl p-4 text-xs text-muted-foreground sm:p-5">
               <p>
-                <span className="font-semibold text-foreground">Buddy handles the machinery.</span>{" "}
-                Heavy models use verified free/open routes when local execution isn't practical.
+                <span className="font-semibold text-foreground">Buddy handles the machinery.</span> Heavy models use verified free/open routes when local execution isn't practical.
               </p>
             </section>
             <SupportPanel />
           </div>
         )}
         {tab === "write" && (
-          <div className="space-y-3">
-            <FreeCreatePanel />
-          </div>
+          <div className="space-y-3"><FreeCreatePanel /></div>
         )}
         {tab === "mix" && (
           <div className="space-y-3">
@@ -229,10 +216,7 @@ function Studio() {
           <span>Little Red's Big Studio — free/open edition</span>
         </footer>
       </main>
-      <nav
-        aria-label="Studio sections"
-        className="fixed inset-x-0 bottom-0 z-40 border-t border-border/60 bg-background/95 pb-[env(safe-area-inset-bottom)] shadow-[0_-12px_40px_oklch(0_0_0_/_0.28)] backdrop-blur-2xl sm:hidden"
-      >
+      <nav aria-label="Studio sections" className="fixed inset-x-0 bottom-0 z-40 border-t border-border/60 bg-background/95 pb-[env(safe-area-inset-bottom)] shadow-[0_-12px_40px_oklch(0_0_0_/_0.28)] backdrop-blur-2xl sm:hidden">
         <div className="mx-auto grid max-w-lg grid-cols-5">
           {TABS.map((t) => {
             const Icon = t.icon;
@@ -248,12 +232,7 @@ function Studio() {
                   active ? "text-primary" : "text-muted-foreground",
                 )}
               >
-                <span
-                  className={cn(
-                    "flex size-8 items-center justify-center rounded-xl",
-                    active && "bg-primary/12",
-                  )}
-                >
+                <span className={cn("flex size-8 items-center justify-center rounded-xl", active && "bg-primary/12")}>
                   <Icon aria-hidden className="size-5" />
                 </span>
                 <span className="text-[0.58rem] font-semibold tracking-wide">{t.label}</span>
