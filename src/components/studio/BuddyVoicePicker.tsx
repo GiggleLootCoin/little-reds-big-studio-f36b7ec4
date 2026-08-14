@@ -1,7 +1,6 @@
 import { useMemo, useState } from "react";
 import { CheckCircle2, Mic2, Play, RotateCcw, Trash2, UserRound, Volume2 } from "lucide-react";
 import { artifactText, runStudioJob } from "@/lib/studio-runtime";
-import { createRealVoiceClone } from "@/lib/real-voice-clone";
 import {
   clearBuddyVoiceClone,
   fileToVoiceDataUrl,
@@ -14,9 +13,11 @@ import {
 import { BUDDY_MOODS, BUDDY_TONES, BUDDY_VOICE_PRESETS } from "@/lib/buddy-voice";
 import { BUDDY_EXPANDED_LANGUAGES, BUDDY_EXPANDED_VOICES } from "@/lib/buddy-voice-expanded";
 import { StudioButton } from "./ui";
+
 const CLONE_TEXT =
   "Hi. I'm Buddy. This is a voice-clone test. The voice you supplied is speaking these words.";
 const FAILURE = "Buddy couldn't get that voice ready just yet. Try Generate + verify again.";
+
 export function BuddyVoicePicker() {
   const [profile, setProfile] = useState(getBuddyVoiceProfile());
   const [busy, setBusy] = useState(false);
@@ -26,10 +27,7 @@ export function BuddyVoicePicker() {
   const allVoices = useMemo(
     () => [
       ...BUDDY_VOICE_PRESETS.map((v) => ({ ...v, family: "Buddy Originals" })),
-      ...BUDDY_EXPANDED_VOICES.map((v) => ({
-        ...v,
-        family: "Aura Studio — 40 distinct English voices",
-      })),
+      ...BUDDY_EXPANDED_VOICES.map((v) => ({ ...v, family: "Aura Studio — 40 distinct English voices" })),
     ],
     [],
   );
@@ -42,22 +40,9 @@ export function BuddyVoicePicker() {
       next.mode === "clone"
         ? next.cloneVerified
           ? "✓ Your verified clone is ready for Buddy."
-          : "Your reference is saved; check the transcript, then generate the clone."
+          : "Your reference is saved. You can generate the clone now; the transcript is optional.")
         : `${voice?.label || next.speaker} selected — ${voice?.note || "ready to test"}.`,
     );
-  };
-  const runClone = async (sample: Blob, current = getBuddyVoiceProfile()) => {
-    const transcript = String(current.referenceTranscript || "").trim();
-    if (!transcript)
-      throw new Error("Enter or correct the exact transcript of the reference recording first.");
-    const result = await createRealVoiceClone(
-      sample,
-      transcript,
-      CLONE_TEXT,
-      current.language || "English",
-    );
-    if (!result.url) throw new Error("The clone engine returned no playable audio.");
-    return result;
   };
   const uploadClone = async (file: File) => {
     if (!file.type.startsWith("audio/")) return setStatus("Please choose an audio recording.");
@@ -65,8 +50,7 @@ export function BuddyVoicePicker() {
     setBusy(true);
     setStatus("Saving your reference and transcribing it…");
     try {
-      const dataUrl = await fileToVoiceDataUrl(file),
-        audio = document.createElement("audio");
+      const dataUrl = await fileToVoiceDataUrl(file), audio = document.createElement("audio");
       audio.preload = "metadata";
       const duration = await new Promise<number>((resolve, reject) => {
         audio.onloadedmetadata = () => resolve(audio.duration);
@@ -78,9 +62,7 @@ export function BuddyVoicePicker() {
       await saveBuddyVoiceSample(file);
       let transcript = "";
       try {
-        transcript = artifactText(
-          (await runStudioJob("speech-to-text", { audio: file }, setStatus)).value,
-        ).trim();
+        transcript = artifactText((await runStudioJob("speech-to-text", { audio: file }, setStatus)).value).trim();
       } catch {
         transcript = "";
       }
@@ -98,13 +80,11 @@ export function BuddyVoicePicker() {
       setProfile(next);
       setStatus(
         transcript
-          ? "Reference saved. Check/correct the transcript below, then tap Generate + verify."
-          : "Reference saved, but transcription was unavailable. Enter the exact transcript below, then tap Generate + verify.",
+          ? "Reference saved. Check the optional transcript below, then generate the clone."
+          : "Reference saved. Transcript is optional with the primary clone engine; add it only if you want to help the secondary Qwen route.",
       );
     } catch (error) {
-      setStatus(
-        `${FAILURE} ${error instanceof Error ? error.message : "The recording could not be saved."}`,
-      );
+      setStatus(`${FAILURE} ${error instanceof Error ? error.message : "The recording could not be saved."}`);
     } finally {
       setBusy(false);
     }
@@ -117,7 +97,21 @@ export function BuddyVoicePicker() {
       if (current.mode === "clone") {
         const sample = await getBuddyVoiceSample();
         if (!sample) throw new Error("Your saved voice reference is missing. Record it again.");
-        const result = await runClone(sample, current);
+        const result = await runStudioJob(
+          "voice-clone",
+          {
+            refAudio: sample,
+            referenceAudio: sample,
+            audio: sample,
+            referenceTranscript: current.referenceTranscript || "",
+            refText: current.referenceTranscript || "",
+            target_text: CLONE_TEXT,
+            text: CLONE_TEXT,
+            language: current.language || "English",
+          },
+          setStatus,
+        );
+        if (!result.url) throw new Error("The clone engine returned no playable audio.");
         const player = new Audio(result.url);
         await player.play();
         await markBuddyCloneVerified(result.provider);
@@ -141,13 +135,9 @@ export function BuddyVoicePicker() {
       if (!result.url) throw new Error("No playable audio returned.");
       const player = new Audio(result.url);
       await player.play();
-      setStatus(
-        `✓ ${allVoices.find((v) => v.id === current.speaker)?.label || current.speaker} is working.`,
-      );
+      setStatus(`✓ ${allVoices.find((v) => v.id === current.speaker)?.label || current.speaker} is working.`);
     } catch (error) {
-      setStatus(
-        `${FAILURE} ${error instanceof Error ? error.message : "The clone service did not return usable audio."}`,
-      );
+      setStatus(`${FAILURE} ${error instanceof Error ? error.message : "The clone service did not return usable audio."}`);
     } finally {
       setBusy(false);
     }
@@ -165,9 +155,7 @@ export function BuddyVoicePicker() {
           <Volume2 className="size-4 text-primary" />
           <div>
             <p className="text-xs font-bold uppercase tracking-[0.14em]">Buddy's voice studio</p>
-            <p className="text-[10px] text-muted-foreground">
-              50 distinct preset identities, multilingual routing, and your verified voice clone.
-            </p>
+            <p className="text-[10px] text-muted-foreground">50 distinct preset identities, multilingual routing, and your verified voice clone.</p>
           </div>
         </div>
         <StudioButton variant="ghost" onClick={() => void test()} disabled={busy}>
@@ -175,161 +163,48 @@ export function BuddyVoicePicker() {
         </StudioButton>
       </div>
       <div className="mt-3 grid grid-cols-2 gap-2">
-        <button
-          type="button"
-          onClick={() => update({ mode: "preset", cloneVerified: false })}
-          className={`rounded-xl border px-3 py-2 text-left text-xs ${profile.mode === "preset" ? "border-primary bg-primary/10" : "border-border bg-background/40"}`}
-        >
+        <button type="button" onClick={() => update({ mode: "preset", cloneVerified: false })} className={`rounded-xl border px-3 py-2 text-left text-xs ${profile.mode === "preset" ? "border-primary bg-primary/10" : "border-border bg-background/40"}`}>
           <UserRound className="mb-1 size-4 text-primary" /> Preset voices
-          <span className="mt-1 block text-[9px] text-muted-foreground">
-            Real selectable speaker IDs
-          </span>
+          <span className="mt-1 block text-[9px] text-muted-foreground">Real selectable speaker IDs</span>
         </button>
-        <label
-          className={`cursor-pointer rounded-xl border px-3 py-2 text-left text-xs ${profile.mode === "clone" ? "border-primary bg-primary/10" : "border-border bg-background/40"}`}
-        >
+        <label className={`cursor-pointer rounded-xl border px-3 py-2 text-left text-xs ${profile.mode === "clone" ? "border-primary bg-primary/10" : "border-border bg-background/40"}`}>
           <Mic2 className="mb-1 size-4 text-primary" /> Clone a Voice
-          <span className="mt-1 block text-[9px] text-muted-foreground">
-            3–30 sec reference • real verification
-          </span>
-          <input
-            className="sr-only"
-            type="file"
-            accept="audio/*"
-            onChange={(e) => {
-              const f = e.target.files?.[0];
-              if (f) void uploadClone(f);
-              e.currentTarget.value = "";
-            }}
-          />
+          <span className="mt-1 block text-[9px] text-muted-foreground">3–30 sec reference • transcript optional</span>
+          <input className="sr-only" type="file" accept="audio/*" onChange={(e) => { const f = e.target.files?.[0]; if (f) void uploadClone(f); e.currentTarget.value = ""; }} />
         </label>
       </div>
       {profile.mode === "preset" ? (
-        <select
-          value={profile.speaker}
-          onChange={(e) => update({ speaker: e.target.value })}
-          className="mt-2 w-full rounded-xl border border-border bg-background/70 px-3 py-2 text-xs"
-        >
+        <select value={profile.speaker} onChange={(e) => update({ speaker: e.target.value })} className="mt-2 w-full rounded-xl border border-border bg-background/70 px-3 py-2 text-xs">
           {["Buddy Originals", "Aura Studio — 40 distinct English voices"].map((family) => (
             <optgroup key={family} label={family}>
-              {allVoices
-                .filter((v) => v.family === family)
-                .map((voice) => (
-                  <option key={voice.id} value={voice.id}>
-                    {voice.label} — {voice.note}
-                  </option>
-                ))}
+              {allVoices.filter((v) => v.family === family).map((voice) => <option key={voice.id} value={voice.id}>{voice.label} — {voice.note}</option>)}
             </optgroup>
           ))}
         </select>
       ) : (
         <div className="mt-2 rounded-xl border border-primary/30 bg-background/60 p-3">
           <div className="flex items-center gap-2 text-sm font-semibold">
-            {profile.cloneVerified ? (
-              <CheckCircle2 className="size-4 text-primary" />
-            ) : (
-              <Mic2 className="size-4 text-primary" />
-            )}{" "}
-            Your Voice Clone {profile.cloneVerified ? "— READY" : "— REFERENCE SAVED"}
+            {profile.cloneVerified ? <CheckCircle2 className="size-4 text-primary" /> : <Mic2 className="size-4 text-primary" />} Your Voice Clone {profile.cloneVerified ? "— READY" : "— REFERENCE SAVED"}
           </div>
           <p className="mt-1 text-[10px] text-muted-foreground">
-            {profile.cloneVerified
-              ? `Verified with ${profile.cloneProvider || "a real clone engine"}. Buddy can use it now.`
-              : "The upload alone does not count as a clone. Check the transcript, then generate and verify real audio."}
+            {profile.cloneVerified ? `Verified with ${profile.cloneProvider || "a real clone engine"}. Buddy can use it now.` : "The upload alone does not count as a clone. Generate a real sample; typing a transcript is optional."}
           </p>
           <label className="mt-2 block text-[10px] font-semibold text-muted-foreground">
-            Reference transcript — correct it so it exactly matches the recording
-            <textarea
-              value={profile.referenceTranscript || ""}
-              onChange={(e) =>
-                update({
-                  referenceTranscript: e.target.value,
-                  cloneVerified: false,
-                  cloneProvider: undefined,
-                })
-              }
-              rows={3}
-              className="mt-1 w-full rounded-xl border border-border bg-background/70 px-3 py-2 text-xs font-normal text-foreground"
-              placeholder="Type exactly what was spoken in the recording…"
-            />
+            Reference transcript — optional; if present, correct it so it exactly matches the recording
+            <textarea value={profile.referenceTranscript || ""} onChange={(e) => update({ referenceTranscript: e.target.value, cloneVerified: false, cloneProvider: undefined })} rows={3} className="mt-1 w-full rounded-xl border border-border bg-background/70 px-3 py-2 text-xs font-normal text-foreground" placeholder="Optional: type exactly what was spoken in the recording…" />
           </label>
           <div className="mt-2 flex flex-wrap gap-2">
-            <StudioButton variant="ghost" onClick={() => void test()} disabled={busy}>
-              <Play className="size-3.5" />{" "}
-              {profile.cloneVerified ? "Regenerate / test clone" : "Generate + verify"}
-            </StudioButton>
-            <button
-              type="button"
-              onClick={() => void removeClone()}
-              className="rounded-xl border border-border px-3 py-2 text-xs"
-            >
-              <Trash2 className="mr-1 inline size-3.5" /> Remove
-            </button>
-            <label className="rounded-xl border border-border px-3 py-2 text-xs cursor-pointer">
-              <RotateCcw className="mr-1 inline size-3.5" /> Re-record
-              <input
-                className="sr-only"
-                type="file"
-                accept="audio/*"
-                onChange={(e) => {
-                  const f = e.target.files?.[0];
-                  if (f) void uploadClone(f);
-                  e.currentTarget.value = "";
-                }}
-              />
-            </label>
+            <StudioButton variant="ghost" onClick={() => void test()} disabled={busy}><Play className="size-3.5" /> {profile.cloneVerified ? "Regenerate / test clone" : "Generate + verify"}</StudioButton>
+            <button type="button" onClick={() => void removeClone()} className="rounded-xl border border-border px-3 py-2 text-xs"><Trash2 className="mr-1 inline size-3.5" /> Remove</button>
+            <label className="rounded-xl border border-border px-3 py-2 text-xs cursor-pointer"><RotateCcw className="mr-1 inline size-3.5" /> Re-record<input className="sr-only" type="file" accept="audio/*" onChange={(e) => { const f = e.target.files?.[0]; if (f) void uploadClone(f); e.currentTarget.value = ""; }} /></label>
           </div>
         </div>
       )}
       <div className="mt-2 grid grid-cols-3 gap-2">
-        <label className="text-[10px] font-semibold text-muted-foreground">
-          Language
-          <select
-            value={profile.language || "English"}
-            onChange={(e) => update({ language: e.target.value })}
-            className="mt-1 w-full rounded-xl border border-border bg-background/70 px-2 py-2 text-xs font-normal text-foreground"
-          >
-            {BUDDY_EXPANDED_LANGUAGES.map((language) => (
-              <option key={language}>{language}</option>
-            ))}
-          </select>
-        </label>
-        <label className="text-[10px] font-semibold text-muted-foreground">
-          Mood
-          <select
-            value={profile.mood || "natural"}
-            onChange={(e) => update({ mood: e.target.value })}
-            className="mt-1 w-full rounded-xl border border-border bg-background/70 px-2 py-2 text-xs font-normal text-foreground"
-          >
-            {BUDDY_MOODS.map((x) => (
-              <option key={x.id} value={x.id}>
-                {x.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="text-[10px] font-semibold text-muted-foreground">
-          Tone
-          <select
-            value={profile.tone || "conversational"}
-            onChange={(e) => update({ tone: e.target.value })}
-            className="mt-1 w-full rounded-xl border border-border bg-background/70 px-2 py-2 text-xs font-normal text-foreground"
-          >
-            {BUDDY_TONES.map((x) => (
-              <option key={x.id} value={x.id}>
-                {x.label}
-              </option>
-            ))}
-          </select>
-        </label>
+        <label className="text-[10px] font-semibold text-muted-foreground">Language<select value={profile.language || "English"} onChange={(e) => update({ language: e.target.value })} className="mt-1 w-full rounded-xl border border-border bg-background/70 px-2 py-2 text-xs font-normal text-foreground">{BUDDY_EXPANDED_LANGUAGES.map((language) => <option key={language}>{language}</option>)}</select></label>
+        <label className="text-[10px] font-semibold text-muted-foreground">Mood<select value={profile.mood || "natural"} onChange={(e) => update({ mood: e.target.value })} className="mt-1 w-full rounded-xl border border-border bg-background/70 px-2 py-2 text-xs font-normal text-foreground">{BUDDY_MOODS.map((x) => <option key={x.id} value={x.id}>{x.label}</option>)}</select></label>
+        <label className="text-[10px] font-semibold text-muted-foreground">Tone<select value={profile.tone || "conversational"} onChange={(e) => update({ tone: e.target.value })} className="mt-1 w-full rounded-xl border border-border bg-background/70 px-2 py-2 text-xs font-normal text-foreground">{BUDDY_TONES.map((x) => <option key={x.id} value={x.id}>{x.label}</option>)}</select></label>
       </div>
-      <p className="mt-2 text-[10px] text-muted-foreground" aria-live="polite">
-        {busy ? "Working… " : ""}
-        {status}
-      </p>
-      <p className="mt-1 text-[9px] text-muted-foreground">
-        Only clone a voice you own or have permission to use.
-      </p>
     </div>
   );
 }
