@@ -38,7 +38,9 @@ export async function runStudioJob(
   const client = await Client.connect(QWEN_TTS_SPACE);
 
   if (capability === "voice-clone") {
-    if (!(input.refAudio instanceof Blob)) throw new Error("Record or upload a voice sample first.");
+    if (!(input.refAudio instanceof Blob)) {
+      throw new Error("Record or upload a voice sample first.");
+    }
     const targetText = String(input.target_text ?? input.text ?? "").trim();
     if (!targetText) throw new Error("Target text is required.");
 
@@ -55,7 +57,9 @@ export async function runStudioJob(
 
     const output = Array.isArray(result.data) ? result.data[0] : result.data;
     const url = audioUrl(output);
-    if (!url) throw new Error("The clone engine completed without returning playable audio.");
+    if (!url) {
+      throw new Error("The clone engine completed without returning playable audio.");
+    }
     return { capability, value: output, url, provider: "Qwen3-TTS Voice Clone" };
   }
 
@@ -71,6 +75,8 @@ export async function runStudioJob(
   });
   const output = Array.isArray(result.data) ? result.data[0] : result.data;
   const url = audioUrl(output);
-  if (!url) throw new Error("The voice engine completed without returning playable audio.");
+  if (!url) {
+    throw new Error("The voice engine completed without returning playable audio.");
+  }
   return { capability, value: output, url, provider: "Qwen3-TTS CustomVoice" };
 }
