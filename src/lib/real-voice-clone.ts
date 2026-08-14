@@ -1,6 +1,7 @@
 export type RealCloneResult = { url: string; provider: string; voiceId?: string };
 
-const CHATTERBOX_BASE = "https://resembleai-chatterbox.hf.space";
+const CHATTERBOX_SPACE = "ResembleAI/Chatterbox";
+const CHATTERBOX_PROXY = `/api/hf-space/${encodeURIComponent(CHATTERBOX_SPACE)}`;
 const DEFAULT_CLONE_TEXT =
   "Hi. I'm Buddy. This is a voice clone test. The voice you supplied is speaking these words.";
 
@@ -26,16 +27,24 @@ async function withTimeout<T>(promise: Promise<T>, ms: number, label: string): P
   }
 }
 
-function absoluteUrl(value: string): string {
+function proxyPath(path: string): string {
+  return `${CHATTERBOX_PROXY}/${path.replace(/^\/+/, "")}`;
+}
+
+function absoluteAudioUrl(value: string): string {
+  if (/^https?:\/\/resembleai-chatterbox\.hf\.space\//i.test(value)) {
+    const url = new URL(value);
+    return proxyPath(`${url.pathname.replace(/^\/+/, "")}${url.search}`);
+  }
   if (/^https?:\/\//i.test(value)) return value;
-  return `${CHATTERBOX_BASE}/${value.replace(/^\/+/, "")}`;
+  return proxyPath(value);
 }
 
 async function uploadReference(reference: Blob): Promise<string> {
   const form = new FormData();
   form.append("files", reference, "voice-reference.wav");
   const response = await withTimeout(
-    fetch(`${CHATTERBOX_BASE}/gradio_api/upload`, {
+    fetch(`${CHATTERBOX_PROXY}/gradio_api/upload`, {
       method: "POST",
       body: form,
     }),
@@ -43,7 +52,8 @@ async function uploadReference(reference: Blob): Promise<string> {
     "Uploading reference voice",
   );
   if (!response.ok) {
-    throw new Error(`Chatterbox reference upload failed (${response.status}).`);
+    const detail = await response.text().catch(() => "");
+    throw new Error(`Chatterbox reference upload failed (${response.status})${detail ? `: ${detail.slice(0, 200)}` : ""}.`);
   }
   const payload = (await response.json()) as unknown;
   if (!Array.isArray(payload) || typeof payload[0] !== "string") {
@@ -54,12 +64,10 @@ async function uploadReference(reference: Blob): Promise<string> {
 
 async function readCompletion(response: Response): Promise<unknown> {
   const body = await withTimeout(response.text(), 180000, "Waiting for Chatterbox generation");
-  const events = body.split(/\n\n+/);
+  const blocks = body.split(/\n\n+/);
   let lastData: unknown;
-  for (const block of events) {
-    const dataLine = block
-      .split("\n")
-      .find((line) => line.startsWith("data:"));
+  for (const block of blocks) {
+    const dataLine = block.split("\n").find((line) => line.startsWith("data:"));
     if (!dataLine) continue;
     const raw = dataLine.slice(5).trim();
     if (!raw || raw === "null") continue;
@@ -82,14 +90,14 @@ async function readCompletion(response: Response): Promise<unknown> {
 async function outputToBlob(value: unknown): Promise<Blob> {
   if (value instanceof Blob) return value;
   if (typeof value === "string" && /^(https?:|blob:|data:)/i.test(value)) {
-    const response = await fetch(value, { cache: "no-store" });
+    const response = await fetch(absoluteAudioUrl(value), { cache: "no-store" });
     if (!response.ok) throw new Error(`Generated audio download failed (${response.status}).`);
     return response.blob();
   }
   if (value && typeof value === "object") {
     const object = value as Record<string, unknown>;
     for (const key of ["url", "path"]) {
-      if (typeof object[key] === "string") return outputToBlob(absoluteUrl(object[key] as string));
+      if (typeof object[key] === "string") return outputToBlob(String(object[key]));
     }
     for (const key of ["data", "value", "output", "result"]) {
       if (object[key] !== undefined) {
@@ -102,7 +110,6 @@ async function outputToBlob(value: unknown): Promise<Blob> {
     }
   }
   if (Array.isArray(value)) {
-    // Direct Gradio completion data is normally [audioOutput].
     for (const item of value) {
       try {
         return await outputToBlob(item);
@@ -117,12 +124,12 @@ async function outputToBlob(value: unknown): Promise<Blob> {
 async function generateWithChatterbox(reference: Blob, text: string): Promise<Blob> {
   if (reference.size < 4096) throw new Error("The reference recording is too small to clone.");
 
-  // Do not use @gradio/client here. The public Space can be healthy while its
-  // metadata endpoint is temporarily unavailable. Direct Gradio HTTP calls
-  // bypass that metadata dependency completely.
+  // The browser never talks to Hugging Face directly. The existing Worker proxy
+  // forwards upload, queued generation, and audio download, avoiding CORS and
+  // the unreliable Space metadata endpoint that caused the previous failures.
   const uploadedPath = await uploadReference(reference);
   const request = await withTimeout(
-    fetch(`${CHATTERBOX_BASE}/gradio_api/call/generate_tts_audio`, {
+    fetch(`${CHATTERBOX_PROXY}/gradio_api/call/generate_tts_audio`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -149,7 +156,7 @@ async function generateWithChatterbox(reference: Blob, text: string): Promise<Bl
   if (!start.event_id) throw new Error("Chatterbox did not return a generation event ID.");
 
   const completion = await withTimeout(
-    fetch(`${CHATTERBOX_BASE}/gradio_api/call/generate_tts_audio/${encodeURIComponent(start.event_id)}`),
+    fetch(`${CHATTERBOX_PROXY}/gradio_api/call/generate_tts_audio/${encodeURIComponent(start.event_id)}`),
     180000,
     "Chatterbox voice clone generation",
   );
