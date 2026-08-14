@@ -27,8 +27,8 @@ jobs:
         run: npm ci
       - name: Typecheck
         run: npx tsc --noEmit
-      - name: Lint
-        run: npm run lint
+      - name: Format and lint
+        run: npm run format && npm run lint
       - name: Build
         run: npm run build
       - name: Verify Cloudflare credentials
