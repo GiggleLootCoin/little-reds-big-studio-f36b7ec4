@@ -30,7 +30,11 @@ function cloneHeaders(base?: HeadersInit): Headers {
   return headers;
 }
 
-async function generateWithHfChatterbox(referenceAudio: Blob, text: string, env: Env): Promise<Response> {
+async function generateWithHfChatterbox(
+  referenceAudio: Blob,
+  text: string,
+  env: Env,
+): Promise<Response> {
   if (!env.HF_TOKEN) throw new Error("Hugging Face voice service is not configured.");
 
   const bytes = new Uint8Array(await referenceAudio.arrayBuffer());
@@ -79,10 +83,12 @@ async function generateWithHfChatterbox(referenceAudio: Blob, text: string, env:
   if (!audioUrlResult) throw new Error("Chatterbox completed without returning audio.");
 
   const audio = await withTimeout(fetch(audioUrlResult), 30000, "Downloading cloned audio");
-  if (!audio.ok || !audio.body) throw new Error(`Chatterbox returned unusable audio (${audio.status}).`);
+  if (!audio.ok || !audio.body)
+    throw new Error(`Chatterbox returned unusable audio (${audio.status}).`);
 
   const length = Number(audio.headers.get("content-length") || 0);
-  if (length > 0 && length < 4096) throw new Error("Chatterbox returned an unusably small audio file.");
+  if (length > 0 && length < 4096)
+    throw new Error("Chatterbox returned an unusably small audio file.");
 
   const headers = cloneHeaders(audio.headers);
   headers.set("content-type", audio.headers.get("content-type") || "audio/wav");
@@ -111,13 +117,19 @@ async function handleVoiceClone(request: Request, env: Env): Promise<Response> {
 
   const encodedAudio = body.audioBase64 || body.audio || body.refAudio || body.referenceAudio;
   if (!encodedAudio) {
-    return Response.json({ ok: false, error: "A voice sample is required." }, { status: 400, headers: cloneHeaders() });
+    return Response.json(
+      { ok: false, error: "A voice sample is required." },
+      { status: 400, headers: cloneHeaders() },
+    );
   }
 
   try {
     const bytes = decodeBase64(encodedAudio);
     if (bytes.byteLength < 4096) throw new Error("The voice sample is too short or empty.");
-    const audioBuffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+    const audioBuffer = bytes.buffer.slice(
+      bytes.byteOffset,
+      bytes.byteOffset + bytes.byteLength,
+    ) as ArrayBuffer;
     const referenceAudio = new Blob([audioBuffer], { type: "audio/wav" });
     const text = body.text?.trim() || body.target_text?.trim() || body.prompt?.trim() || CLONE_TEXT;
     return await generateWithHfChatterbox(referenceAudio, text, env);
@@ -156,7 +168,9 @@ export default {
     if ((path === "/api/ai" || path === "/api/ai/voice-clone") && request.method === "POST") {
       try {
         const body = (await request.clone().json()) as { capability?: string };
-        const capability = String(body.capability || "").toLowerCase().replace(/_/g, "-");
+        const capability = String(body.capability || "")
+          .toLowerCase()
+          .replace(/_/g, "-");
         if (capability === "voice-clone" || capability === "voiceclone" || capability === "clone") {
           return handleVoiceClone(request, env);
         }
