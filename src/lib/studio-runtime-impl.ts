@@ -365,8 +365,14 @@ async function prepareVoice(capability: StudioCapability, input: StudioJobInput)
   const next = { ...input };
   if (profile.language && profile.language !== "Auto") next.language = profile.language;
   if (profile.mode === "clone") {
-    if (!profile.cloneVerified) throw new Error("Your custom voice is not verified yet. Generate and verify the clone first.");
-    if (!profile.referenceTranscript?.trim()) throw new Error("Your custom voice needs a verified reference transcript before Buddy can speak with it.");
+    if (!profile.cloneVerified)
+      throw new Error(
+        "Your custom voice is not verified yet. Generate and verify the clone first.",
+      );
+    if (!profile.referenceTranscript?.trim())
+      throw new Error(
+        "Your custom voice needs a verified reference transcript before Buddy can speak with it.",
+      );
     const sample = await getBuddyVoiceSample();
     if (!sample) throw new Error("Your saved Buddy voice sample is unavailable. Record it again.");
     next.audio = sample;
