@@ -82,7 +82,9 @@ async function generateWithHfChatterbox(
 
   if (!response.ok) {
     const detail = new TextDecoder().decode(rawBytes).slice(0, 1200);
-    throw new Error(`Chatterbox generation failed (${response.status})${detail ? `: ${detail}` : ""}`);
+    throw new Error(
+      `Chatterbox generation failed (${response.status})${detail ? `: ${detail}` : ""}`,
+    );
   }
 
   let audioUrlResult: string | undefined;
@@ -115,9 +117,11 @@ async function generateWithHfChatterbox(
 }
 
 function validatedAudioResponse(bytes: Uint8Array, contentType: string): Response {
-  if (bytes.byteLength < 4096) throw new Error("The voice service returned an empty or unusably small audio file.");
+  if (bytes.byteLength < 4096)
+    throw new Error("The voice service returned an empty or unusably small audio file.");
   const type = contentType.toLowerCase();
-  const looksLikeWav = bytes.byteLength >= 12 &&
+  const looksLikeWav =
+    bytes.byteLength >= 12 &&
     new TextDecoder().decode(bytes.subarray(0, 4)) === "RIFF" &&
     new TextDecoder().decode(bytes.subarray(8, 12)) === "WAVE";
   if (!type.startsWith("audio/") && !looksLikeWav) {
@@ -147,12 +151,18 @@ async function handleVoiceClone(request: Request, env: Env): Promise<Response> {
   try {
     body = (await request.json()) as typeof body;
   } catch {
-    return Response.json({ ok: false, error: "The clone request was not valid JSON." }, { status: 400, headers: cloneHeaders() });
+    return Response.json(
+      { ok: false, error: "The clone request was not valid JSON." },
+      { status: 400, headers: cloneHeaders() },
+    );
   }
 
   const encodedAudio = body.audioBase64 || body.audio || body.refAudio || body.referenceAudio;
   if (!encodedAudio) {
-    return Response.json({ ok: false, error: "A voice sample is required." }, { status: 400, headers: cloneHeaders() });
+    return Response.json(
+      { ok: false, error: "A voice sample is required." },
+      { status: 400, headers: cloneHeaders() },
+    );
   }
 
   try {
@@ -162,7 +172,12 @@ async function handleVoiceClone(request: Request, env: Env): Promise<Response> {
     return await generateWithHfChatterbox(decoded.bytes, mime, text, env);
   } catch (error) {
     return Response.json(
-      { ok: false, backend: CLONE_BACKEND, version: CLONE_VERSION, error: error instanceof Error ? error.message : "Voice cloning failed." },
+      {
+        ok: false,
+        backend: CLONE_BACKEND,
+        version: CLONE_VERSION,
+        error: error instanceof Error ? error.message : "Voice cloning failed.",
+      },
       { status: 502, headers: cloneHeaders() },
     );
   }
@@ -175,18 +190,28 @@ export default {
 
     if (path === "/api/ai/voice-clone" && request.method === "GET") {
       return Response.json(
-        { ok: true, capability: "voice-clone", backend: CLONE_BACKEND, version: CLONE_VERSION, transcriptRequired: false },
+        {
+          ok: true,
+          capability: "voice-clone",
+          backend: CLONE_BACKEND,
+          version: CLONE_VERSION,
+          transcriptRequired: false,
+        },
         { headers: cloneHeaders() },
       );
     }
 
-    if (path === "/api/ai/voice-clone" && request.method === "POST") return handleVoiceClone(request, env);
+    if (path === "/api/ai/voice-clone" && request.method === "POST")
+      return handleVoiceClone(request, env);
 
     if (path === "/api/ai" && request.method === "POST") {
       try {
         const body = (await request.clone().json()) as { capability?: string };
-        const capability = String(body.capability || "").toLowerCase().replace(/_/g, "-");
-        if (capability === "voice-clone" || capability === "voiceclone" || capability === "clone") return handleVoiceClone(request, env);
+        const capability = String(body.capability || "")
+          .toLowerCase()
+          .replace(/_/g, "-");
+        if (capability === "voice-clone" || capability === "voiceclone" || capability === "clone")
+          return handleVoiceClone(request, env);
       } catch {
         // Let the normal API handler report malformed generic requests.
       }
