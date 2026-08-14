@@ -6,11 +6,13 @@ export type StudioCapability = string;
 export type StudioJobInput = Record<string, unknown>;
 export type StudioArtifact = { capability: StudioCapability; value: unknown; url?: string; provider?: string };
 
-// Connect to the live Space origin directly. Using the Hub repo id forces an
-// extra metadata-resolution path in some browsers and can fail with
-// "Space metadata could not be loaded" even while the Space itself is live.
+// Qwen's public ZeroGPU Space can exhaust its anonymous quota. Pocket TTS is a
+// CPU-first alternative and exposes the same core capability: custom audio
+// prompt -> cloned speech. Keep Qwen as a secondary fallback rather than the
+// primary dependency for cloning.
+const POCKET_TTS_SPACE = "https://nymbo-pocket-tts.hf.space";
 const QWEN_TTS_SPACE = "https://qwen-qwen3-tts.hf.space";
-const QWEN_SPACE_ORIGIN = QWEN_TTS_SPACE;
+const AUDIO_ORIGIN = POCKET_TTS_SPACE;
 
 export function artifactText(value: unknown): string {
   if (typeof value === "string") return value.trim();
@@ -32,10 +34,10 @@ function inputText(input: StudioJobInput): string {
   return "";
 }
 
-function audioUrl(value: unknown): string | undefined {
+function audioUrl(value: unknown, origin = AUDIO_ORIGIN): string | undefined {
   if (typeof value === "string") {
     if (/^https?:\/\//i.test(value)) return value;
-    if (value.startsWith("/")) return new URL(value, QWEN_SPACE_ORIGIN).toString();
+    if (value.startsWith("/")) return new URL(value, origin).toString();
     return undefined;
   }
   if (typeof Blob !== "undefined" && value instanceof Blob) return URL.createObjectURL(value);
@@ -44,16 +46,46 @@ function audioUrl(value: unknown): string | undefined {
   for (const field of [candidate.url, candidate.path]) {
     if (typeof field === "string") {
       if (/^https?:\/\//i.test(field)) return field;
-      if (field.startsWith("/")) return new URL(field, QWEN_SPACE_ORIGIN).toString();
+      if (field.startsWith("/")) return new URL(field, origin).toString();
     }
   }
   if (typeof Blob !== "undefined" && candidate.data instanceof Blob) return URL.createObjectURL(candidate.data);
   return undefined;
 }
 
-async function connectQwen(onStatus?: (status: string) => void): Promise<Client> {
-  onStatus?.("Connecting to Qwen's free voice engine…");
-  return Client.connect(QWEN_TTS_SPACE);
+async function connectSpace(space: string, label: string, onStatus?: (status: string) => void): Promise<Client> {
+  onStatus?.(`Connecting to ${label}…`);
+  return Client.connect(space);
+}
+
+async function runPocketVoiceClone(input: StudioJobInput, onStatus?: (status: string) => void): Promise<StudioArtifact> {
+  const text = inputText(input);
+  if (!text) throw new Error("Buddy needs some text to speak.");
+  const sample = await getBuddyVoiceSample();
+  if (!sample) throw new Error("Record or upload a voice sample before using voice clone.");
+
+  const client = await connectSpace(POCKET_TTS_SPACE, "Pocket TTS CPU voice engine", onStatus);
+  onStatus?.("Cloning the speaker identity from your sample…");
+
+  // Nymbo/Pocket-TTS exposes generate_speech with:
+  // text, preset voice, custom audio, temperature, LSD steps, noise clamp,
+  // EOS threshold and frames-after-EOS. Supplying custom audio activates
+  // Pocket TTS zero-shot voice cloning.
+  const result = await client.predict("/generate_speech", [
+    text,
+    "alba",
+    handle_file(sample),
+    0.7,
+    1,
+    0,
+    -4,
+    2,
+  ]);
+  const outputs = Array.isArray(result.data) ? result.data : [result.data];
+  const output = outputs[0];
+  const url = audioUrl(output);
+  if (!url) throw new Error("Pocket TTS completed the clone request but returned unusable audio.");
+  return { capability: "voice-clone", value: output, url, provider: "Pocket TTS CPU" };
 }
 
 async function runQwenVoiceClone(input: StudioJobInput, onStatus?: (status: string) => void): Promise<StudioArtifact> {
@@ -67,22 +99,29 @@ async function runQwenVoiceClone(input: StudioJobInput, onStatus?: (status: stri
   const transcript = typeof input.referenceTranscript === "string" ? input.referenceTranscript.trim() : profile.referenceTranscript?.trim() || "";
   const useXVectorOnly = input.use_xvector_only === true ? true : !transcript;
 
-  const client = await connectQwen(onStatus);
-  onStatus?.(useXVectorOnly ? "Cloning the speaker identity from your sample…" : "Cloning your voice with the sample and transcript…");
-
-  const result = await client.predict("/generate_voice_clone", [
-    handle_file(sample),
-    transcript,
-    text,
-    language,
-    useXVectorOnly,
-    "1.7B",
-  ]);
+  const client = await connectSpace(QWEN_TTS_SPACE, "Qwen fallback voice engine", onStatus);
+  onStatus?.("Trying the Qwen fallback clone engine…");
+  const result = await client.predict("/generate_voice_clone", [handle_file(sample), transcript, text, language, useXVectorOnly, "1.7B"]);
   const outputs = Array.isArray(result.data) ? result.data : [result.data];
   const output = outputs[0];
-  const url = audioUrl(output);
-  if (!url) throw new Error("Qwen completed the clone request but returned an unusable audio file.");
+  const url = audioUrl(output, QWEN_TTS_SPACE);
+  if (!url) throw new Error("Qwen completed the clone request but returned unusable audio.");
   return { capability: "voice-clone", value: output, url, provider: "Qwen3-TTS 1.7B Base" };
+}
+
+async function runVoiceClone(input: StudioJobInput, onStatus?: (status: string) => void): Promise<StudioArtifact> {
+  try {
+    return await runPocketVoiceClone(input, onStatus);
+  } catch (pocketError) {
+    onStatus?.("Pocket TTS was unavailable; trying the Qwen fallback…");
+    try {
+      return await runQwenVoiceClone(input, onStatus);
+    } catch (qwenError) {
+      const pocketMessage = pocketError instanceof Error ? pocketError.message : String(pocketError);
+      const qwenMessage = qwenError instanceof Error ? qwenError.message : String(qwenError);
+      throw new Error(`Voice cloning is temporarily unavailable. Pocket TTS: ${pocketMessage}. Qwen fallback: ${qwenMessage}`);
+    }
+  }
 }
 
 async function runQwenPreset(input: StudioJobInput, onStatus?: (status: string) => void): Promise<StudioArtifact> {
@@ -92,20 +131,20 @@ async function runQwenPreset(input: StudioJobInput, onStatus?: (status: string) 
   const language = typeof input.language === "string" && input.language ? input.language : profile.language;
   const speaker = typeof input.speaker === "string" && input.speaker ? input.speaker : profile.speaker;
   const instruct = typeof input.instruct === "string" ? input.instruct : [profile.mood, profile.tone].filter(Boolean).join(", ");
-  const client = await connectQwen(onStatus);
+  const client = await connectSpace(QWEN_TTS_SPACE, "Qwen voice engine", onStatus);
   onStatus?.("Creating Buddy's selected voice…");
   const result = await client.predict("/generate_custom_voice", [text, language, speaker, instruct, "1.7B"]);
   const outputs = Array.isArray(result.data) ? result.data : [result.data];
   const output = outputs[0];
-  const url = audioUrl(output);
+  const url = audioUrl(output, QWEN_TTS_SPACE);
   if (!url) throw new Error("Qwen completed the voice request but returned an unusable audio file.");
   return { capability: "tts", value: output, url, provider: "Qwen3-TTS 1.7B CustomVoice" };
 }
 
 export async function runStudioJob(capability: StudioCapability, input: StudioJobInput, onStatus?: (status: string) => void): Promise<StudioArtifact> {
-  if (capability === "voice-clone" || capability === "voice-swap") return runQwenVoiceClone(input, onStatus);
+  if (capability === "voice-clone" || capability === "voice-swap") return runVoiceClone(input, onStatus);
   if (capability === "tts" || capability === "voice") {
-    return getBuddyVoiceProfile().mode === "clone" ? runQwenVoiceClone(input, onStatus) : runQwenPreset(input, onStatus);
+    return getBuddyVoiceProfile().mode === "clone" ? runVoiceClone(input, onStatus) : runQwenPreset(input, onStatus);
   }
 
   const url = typeof input.url === "string" ? input.url : "/api/ai/chat";
