@@ -1,25 +1,12 @@
 import { Client, handle_file } from "@gradio/client";
 
-export type RealCloneResult = {
-  url: string;
-  provider: string;
-  voiceId?: string;
-};
+export type RealCloneResult = { url: string; provider: string; voiceId?: string };
 
 const QWEN_SPACE = "Qwen/Qwen3-TTS";
 const QWEN_CLONE_ENDPOINT = "/generate_voice_clone";
-const QWEN_LANGUAGES = new Set([
-  "Auto",
-  "Chinese",
-  "English",
-  "Japanese",
-  "Korean",
-  "French",
-  "German",
-  "Spanish",
-  "Portuguese",
-  "Russian",
-]);
+const CPU_SPACE = "chienweichang/qwen3-tts-voice-clone-cpu";
+const CPU_PROXY = `/api/hf-space/${encodeURIComponent(CPU_SPACE)}`;
+const QWEN_LANGUAGES = new Set(["Auto","Chinese","English","Japanese","Korean","French","German","Spanish","Portuguese","Russian"]);
 
 function cloneLanguage(value: string): string {
   const normalized = value.trim();
@@ -27,20 +14,8 @@ function cloneLanguage(value: string): string {
 }
 
 function numericSamples(value: unknown): number[] | null {
-  if (
-    value instanceof Float32Array ||
-    value instanceof Float64Array ||
-    value instanceof Int16Array
-  ) {
-    return Array.from(value, Number);
-  }
-  if (
-    Array.isArray(value) &&
-    value.length &&
-    value.every((x) => typeof x === "number" && Number.isFinite(x))
-  ) {
-    return value as number[];
-  }
+  if (value instanceof Float32Array || value instanceof Float64Array || value instanceof Int16Array) return Array.from(value, Number);
+  if (Array.isArray(value) && value.length && value.every((x) => typeof x === "number" && Number.isFinite(x))) return value as number[];
   return null;
 }
 
@@ -50,139 +25,123 @@ function samplesToWav(sampleRate: number, samples: number[]): Blob {
     const n = Math.max(-1, Math.min(1, samples[i]));
     pcm[i] = n < 0 ? n * 0x8000 : n * 0x7fff;
   }
-  const buffer = new ArrayBuffer(44 + pcm.byteLength);
-  const view = new DataView(buffer);
-  const write = (offset: number, text: string) => {
-    for (let i = 0; i < text.length; i++) view.setUint8(offset + i, text.charCodeAt(i));
-  };
-  write(0, "RIFF");
-  view.setUint32(4, 36 + pcm.byteLength, true);
-  write(8, "WAVE");
-  write(12, "fmt ");
-  view.setUint32(16, 16, true);
-  view.setUint16(20, 1, true);
-  view.setUint16(22, 1, true);
-  view.setUint32(24, Math.round(sampleRate), true);
-  view.setUint32(28, Math.round(sampleRate * 2), true);
-  view.setUint16(32, 2, true);
-  view.setUint16(34, 16, true);
-  write(36, "data");
-  view.setUint32(40, pcm.byteLength, true);
-  new Uint8Array(buffer, 44).set(new Uint8Array(pcm.buffer));
-  return new Blob([buffer], { type: "audio/wav" });
+  const buffer = new ArrayBuffer(44 + pcm.byteLength), view = new DataView(buffer);
+  const write = (offset: number, text: string) => { for (let i = 0; i < text.length; i++) view.setUint8(offset + i, text.charCodeAt(i)); };
+  write(0,"RIFF"); view.setUint32(4,36+pcm.byteLength,true); write(8,"WAVE"); write(12,"fmt ");
+  view.setUint32(16,16,true); view.setUint16(20,1,true); view.setUint16(22,1,true);
+  view.setUint32(24,Math.round(sampleRate),true); view.setUint32(28,Math.round(sampleRate*2),true);
+  view.setUint16(32,2,true); view.setUint16(34,16,true); write(36,"data"); view.setUint32(40,pcm.byteLength,true);
+  new Uint8Array(buffer,44).set(new Uint8Array(pcm.buffer));
+  return new Blob([buffer],{type:"audio/wav"});
 }
 
 async function outputToBlob(output: unknown): Promise<Blob> {
   if (output instanceof Blob) return output;
-
   if (Array.isArray(output) && output.length >= 2 && typeof output[0] === "number") {
     const samples = numericSamples(output[1]);
     if (samples) return samplesToWav(output[0], samples);
   }
-
   if (typeof output === "string" && /^(https?:|blob:|data:)/i.test(output)) {
     const response = await fetch(output);
-    if (!response.ok)
-      throw new Error(`The clone audio could not be downloaded (${response.status}).`);
+    if (!response.ok) throw new Error(`The clone audio could not be downloaded (${response.status}).`);
     return response.blob();
   }
-
   if (output && typeof output === "object") {
     const file = output as Record<string, unknown>;
-    const nested = file.data;
-    if (nested && nested !== output) {
-      try {
-        return await outputToBlob(nested);
-      } catch {
-        /* continue to URL/path handling */
+    if (file.data && file.data !== output) { try { return await outputToBlob(file.data); } catch { /* continue */ } }
+    for (const key of ["url","path"]) {
+      const value = file[key];
+      if (typeof value === "string" && /^(https?:|blob:|data:)/i.test(value)) {
+        const response = await fetch(value);
+        if (!response.ok) throw new Error(`The clone audio could not be downloaded (${response.status}).`);
+        return response.blob();
       }
     }
-    const url = typeof file.url === "string" ? file.url : undefined;
-    if (url) {
-      const response = await fetch(url);
-      if (!response.ok)
-        throw new Error(`The clone audio could not be downloaded (${response.status}).`);
-      return response.blob();
-    }
-    const path = typeof file.path === "string" ? file.path : undefined;
-    if (path && /^(https?:|blob:|data:)/i.test(path)) {
-      const response = await fetch(path);
-      if (!response.ok)
-        throw new Error(`The clone audio could not be downloaded (${response.status}).`);
-      return response.blob();
-    }
   }
-
   throw new Error("Qwen returned no downloadable clone audio artifact.");
-}
-
-async function generateWithQwen(
-  reference: Blob,
-  refText: string,
-  text: string,
-  language: string,
-): Promise<Blob> {
-  const app = await Client.connect(QWEN_SPACE, {
-    status_callback: () => undefined,
-  });
-  const result = await app.predict(QWEN_CLONE_ENDPOINT, [
-    handle_file(reference),
-    refText.trim(),
-    text.trim(),
-    cloneLanguage(language),
-    false,
-    "1.7B",
-  ]);
-
-  const data = (result as { data?: unknown[] }).data;
-  if (!Array.isArray(data) || !data[0]) {
-    throw new Error("Qwen completed without returning clone audio.");
-  }
-
-  return outputToBlob(data[0]);
 }
 
 function validateGeneratedAudio(blob: Blob): void {
   if (!blob.size) throw new Error("The clone engine returned an empty audio artifact.");
-  const type = blob.type.toLowerCase();
-  if (type && !type.startsWith("audio/")) {
-    throw new Error(`The clone engine returned an unexpected artifact type: ${blob.type}.`);
-  }
-  if (blob.size < 4096) {
-    throw new Error(
-      "The clone engine returned an audio artifact that is too small to be a usable voice sample.",
-    );
-  }
+  if (blob.type && !blob.type.toLowerCase().startsWith("audio/")) throw new Error(`The clone engine returned an unexpected artifact type: ${blob.type}.`);
+  if (blob.size < 4096) throw new Error("The clone engine returned an audio artifact that is too small to be usable.");
 }
 
-export async function createRealVoiceClone(
-  reference: Blob,
-  refText: string,
-  text: string,
-  language = "English",
-): Promise<RealCloneResult> {
-  if (reference.size === 0) throw new Error("The voice recording is empty.");
-  if (!refText.trim()) {
-    throw new Error(
-      "Add the exact words spoken in the reference recording. Qwen uses that transcript for its highest-quality clone mode.",
-    );
+async function generateWithQwen(reference: Blob, refText: string, text: string, language: string): Promise<Blob> {
+  const app = await Client.connect(QWEN_SPACE, { events: ["data","status"] });
+  const job = app.submit(QWEN_CLONE_ENDPOINT, [handle_file(reference), refText.trim(), text.trim(), cloneLanguage(language), false, "1.7B"]);
+  let errorMessage = "";
+  for await (const message of job) {
+    if (message.type === "status" && message.stage === "error") errorMessage = message.message || "Qwen reported a generation error.";
+    if (message.type === "data") {
+      const data = message.data as unknown[];
+      if (!Array.isArray(data) || !data[0]) throw new Error("Qwen completed without clone audio.");
+      return outputToBlob(data[0]);
+    }
   }
+  throw new Error(errorMessage || "Qwen ended without returning clone audio.");
+}
+
+async function fetchWithRetry(url: string, init: RequestInit, attempts = 3): Promise<Response> {
+  let last: unknown;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      const response = await fetch(url, { ...init, cache: "no-store" });
+      if (response.ok || response.status < 500) return response;
+      last = new Error(`HTTP ${response.status}`);
+    } catch (error) { last = error; }
+    await new Promise((resolve) => setTimeout(resolve, 2500 * (i + 1)));
+  }
+  throw last instanceof Error ? last : new Error("Voice clone service unavailable.");
+}
+
+async function generateWithCpuQwen(reference: Blob, refText: string, text: string, language: string): Promise<Blob> {
+  const form = new FormData();
+  form.append("file", reference, "reference.wav");
+  const upload = await fetchWithRetry(`${CPU_PROXY}/api/upload`, { method: "POST", body: form });
+  if (!upload.ok) throw new Error(`CPU Qwen reference upload failed (${upload.status}).`);
+  const uploaded = (await upload.json()) as { audio_id?: string };
+  if (!uploaded.audio_id) throw new Error("CPU Qwen did not return a reference audio ID.");
+
+  const clone = await fetchWithRetry(`${CPU_PROXY}/api/clone`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ ref_audio_id: uploaded.audio_id, ref_text: refText.trim(), target_text: text.trim(), language: cloneLanguage(language), x_vector_only: false }),
+  }, 2);
+  if (!clone.ok) {
+    const detail = (await clone.text()).slice(0, 300);
+    throw new Error(`CPU Qwen clone failed (${clone.status})${detail ? `: ${detail}` : ""}`);
+  }
+  const generated = (await clone.json()) as { audio_id?: string; status?: string };
+  if (!generated.audio_id || generated.status === "error") throw new Error("CPU Qwen completed without generated audio.");
+  const audio = await fetchWithRetry(`${CPU_PROXY}/api/download/${encodeURIComponent(generated.audio_id)}`, {}, 2);
+  if (!audio.ok) throw new Error(`CPU Qwen generated audio could not be downloaded (${audio.status}).`);
+  return audio.blob();
+}
+
+export async function createRealVoiceClone(reference: Blob, refText: string, text: string, language = "English"): Promise<RealCloneResult> {
+  if (!reference.size) throw new Error("The voice recording is empty.");
+  if (!refText.trim()) throw new Error("Buddy needs the exact transcript of the reference recording before it can make a high-quality clone. Please enter or correct the transcript and try again.");
   if (!text.trim()) throw new Error("Target speech text is empty.");
 
-  const blob = await generateWithQwen(reference, refText, text, language);
-  validateGeneratedAudio(blob);
+  let primaryError: unknown;
+  try {
+    const blob = await generateWithQwen(reference, refText, text, language);
+    validateGeneratedAudio(blob);
+    return { url: URL.createObjectURL(blob), provider: "Qwen3-TTS Base 1.7B — official Space" };
+  } catch (error) { primaryError = error; }
 
-  return {
-    url: URL.createObjectURL(blob),
-    provider: "Qwen3-TTS Base 1.7B",
-  };
+  try {
+    const blob = await generateWithCpuQwen(reference, refText, text, language);
+    validateGeneratedAudio(blob);
+    return { url: URL.createObjectURL(blob), provider: "Qwen3-TTS Base 1.7B — CPU fallback" };
+  } catch (fallbackError) {
+    const primary = primaryError instanceof Error ? primaryError.message : String(primaryError);
+    const fallback = fallbackError instanceof Error ? fallbackError.message : String(fallbackError);
+    throw new Error(`Official Qwen clone failed: ${primary} | CPU Qwen fallback failed: ${fallback}`);
+  }
 }
 
-export async function speakWithRealVoiceClone(
-  reference: Blob,
-  refText: string,
-  text: string,
-  language = "English",
-): Promise<RealCloneResult> {
+export async function speakWithRealVoiceClone(reference: Blob, refText: string, text: string, language = "English"): Promise<RealCloneResult> {
   return createRealVoiceClone(reference, refText, text, language);
 }
