@@ -32,6 +32,16 @@ export const FREE_RUNNERS: FreeRunner[] = [
     priority: 295,
   },
   {
+    id: "cf-buddy-tts",
+    name: "Buddy Local TTS",
+    kind: "public",
+    description: "Server-side multilingual Buddy speech with automatic model fallback.",
+    capabilities: ["tts"],
+    url: "/api/ai/tts",
+    notes: "Uses Cloudflare Workers AI MeloTTS with Deepgram Aura fallbacks; no browser-side Space dependency.",
+    priority: 500,
+  },
+  {
     id: "hf-qwen3-chat",
     name: "Qwen3",
     kind: "public",
