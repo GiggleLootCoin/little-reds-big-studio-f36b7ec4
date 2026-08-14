@@ -6,8 +6,11 @@ export type StudioCapability = string;
 export type StudioJobInput = Record<string, unknown>;
 export type StudioArtifact = { capability: StudioCapability; value: unknown; url?: string; provider?: string };
 
-const QWEN_TTS_SPACE = "Qwen/Qwen3-TTS";
-const QWEN_SPACE_ORIGIN = "https://qwen-qwen3-tts.hf.space";
+// Connect to the live Space origin directly. Using the Hub repo id forces an
+// extra metadata-resolution path in some browsers and can fail with
+// "Space metadata could not be loaded" even while the Space itself is live.
+const QWEN_TTS_SPACE = "https://qwen-qwen3-tts.hf.space";
+const QWEN_SPACE_ORIGIN = QWEN_TTS_SPACE;
 
 export function artifactText(value: unknown): string {
   if (typeof value === "string") return value.trim();
@@ -48,6 +51,11 @@ function audioUrl(value: unknown): string | undefined {
   return undefined;
 }
 
+async function connectQwen(onStatus?: (status: string) => void): Promise<Client> {
+  onStatus?.("Connecting to Qwen's free voice engine…");
+  return Client.connect(QWEN_TTS_SPACE);
+}
+
 async function runQwenVoiceClone(input: StudioJobInput, onStatus?: (status: string) => void): Promise<StudioArtifact> {
   const text = inputText(input);
   if (!text) throw new Error("Buddy needs some text to speak.");
@@ -59,8 +67,7 @@ async function runQwenVoiceClone(input: StudioJobInput, onStatus?: (status: stri
   const transcript = typeof input.referenceTranscript === "string" ? input.referenceTranscript.trim() : profile.referenceTranscript?.trim() || "";
   const useXVectorOnly = input.use_xvector_only === true ? true : !transcript;
 
-  onStatus?.("Connecting to Qwen's free voice-clone engine…");
-  const client = await Client.connect(QWEN_TTS_SPACE);
+  const client = await connectQwen(onStatus);
   onStatus?.(useXVectorOnly ? "Cloning the speaker identity from your sample…" : "Cloning your voice with the sample and transcript…");
 
   const result = await client.predict("/generate_voice_clone", [
@@ -85,8 +92,8 @@ async function runQwenPreset(input: StudioJobInput, onStatus?: (status: string) 
   const language = typeof input.language === "string" && input.language ? input.language : profile.language;
   const speaker = typeof input.speaker === "string" && input.speaker ? input.speaker : profile.speaker;
   const instruct = typeof input.instruct === "string" ? input.instruct : [profile.mood, profile.tone].filter(Boolean).join(", ");
+  const client = await connectQwen(onStatus);
   onStatus?.("Creating Buddy's selected voice…");
-  const client = await Client.connect(QWEN_TTS_SPACE);
   const result = await client.predict("/generate_custom_voice", [text, language, speaker, instruct, "1.7B"]);
   const outputs = Array.isArray(result.data) ? result.data : [result.data];
   const output = outputs[0];
