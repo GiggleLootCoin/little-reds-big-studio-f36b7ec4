@@ -200,28 +200,57 @@ async function getApi(space: string) {
 function score(name: string, ep: Endpoint, capability: StudioCapability, input: StudioJobInput) {
   const h = norm(`${name} ${ep.fn ?? ""} ${ep.description ?? ""}`);
   let s = 0;
-  const words = capability === "voice-clone"
-    ? ["clone", "reference", "voice"]
-    : capability === "tts"
-      ? ["tts", "speech", "voice", "generate"]
-      : [capability.replace(/-/g, ""), "generate", "create", "text", "audio", "image", "video", "music"];
+  const words =
+    capability === "voice-clone"
+      ? ["clone", "reference", "voice"]
+      : capability === "tts"
+        ? ["tts", "speech", "voice", "generate"]
+        : [
+            capability.replace(/-/g, ""),
+            "generate",
+            "create",
+            "text",
+            "audio",
+            "image",
+            "video",
+            "music",
+          ];
   for (const w of words) if (h.includes(w)) s += 6;
   if (capability === "voice-clone" && (h.includes("clone") || h.includes("reference"))) s += 30;
-  for (const p of ep.parameters ?? []) if (pick(p.parameter_name ?? p.label ?? "", input) !== undefined) s += 3;
+  for (const p of ep.parameters ?? [])
+    if (pick(p.parameter_name ?? p.label ?? "", input) !== undefined) s += 3;
   return s;
 }
-async function runCloudflare(provider: FreeRunner, input: StudioJobInput, capability: StudioCapability): Promise<StudioArtifact> {
-  const prompt = String(input.prompt ?? input.text ?? input.target_text ?? input.lyrics ?? "").trim();
-  const payload: Record<string, unknown> = { capability, prompt, text: prompt, language: input.language, speaker: input.speaker, messages: input.messages };
+async function runCloudflare(
+  provider: FreeRunner,
+  input: StudioJobInput,
+  capability: StudioCapability,
+): Promise<StudioArtifact> {
+  const prompt = String(
+    input.prompt ?? input.text ?? input.target_text ?? input.lyrics ?? "",
+  ).trim();
+  const payload: Record<string, unknown> = {
+    capability,
+    prompt,
+    text: prompt,
+    language: input.language,
+    speaker: input.speaker,
+    messages: input.messages,
+  };
   const audio = input.audio ?? input.refAudio ?? input.referenceAudio;
   if (audio instanceof Blob) {
     const bytes = new Uint8Array(await audio.arrayBuffer());
     let binary = "";
     const chunkSize = 0x8000;
-    for (let i = 0; i < bytes.length; i += chunkSize) binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+    for (let i = 0; i < bytes.length; i += chunkSize)
+      binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
     payload.audioBase64 = btoa(binary);
   }
-  const response = await fetch(provider.url, { method: "POST", body: JSON.stringify(payload), headers: { "content-type": "application/json" } });
+  const response = await fetch(provider.url, {
+    method: "POST",
+    body: JSON.stringify(payload),
+    headers: { "content-type": "application/json" },
+  });
   if (!response.ok) throw new Error(`${provider.name}: HTTP ${response.status}`);
   const ct = response.headers.get("content-type") ?? "";
   if (ct.startsWith("audio/") || ct.startsWith("image/") || ct.startsWith("video/")) {
@@ -233,7 +262,11 @@ async function runCloudflare(provider: FreeRunner, input: StudioJobInput, capabi
   if (!output(value)) throw new Error(`${provider.name}: empty result`);
   return { capability, value, url: artifactUrl(value), provider: provider.name };
 }
-async function runQwen(cl: Client, input: StudioJobInput, capability: StudioCapability): Promise<StudioArtifact> {
+async function runQwen(
+  cl: Client,
+  input: StudioJobInput,
+  capability: StudioCapability,
+): Promise<StudioArtifact> {
   if (capability === "tts") {
     const text = String(input.text ?? input.target_text ?? input.prompt ?? "").trim();
     if (!text) throw new Error("Voice text is empty");
@@ -242,21 +275,41 @@ async function runQwen(cl: Client, input: StudioJobInput, capability: StudioCapa
     let last: unknown;
     for (const size of [String(input.model_size ?? "1.7B"), "0.6B"])
       try {
-        const r = await cl.predict("/generate_custom_voice", [text, language, speaker, String(input.instruction ?? ""), size]);
+        const r = await cl.predict("/generate_custom_voice", [
+          text,
+          language,
+          speaker,
+          String(input.instruction ?? ""),
+          size,
+        ]);
         const value = Array.isArray(r) ? r : ((r as { data?: unknown[] }).data ?? r);
         const url = artifactUrl(value);
         if (!url) throw new Error("Qwen returned no playable audio");
         return { capability, value, url, provider: `Qwen3-TTS (${speaker})` };
-      } catch (e) { last = e; }
+      } catch (e) {
+        last = e;
+      }
     throw last instanceof Error ? last : new Error("Qwen TTS failed");
   }
   const sample = input.refAudio ?? input.referenceAudio ?? input.audio;
   if (!(sample instanceof Blob)) throw new Error("Voice clone sample is missing");
-  const text = String(input.target_text ?? input.text ?? input.prompt ?? "Hi. I'm Buddy. This is a voice-clone test.").trim();
+  const text = String(
+    input.target_text ?? input.text ?? input.prompt ?? "Hi. I'm Buddy. This is a voice-clone test.",
+  ).trim();
   const ref = await handle_file(sample);
   const refText = String(input.referenceTranscript ?? input.refText ?? "");
-  if (!refText.trim()) throw new Error("Qwen requires a transcript; use the Chatterbox clone route when you do not have one.");
-  const r = await cl.predict("/generate_voice_clone", [ref, refText, text, String(input.language ?? "English"), false, "1.7B"]);
+  if (!refText.trim())
+    throw new Error(
+      "Qwen requires a transcript; use the Chatterbox clone route when you do not have one.",
+    );
+  const r = await cl.predict("/generate_voice_clone", [
+    ref,
+    refText,
+    text,
+    String(input.language ?? "English"),
+    false,
+    "1.7B",
+  ]);
   const value = Array.isArray(r) ? r : ((r as { data?: unknown[] }).data ?? r);
   const url = artifactUrl(value);
   if (!url) throw new Error("Qwen returned no playable cloned audio");
@@ -265,21 +318,18 @@ async function runQwen(cl: Client, input: StudioJobInput, capability: StudioCapa
 async function runChatterbox(cl: Client, input: StudioJobInput): Promise<StudioArtifact> {
   const sample = input.refAudio ?? input.referenceAudio ?? input.audio;
   if (!(sample instanceof Blob) || !sample.size) throw new Error("Voice clone sample is missing");
-  const text = String(input.target_text ?? input.text ?? input.prompt ?? "Hi. I'm Buddy. This is a voice-clone test.").trim().slice(0, 300);
+  const text = String(
+    input.target_text ?? input.text ?? input.prompt ?? "Hi. I'm Buddy. This is a voice-clone test.",
+  )
+    .trim()
+    .slice(0, 300);
   if (!text) throw new Error("Clone test text is empty");
-  const args = [
-    text,
-    await handle_file(sample),
-    0.5,
-    0.8,
-    0,
-    0.5,
-    false,
-  ];
+  const args = [text, await handle_file(sample), 0.5, 0.8, 0, 0.5, false];
   const job = cl.submit("/generate_tts_audio", args);
   let last: unknown;
   for await (const message of job) {
-    if (message.type === "status" && message.stage === "error") last = new Error(String(message.message || "Chatterbox generation failed"));
+    if (message.type === "status" && message.stage === "error")
+      last = new Error(String(message.message || "Chatterbox generation failed"));
     if (message.type === "data") {
       const data = message.data as unknown[];
       const value = data?.[0];
@@ -290,24 +340,55 @@ async function runChatterbox(cl: Client, input: StudioJobInput): Promise<StudioA
   }
   throw last instanceof Error ? last : new Error("Chatterbox completed without clone audio");
 }
-async function runSpace(provider: FreeRunner, input: StudioJobInput, capability: StudioCapability): Promise<StudioArtifact> {
+async function runSpace(
+  provider: FreeRunner,
+  input: StudioJobInput,
+  capability: StudioCapability,
+): Promise<StudioArtifact> {
   const space = spaceId(provider.url);
   const cl = await connect(space);
-  if (space === "ResembleAI/Chatterbox" && capability === "voice-clone") return runChatterbox(cl, input);
-  if (space === "Qwen/Qwen3-TTS" && (capability === "tts" || capability === "voice-clone")) return runQwen(cl, input, capability);
+  if (space === "ResembleAI/Chatterbox" && capability === "voice-clone")
+    return runChatterbox(cl, input);
+  if (space === "Qwen/Qwen3-TTS" && (capability === "tts" || capability === "voice-clone"))
+    return runQwen(cl, input, capability);
   const api = endpoints(await getApi(space));
-  const candidates = Object.entries(api).map(([name, ep]) => ({ name, ep, score: score(name, ep, capability, input) })).sort((a, b) => b.score - a.score);
+  const candidates = Object.entries(api)
+    .map(([name, ep]) => ({ name, ep, score: score(name, ep, capability, input) }))
+    .sort((a, b) => b.score - a.score);
   let last = "No compatible endpoint";
   for (const c of candidates) {
     try {
-      const args = await Promise.all(buildArgs(c.ep, input, capability).map(async (v) => v instanceof Blob ? handle_file(v) : v));
+      const args = await Promise.all(
+        buildArgs(c.ep, input, capability).map(async (v) =>
+          v instanceof Blob ? handle_file(v) : v,
+        ),
+      );
       const r = await cl.predict(c.name, args);
       const value = Array.isArray(r) ? r : ((r as { data?: unknown[] }).data ?? r);
       const url = artifactUrl(value);
       if (!output(value)) throw new Error("Provider returned no usable result");
-      if (["tts", "voice-clone", "voice-swap", "music", "image", "video", "vocal-separation"].includes(capability) && !url) throw new Error("Provider returned no playable media");
-      return { capability, value, url: url?.startsWith("/") ? `${proxyOrigin(space)}${url}` : url, provider: provider.name };
-    } catch (e) { last = e instanceof Error ? e.message : String(e); }
+      if (
+        [
+          "tts",
+          "voice-clone",
+          "voice-swap",
+          "music",
+          "image",
+          "video",
+          "vocal-separation",
+        ].includes(capability) &&
+        !url
+      )
+        throw new Error("Provider returned no playable media");
+      return {
+        capability,
+        value,
+        url: url?.startsWith("/") ? `${proxyOrigin(space)}${url}` : url,
+        provider: provider.name,
+      };
+    } catch (e) {
+      last = e instanceof Error ? e.message : String(e);
+    }
   }
   throw new Error(`${provider.name}: ${last}`);
 }
@@ -317,7 +398,10 @@ async function prepareVoice(capability: StudioCapability, input: StudioJobInput)
   const next = { ...input };
   if (profile.language && profile.language !== "Auto") next.language = profile.language;
   if (profile.mode === "clone") {
-    if (!profile.cloneVerified) throw new Error("Your custom voice is not verified yet. Generate and verify the clone first.");
+    if (!profile.cloneVerified)
+      throw new Error(
+        "Your custom voice is not verified yet. Generate and verify the clone first.",
+      );
     const sample = await getBuddyVoiceSample();
     if (!sample) throw new Error("Your saved Buddy voice sample is unavailable. Record it again.");
     next.audio = sample;
@@ -332,7 +416,11 @@ async function prepareVoice(capability: StudioCapability, input: StudioJobInput)
   next.text = input.text ?? input.target_text ?? input.prompt ?? "";
   return { capability, input: next };
 }
-export async function runStudioJob(capability: StudioCapability, input: StudioJobInput, onStatus?: (s: string) => void): Promise<StudioArtifact> {
+export async function runStudioJob(
+  capability: StudioCapability,
+  input: StudioJobInput,
+  onStatus?: (s: string) => void,
+): Promise<StudioArtifact> {
   const prepared = await prepareVoice(capability, input);
   const providers = runnersFor(prepared.capability);
   const failures: string[] = [];
@@ -340,16 +428,39 @@ export async function runStudioJob(capability: StudioCapability, input: StudioJo
     try {
       onStatus?.(`Working with ${provider.name}…`);
       const result = await Promise.race([
-        provider.url.startsWith("/api/ai/") ? runCloudflare(provider, prepared.input, prepared.capability) : runSpace(provider, prepared.input, prepared.capability),
-        new Promise<never>((_, reject) => window.setTimeout(() => reject(new Error(`${provider.name} timed out after 120 seconds.`)), 120000)),
+        provider.url.startsWith("/api/ai/")
+          ? runCloudflare(provider, prepared.input, prepared.capability)
+          : runSpace(provider, prepared.input, prepared.capability),
+        new Promise<never>((_, reject) =>
+          window.setTimeout(
+            () => reject(new Error(`${provider.name} timed out after 120 seconds.`)),
+            120000,
+          ),
+        ),
       ]);
-      if (!result.url && ["tts", "voice-clone", "voice-swap", "music", "image", "video", "vocal-separation"].includes(prepared.capability)) throw new Error("No playable artifact returned");
+      if (
+        !result.url &&
+        [
+          "tts",
+          "voice-clone",
+          "voice-swap",
+          "music",
+          "image",
+          "video",
+          "vocal-separation",
+        ].includes(prepared.capability)
+      )
+        throw new Error("No playable artifact returned");
       onStatus?.("Ready.");
       return { ...result, capability };
     } catch (e) {
       failures.push(`${provider.name}: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
-  throw new Error(`${capability} could not produce a usable result. ${failures.slice(0, 4).join(" | ")}`);
+  throw new Error(
+    `${capability} could not produce a usable result. ${failures.slice(0, 4).join(" | ")}`,
+  );
 }
-export function runtimeProviders(capability?: StudioCapability) { return capability ? runnersFor(capability) : FREE_RUNNERS; }
+export function runtimeProviders(capability?: StudioCapability) {
+  return capability ? runnersFor(capability) : FREE_RUNNERS;
+}

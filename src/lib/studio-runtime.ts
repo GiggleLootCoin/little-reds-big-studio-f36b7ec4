@@ -10,7 +10,18 @@ export function artifactText(value: unknown): string {
   if (typeof value === "string") return value.trim();
   if (Array.isArray(value)) return value.map(artifactText).find(Boolean) ?? "";
   if (value && typeof value === "object") {
-    for (const k of ["text", "response", "generated_text", "transcription", "transcript", "content", "value", "data", "output", "result"]) {
+    for (const k of [
+      "text",
+      "response",
+      "generated_text",
+      "transcription",
+      "transcript",
+      "content",
+      "value",
+      "data",
+      "output",
+      "result",
+    ]) {
       const t = artifactText((value as Record<string, unknown>)[k]);
       if (t) return t;
     }
@@ -35,8 +46,11 @@ export async function runStudioJob(
 ): Promise<StudioArtifact> {
   if (capability === "voice-clone") {
     const sample = input.refAudio ?? input.referenceAudio ?? input.audio;
-    if (!(sample instanceof Blob)) throw new Error("A reference voice recording is required for a real clone.");
-    const refText = String(input.refText ?? input.referenceText ?? input.referenceTranscript ?? "").trim();
+    if (!(sample instanceof Blob))
+      throw new Error("A reference voice recording is required for a real clone.");
+    const refText = String(
+      input.refText ?? input.referenceText ?? input.referenceTranscript ?? "",
+    ).trim();
     const targetText = String(input.target_text ?? input.text ?? input.prompt ?? "").trim();
     if (!targetText) throw new Error("Target speech text is empty.");
 
@@ -65,7 +79,8 @@ export async function runStudioJob(
   if (capability === "tts" && customVoiceSelected()) {
     const profile = getBuddyVoiceProfile();
     const sample = await getBuddyVoiceSample();
-    if (!sample) throw new Error("The verified custom voice reference is missing. Generate the clone again.");
+    if (!sample)
+      throw new Error("The verified custom voice reference is missing. Generate the clone again.");
     onStatus?.("Speaking with the verified custom voice…");
     const result = await speakWithRealVoiceClone(
       sample,

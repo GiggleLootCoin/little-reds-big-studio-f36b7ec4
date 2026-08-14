@@ -25,7 +25,8 @@ function audioTupleToWav(sampleRate: number, raw: unknown): Blob {
   else if (ArrayBuffer.isView(raw)) {
     const view = raw as ArrayBufferView;
     if (view.byteLength === 0) throw new Error("The clone engine returned empty waveform data.");
-    if (view.byteLength % 2 !== 0) throw new Error("The clone engine returned malformed waveform data.");
+    if (view.byteLength % 2 !== 0)
+      throw new Error("The clone engine returned malformed waveform data.");
     samples = new Int16Array(view.buffer.slice(view.byteOffset, view.byteOffset + view.byteLength));
   } else if (Array.isArray(raw)) samples = Float32Array.from(raw.map(Number));
   else throw new Error("The clone engine returned waveform data in an unsupported format.");
@@ -82,7 +83,9 @@ async function outputToBlob(value: unknown): Promise<Blob> {
     if (typeof object.path === "string") {
       if (/^(https?:|blob:|data:)/i.test(object.path)) return outputToBlob(object.path);
       const path = object.path.replace(/^\/+/, "");
-      return outputToBlob(`https://resembleai-chatterbox.hf.space/file=${encodeURIComponent(path)}`);
+      return outputToBlob(
+        `https://resembleai-chatterbox.hf.space/file=${encodeURIComponent(path)}`,
+      );
     }
     for (const key of ["data", "value", "output", "result"]) {
       if (object[key] !== undefined) {
