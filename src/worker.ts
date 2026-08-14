@@ -2,8 +2,8 @@ import studioServer from "./server";
 
 type Env = { HF_TOKEN?: string };
 
-// Dedicated voice-cloning backend. Voice cloning must never be routed through
-// Cloudflare Workers AI; the clone capability is handled here and nowhere else.
+const CLONE_BACKEND = "huggingface-fal-chatterbox";
+const CLONE_VERSION = "voice-clone-v3";
 const CHATTERBOX_ROUTE = "https://router.huggingface.co/fal-ai/fal-ai/chatterbox/text-to-speech";
 const CLONE_TEXT = "Hi. I'm Buddy. This is my new voice. Let's make something brilliant together.";
 
@@ -22,11 +22,15 @@ function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise
   ]);
 }
 
-async function generateWithHfChatterbox(
-  referenceAudio: Blob,
-  text: string,
-  env: Env,
-): Promise<Response> {
+function cloneHeaders(base?: HeadersInit): Headers {
+  const headers = new Headers(base);
+  headers.set("cache-control", "no-store, no-cache, must-revalidate");
+  headers.set("x-buddy-clone-backend", CLONE_BACKEND);
+  headers.set("x-buddy-clone-version", CLONE_VERSION);
+  return headers;
+}
+
+async function generateWithHfChatterbox(referenceAudio: Blob, text: string, env: Env): Promise<Response> {
   if (!env.HF_TOKEN) throw new Error("Hugging Face voice service is not configured.");
 
   const bytes = new Uint8Array(await referenceAudio.arrayBuffer());
@@ -75,18 +79,14 @@ async function generateWithHfChatterbox(
   if (!audioUrlResult) throw new Error("Chatterbox completed without returning audio.");
 
   const audio = await withTimeout(fetch(audioUrlResult), 30000, "Downloading cloned audio");
-  if (!audio.ok || !audio.body)
-    throw new Error(`Chatterbox returned unusable audio (${audio.status}).`);
+  if (!audio.ok || !audio.body) throw new Error(`Chatterbox returned unusable audio (${audio.status}).`);
 
   const length = Number(audio.headers.get("content-length") || 0);
-  if (length > 0 && length < 4096)
-    throw new Error("Chatterbox returned an unusably small audio file.");
+  if (length > 0 && length < 4096) throw new Error("Chatterbox returned an unusably small audio file.");
 
-  const headers = new Headers(audio.headers);
+  const headers = cloneHeaders(audio.headers);
   headers.set("content-type", audio.headers.get("content-type") || "audio/wav");
-  headers.set("cache-control", "no-store");
   headers.set("x-clone-provider", "Chatterbox via Hugging Face Inference Providers");
-  headers.set("x-clone-verified", "true");
   return new Response(audio.body, { status: 200, headers });
 }
 
@@ -105,28 +105,26 @@ async function handleVoiceClone(request: Request, env: Env): Promise<Response> {
   } catch {
     return Response.json(
       { ok: false, error: "The clone request was not valid JSON." },
-      { status: 400 },
+      { status: 400, headers: cloneHeaders() },
     );
   }
 
   const encodedAudio = body.audioBase64 || body.audio || body.refAudio || body.referenceAudio;
   if (!encodedAudio) {
-    return Response.json({ ok: false, error: "A voice sample is required." }, { status: 400 });
+    return Response.json({ ok: false, error: "A voice sample is required." }, { status: 400, headers: cloneHeaders() });
   }
 
   try {
     const bytes = decodeBase64(encodedAudio);
-    const audioBuffer = bytes.buffer.slice(
-      bytes.byteOffset,
-      bytes.byteOffset + bytes.byteLength,
-    ) as ArrayBuffer;
+    if (bytes.byteLength < 4096) throw new Error("The voice sample is too short or empty.");
+    const audioBuffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
     const referenceAudio = new Blob([audioBuffer], { type: "audio/wav" });
     const text = body.text?.trim() || body.target_text?.trim() || body.prompt?.trim() || CLONE_TEXT;
     return await generateWithHfChatterbox(referenceAudio, text, env);
   } catch (error) {
     return Response.json(
       { ok: false, error: error instanceof Error ? error.message : "Voice cloning failed." },
-      { status: 502, headers: { "cache-control": "no-store" } },
+      { status: 502, headers: cloneHeaders() },
     );
   }
 }
@@ -134,27 +132,36 @@ async function handleVoiceClone(request: Request, env: Env): Promise<Response> {
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext) {
     const url = new URL(request.url);
+    const path = url.pathname.replace(/\/$/, "") || "/";
 
-    // New clone route.
-    if (url.pathname === "/api/ai/voice-clone" && request.method === "POST") {
+    // Production diagnostic endpoint. It performs no generation and exposes no secrets.
+    if (path === "/api/ai/voice-clone" && request.method === "GET") {
+      return Response.json(
+        {
+          ok: true,
+          capability: "voice-clone",
+          backend: CLONE_BACKEND,
+          version: CLONE_VERSION,
+          transcriptRequired: false,
+        },
+        { headers: cloneHeaders() },
+      );
+    }
+
+    if (path === "/api/ai/voice-clone" && request.method === "POST") {
       return handleVoiceClone(request, env);
     }
 
-    // Compatibility bridge for older deployed UI bundles that still call the
-    // generic /api/ai endpoint with capability: "voice-clone". This MUST be
-    // intercepted before server.ts, otherwise server.ts correctly but unhelpfully
-    // says Cloudflare AI does not provide voice cloning.
-    if (url.pathname === "/api/ai" && request.method === "POST") {
+    // Compatibility bridge for older UI bundles. Never send voice-clone into Workers AI.
+    if ((path === "/api/ai" || path === "/api/ai/voice-clone") && request.method === "POST") {
       try {
         const body = (await request.clone().json()) as { capability?: string };
-        const capability = String(body.capability || "")
-          .toLowerCase()
-          .replace(/_/g, "-");
+        const capability = String(body.capability || "").toLowerCase().replace(/_/g, "-");
         if (capability === "voice-clone" || capability === "voiceclone" || capability === "clone") {
           return handleVoiceClone(request, env);
         }
       } catch {
-        // Let the normal API handler return its normal JSON error for malformed requests.
+        // Fall through to the normal API error handling for malformed generic requests.
       }
     }
 
