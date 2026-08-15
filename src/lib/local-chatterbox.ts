@@ -1,5 +1,6 @@
 const MODEL_SAMPLE_RATE = 24000;
 
+// Free local path: inference stays on the user's device; Hugging Face is used only for model-file delivery.
 let worker: Worker | null = null;
 let loadPromise: Promise<void> | null = null;
 let encodePromise: Promise<void> | null = null;
