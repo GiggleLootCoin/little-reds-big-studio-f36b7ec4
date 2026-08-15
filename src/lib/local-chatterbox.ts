@@ -3,6 +3,7 @@ const MODEL_SAMPLE_RATE = 24000;
 let worker: Worker | null = null;
 let loadPromise: Promise<void> | null = null;
 let encodePromise: Promise<void> | null = null;
+let encodedKey = "";
 let workerError: Error | null = null;
 
 function getWorker(): Worker {
@@ -79,6 +80,12 @@ async function decodeAt24k(blob: Blob): Promise<Float32Array> {
   }
 }
 
+async function fingerprint(reference: Blob): Promise<string> {
+  const bytes = new Uint8Array(await reference.arrayBuffer());
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return Array.from(new Uint8Array(digest), (value) => value.toString(16).padStart(2, "0")).join("");
+}
+
 function wavBlob(samples: Float32Array, sampleRate: number): Blob {
   const bytes = new ArrayBuffer(44 + samples.length * 2);
   const view = new DataView(bytes);
@@ -120,17 +127,21 @@ export async function createLocalChatterboxClone(
   if (!reference.size) throw new Error("The voice recording is empty.");
   onStatus?.("Loading the free local voice engine… first use may download about 1.5 GB.");
   await load();
-  onStatus?.("Learning your voice from the recording…");
-  const audio = await decodeAt24k(reference);
-  if (!encodePromise) {
+  const key = await fingerprint(reference);
+  onStatus?.(encodedKey === key ? "Using your saved local voice profile…" : "Learning your voice from the recording…");
+  if (encodedKey !== key) {
+    const audio = await decodeAt24k(reference);
     encodePromise = (async () => {
       getWorker().postMessage({ type: "encode", audio: audio.buffer }, [audio.buffer]);
       await waitFor("encoded");
     })().catch((error) => {
       encodePromise = null;
+      encodedKey = "";
       throw error;
     });
-  } else {
+    await encodePromise;
+    encodedKey = key;
+  } else if (encodePromise) {
     await encodePromise;
   }
   onStatus?.("Generating speech locally on this phone…");
@@ -138,12 +149,13 @@ export async function createLocalChatterboxClone(
   const result = await waitFor("audio");
   const waveform = new Float32Array(result.waveform as ArrayBuffer);
   if (waveform.length < 2400) throw new Error("The local engine returned unusable audio.");
-  const blob = wavBlob(waveform, Number(result.sampleRate) || MODEL_SAMPLE_RATE);
+  const sampleRate = Number(result.sampleRate) || MODEL_SAMPLE_RATE;
+  const blob = wavBlob(waveform, sampleRate);
   if (blob.size < 4096) throw new Error("The local engine returned an empty audio result.");
   return {
     url: URL.createObjectURL(blob),
     provider: "Chatterbox local — WebGPU/WASM",
-    duration: waveform.length / (Number(result.sampleRate) || MODEL_SAMPLE_RATE),
+    duration: waveform.length / sampleRate,
   };
 }
 
@@ -152,5 +164,6 @@ export function resetLocalChatterbox() {
   worker = null;
   loadPromise = null;
   encodePromise = null;
+  encodedKey = "";
   workerError = null;
 }
