@@ -79,7 +79,10 @@ async function generate(text: string, exaggeration: number) {
     temperature: 0.2,
   });
   const data = waveform.data;
-  const buffer = data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer;
+  const buffer = data.buffer.slice(
+    data.byteOffset,
+    data.byteOffset + data.byteLength,
+  ) as ArrayBuffer;
   // Do not transfer the ArrayBuffer here. The worker's generated Tensor may expose
   // an ArrayBufferLike backing store under newer TypeScript lib definitions, which
   // makes the transfer-list overload reject an otherwise valid audio payload.
@@ -89,7 +92,12 @@ async function generate(text: string, exaggeration: number) {
 }
 
 self.addEventListener("message", async (event: MessageEvent) => {
-  const message = event.data as { type: string; audio?: ArrayBuffer; text?: string; exaggeration?: number };
+  const message = event.data as {
+    type: string;
+    audio?: ArrayBuffer;
+    text?: string;
+    exaggeration?: number;
+  };
   try {
     if (message.type === "load") await loadModel();
     else if (message.type === "encode") {
@@ -100,6 +108,9 @@ self.addEventListener("message", async (event: MessageEvent) => {
       await generate(message.text || "Hello from Buddy.", message.exaggeration ?? 0.5);
     }
   } catch (error) {
-    self.postMessage({ type: "error", message: error instanceof Error ? error.message : "Local Chatterbox failed." });
+    self.postMessage({
+      type: "error",
+      message: error instanceof Error ? error.message : "Local Chatterbox failed.",
+    });
   }
 });
