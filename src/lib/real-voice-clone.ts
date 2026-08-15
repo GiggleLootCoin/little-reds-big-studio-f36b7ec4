@@ -40,6 +40,7 @@ export async function createRealVoiceClone(
   language = "English",
   mood = "natural",
   tone = "conversational",
+  onStatus?: (status: string) => void,
 ): Promise<RealCloneResult> {
   if (!reference.size) throw new Error("The voice recording is empty.");
   if (language.toLowerCase() !== "english") {
@@ -49,6 +50,7 @@ export async function createRealVoiceClone(
     reference,
     text.trim() || DEFAULT_CLONE_TEXT,
     exaggerationFor(mood, tone),
+    onStatus,
   );
   return { url: result.url, provider: result.provider };
 }
@@ -60,6 +62,7 @@ export async function speakWithRealVoiceClone(
   language = "English",
   mood = "natural",
   tone = "conversational",
+  onStatus?: (status: string) => void,
 ): Promise<RealCloneResult> {
-  return createRealVoiceClone(reference, refText, text, language, mood, tone);
+  return createRealVoiceClone(reference, refText, text, language, mood, tone, onStatus);
 }
