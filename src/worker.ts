@@ -1,12 +1,11 @@
 import studioServer from "./server";
 
-type Env = { HF_TOKEN?: string; FAL_KEY?: string };
+type Env = { HF_TOKEN?: string; FAL_KEY?: string; FALAI_API_KEY?: string };
 type JsonObject = Record<string, unknown>;
 
 const CLONE_BACKEND = "fal-chatterbox-queue";
-const CLONE_VERSION = "voice-clone-v5.0";
+const CLONE_VERSION = "voice-clone-v5.1";
 const FAL_MODEL = "fal-ai/chatterbox/text-to-speech";
-const HF_ROUTE = "https://router.huggingface.co/fal-ai/fal-ai/chatterbox/text-to-speech";
 const CLONE_TEXT = "Hi. I'm Buddy. This is my new voice. Let's make something brilliant together.";
 
 function asJsonObject(value: unknown): JsonObject {
@@ -62,6 +61,10 @@ function validatedAudioResponse(bytes: Uint8Array, contentType: string): Respons
   return new Response(bodyArrayBuffer(bytes), { status: 200, headers });
 }
 
+function falKey(env: Env): string {
+  return env.FALAI_API_KEY?.trim() || env.FAL_KEY?.trim() || "";
+}
+
 async function falRequest(
   path: string,
   method: string,
@@ -85,35 +88,15 @@ async function falRequest(
   return payload;
 }
 
-async function uploadReferenceToFal(bytes: Uint8Array, mime: string, key: string): Promise<string> {
-  const response = await fetch("https://rest.alpha.fal.ai/storage/upload", {
-    method: "POST",
-    headers: { Authorization: `Key ${key}`, "Content-Type": mime || "audio/wav" },
-    body: bodyArrayBuffer(bytes),
-  });
-  const raw = await response.text();
-  let payload: JsonObject = {};
-  try {
-    payload = asJsonObject(JSON.parse(raw));
-  } catch {
-    /* handled below */
-  }
-  if (!response.ok)
-    throw new Error(`Fal audio upload failed (${response.status}): ${raw.slice(0, 1200)}`);
-  const file = asJsonObject(payload.file);
-  const url = typeof payload.url === "string" ? payload.url : file.url;
-  if (typeof url !== "string" || !url)
-    throw new Error("Fal accepted the reference audio but returned no hosted audio URL.");
-  return url;
-}
-
 async function submitFalClone(
   bytes: Uint8Array,
   mime: string,
   text: string,
   key: string,
 ): Promise<string> {
-  const audioUrl = await uploadReferenceToFal(bytes, mime, key);
+  // Fal accepts a data URI directly for file inputs. This avoids a second upload
+  // service and guarantees the exact user reference audio reaches Chatterbox.
+  const audioUrl = bytesToDataUri(bytes, mime);
   const result = await falRequest(FAL_MODEL, "POST", key, {
     input: {
       text: text.slice(0, 5000),
@@ -181,60 +164,11 @@ async function generateWithFal(
   text: string,
   env: Env,
 ): Promise<Response> {
-  if (!env.FAL_KEY) throw new Error("FAL_KEY is not configured in Cloudflare.");
+  const key = falKey(env);
+  if (!key) throw new Error("Fal voice service is not configured in Cloudflare.");
   if (bytes.byteLength < 4096) throw new Error("The voice sample is too short or empty.");
-  const requestId = await submitFalClone(bytes, mime, text, env.FAL_KEY);
-  return await pollFalClone(requestId, env.FAL_KEY);
-}
-
-async function generateWithHfFallback(
-  bytes: Uint8Array,
-  mime: string,
-  text: string,
-  env: Env,
-): Promise<Response> {
-  if (!env.HF_TOKEN) throw new Error("Hugging Face voice service is not configured.");
-  const response = await fetch(HF_ROUTE, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${env.HF_TOKEN}`,
-      "Content-Type": "application/json",
-      Accept: "application/json",
-    },
-    body: JSON.stringify({
-      text: text.slice(0, 5000),
-      audio_url: bytesToDataUri(bytes, mime),
-      exaggeration: 0.5,
-      temperature: 0.8,
-      cfg: 0.5,
-      seed: 0,
-    }),
-  });
-  const raw = new Uint8Array(await response.arrayBuffer());
-  if (!response.ok)
-    throw new Error(
-      `Hugging Face fallback failed (${response.status}): ${new TextDecoder().decode(raw).slice(0, 1000)}`,
-    );
-  const contentType = response.headers.get("content-type") || "";
-  if (contentType.startsWith("audio/")) return validatedAudioResponse(raw, contentType);
-  const payload = asJsonObject(JSON.parse(new TextDecoder().decode(raw)));
-  const audioPayload = asJsonObject(payload.audio);
-  if (typeof audioPayload.file_data === "string") {
-    const decoded = decodeBase64(audioPayload.file_data);
-    return validatedAudioResponse(
-      decoded.bytes,
-      typeof audioPayload.content_type === "string" ? audioPayload.content_type : "audio/wav",
-    );
-  }
-  if (typeof audioPayload.url === "string") {
-    const audio = await fetch(audioPayload.url);
-    if (!audio.ok) throw new Error(`Hugging Face audio download failed (${audio.status}).`);
-    return validatedAudioResponse(
-      new Uint8Array(await audio.arrayBuffer()),
-      audio.headers.get("content-type") || "audio/wav",
-    );
-  }
-  throw new Error("Hugging Face completed without returning audio.");
+  const requestId = await submitFalClone(bytes, mime, text, key);
+  return await pollFalClone(requestId, key);
 }
 
 async function handleVoiceClone(request: Request, env: Env): Promise<Response> {
@@ -266,12 +200,9 @@ async function handleVoiceClone(request: Request, env: Env): Promise<Response> {
     const decoded = decodeBase64(encodedAudio);
     const mime = body.audioMimeType || decoded.mime || "audio/wav";
     const text = body.text?.trim() || body.target_text?.trim() || body.prompt?.trim() || CLONE_TEXT;
-    try {
-      return await generateWithFal(decoded.bytes, mime, text, env);
-    } catch (falError) {
-      console.warn("Direct Fal Chatterbox failed; trying HF fallback", falError);
-      return await generateWithHfFallback(decoded.bytes, mime, text, env);
-    }
+    // Never silently substitute a preset or unrelated voice. A clone request is
+    // successful only when Fal/Chatterbox itself returns validated audio.
+    return await generateWithFal(decoded.bytes, mime, text, env);
   } catch (error) {
     return Response.json(
       {
@@ -297,7 +228,7 @@ export default {
           backend: CLONE_BACKEND,
           version: CLONE_VERSION,
           transcriptRequired: false,
-          falConfigured: Boolean(env.FAL_KEY),
+          falConfigured: Boolean(falKey(env)),
         },
         { headers: cloneHeaders() },
       );
