@@ -89,7 +89,7 @@ async function generate(text: string, exaggeration: number) {
   });
   const data = waveform.data;
   const buffer = data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer;
-  self.postMessage({ type: "audio", sampleRate: 24000, waveform: buffer }, [buffer]);
+  self.postMessage({ type: "audio", sampleRate: 24000, waveform: buffer });
 }
 
 self.addEventListener("message", async (event: MessageEvent) => {
