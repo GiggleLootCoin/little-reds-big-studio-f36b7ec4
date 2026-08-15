@@ -52,21 +52,21 @@ export async function runStudioJob(
     if (!(sample instanceof Blob))
       throw new Error("A reference voice recording is required for a real clone.");
 
-    // The user never needs to type a transcript or a test sentence.
-    // Chatterbox clones directly from the reference recording, and Buddy supplies
-    // a private verification sentence automatically.
     const refText = String(
       input.refText ?? input.referenceText ?? input.referenceTranscript ?? "",
     ).trim();
     const targetText =
       String(input.target_text ?? input.text ?? input.prompt ?? "").trim() || DEFAULT_CLONE_TEXT;
+    const profile = getBuddyVoiceProfile();
 
     onStatus?.("Creating a real custom voice from your recording…");
     const result = await createRealVoiceClone(
       sample,
       refText,
       targetText,
-      String(input.language ?? "English"),
+      String(input.language ?? profile.language ?? "English"),
+      String(input.mood ?? profile.mood ?? "natural"),
+      String(input.tone ?? profile.tone ?? "conversational"),
     );
     if (!result.url) throw new Error("The clone engine returned no playable audio.");
 
@@ -91,7 +91,9 @@ export async function runStudioJob(
       sample,
       profile.referenceTranscript || "",
       String(input.text ?? input.target_text ?? input.prompt ?? ""),
-      String(input.language ?? "English"),
+      String(input.language ?? profile.language ?? "English"),
+      String(input.mood ?? profile.mood ?? "natural"),
+      String(input.tone ?? profile.tone ?? "conversational"),
     );
     if (!result.url) throw new Error("The custom voice returned no playable audio.");
     onStatus?.("Ready — Buddy used the verified custom voice.");
