@@ -4,14 +4,13 @@ type Env = { HF_TOKEN?: string; FAL_KEY?: string; FALAI_API_KEY?: string };
 type JsonObject = Record<string, unknown>;
 
 const CLONE_BACKEND = "fal-chatterbox-queue";
-const CLONE_VERSION = "voice-clone-v5.1";
+const CLONE_VERSION = "voice-clone-v5.2";
 const FAL_MODEL = "fal-ai/chatterbox/text-to-speech";
 const CLONE_TEXT = "Hi. I'm Buddy. This is my new voice. Let's make something brilliant together.";
 
 function asJsonObject(value: unknown): JsonObject {
   return value && typeof value === "object" ? (value as JsonObject) : {};
 }
-
 function cloneHeaders(base?: HeadersInit): Headers {
   const headers = new Headers(base);
   headers.set("cache-control", "no-store, no-cache, must-revalidate");
@@ -19,7 +18,6 @@ function cloneHeaders(base?: HeadersInit): Headers {
   headers.set("x-buddy-clone-version", CLONE_VERSION);
   return headers;
 }
-
 function decodeBase64(value: string): { bytes: Uint8Array; mime: string } {
   const match = value.match(/^data:([^;,]+)(?:;[^,]*)?;base64,(.*)$/s);
   const mime = match?.[1] || "audio/wav";
@@ -29,11 +27,9 @@ function decodeBase64(value: string): { bytes: Uint8Array; mime: string } {
   for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
   return { bytes, mime };
 }
-
 function bodyArrayBuffer(bytes: Uint8Array): ArrayBuffer {
   return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
 }
-
 function bytesToDataUri(bytes: Uint8Array, mime: string): string {
   let binary = "";
   const chunk = 0x8000;
@@ -42,7 +38,6 @@ function bytesToDataUri(bytes: Uint8Array, mime: string): string {
   }
   return `data:${mime || "audio/wav"};base64,${btoa(binary)}`;
 }
-
 function validatedAudioResponse(bytes: Uint8Array, contentType: string): Response {
   if (bytes.byteLength < 4096)
     throw new Error("The voice service returned an empty or unusably small audio file.");
@@ -60,11 +55,43 @@ function validatedAudioResponse(bytes: Uint8Array, contentType: string): Respons
   headers.set("x-clone-verified", "true");
   return new Response(bodyArrayBuffer(bytes), { status: 200, headers });
 }
-
 function falKey(env: Env): string {
   return env.FALAI_API_KEY?.trim() || env.FAL_KEY?.trim() || "";
 }
-
+function voiceControls(mood: string, tone: string): {
+  exaggeration: number;
+  temperature: number;
+  cfg: number;
+} {
+  const moodValues: Record<string, [number, number]> = {
+    natural: [0.45, 0.72],
+    warm: [0.62, 0.72],
+    calm: [0.38, 0.58],
+    playful: [0.78, 0.9],
+    energetic: [0.82, 0.95],
+    reassuring: [0.48, 0.62],
+    excited: [0.9, 1.0],
+    cinematic: [0.85, 0.88],
+    serious: [0.32, 0.55],
+  };
+  const toneAdjust: Record<string, number> = {
+    conversational: 0,
+    friendly: 0.05,
+    confident: 0.02,
+    empathetic: -0.02,
+    witty: 0.08,
+    direct: -0.04,
+    gentle: -0.08,
+    professional: -0.06,
+  };
+  const [baseExaggeration, baseTemperature] = moodValues[mood] || moodValues.natural;
+  const adjust = toneAdjust[tone] || 0;
+  return {
+    exaggeration: Math.max(0.25, Math.min(1, baseExaggeration + adjust)),
+    temperature: Math.max(0.5, Math.min(1.1, baseTemperature + adjust)),
+    cfg: mood === "cinematic" || mood === "excited" ? 0.45 : 0.5,
+  };
+}
 async function falRequest(
   path: string,
   method: string,
@@ -87,23 +114,23 @@ async function falRequest(
     throw new Error(`Fal request failed (${response.status}): ${raw.slice(0, 1200)}`);
   return payload;
 }
-
 async function submitFalClone(
   bytes: Uint8Array,
   mime: string,
   text: string,
+  mood: string,
+  tone: string,
   key: string,
 ): Promise<string> {
-  // Fal accepts a data URI directly for file inputs. This avoids a second upload
-  // service and guarantees the exact user reference audio reaches Chatterbox.
+  const controls = voiceControls(mood, tone);
   const audioUrl = bytesToDataUri(bytes, mime);
   const result = await falRequest(FAL_MODEL, "POST", key, {
     input: {
       text: text.slice(0, 5000),
       audio_url: audioUrl,
-      exaggeration: 0.5,
-      temperature: 0.8,
-      cfg: 0.5,
+      exaggeration: controls.exaggeration,
+      temperature: controls.temperature,
+      cfg: controls.cfg,
       seed: 0,
     },
   });
@@ -116,7 +143,6 @@ async function submitFalClone(
   if (!requestId) throw new Error("Fal accepted the clone request but returned no request ID.");
   return requestId;
 }
-
 async function pollFalClone(requestId: string, key: string): Promise<Response> {
   const deadline = Date.now() + 170000;
   let delay = 1200;
@@ -157,20 +183,20 @@ async function pollFalClone(requestId: string, key: string): Promise<Response> {
   }
   throw new Error(`Fal Chatterbox job ${requestId} is still processing; try again shortly.`);
 }
-
 async function generateWithFal(
   bytes: Uint8Array,
   mime: string,
   text: string,
+  mood: string,
+  tone: string,
   env: Env,
 ): Promise<Response> {
   const key = falKey(env);
   if (!key) throw new Error("Fal voice service is not configured in Cloudflare.");
   if (bytes.byteLength < 4096) throw new Error("The voice sample is too short or empty.");
-  const requestId = await submitFalClone(bytes, mime, text, key);
+  const requestId = await submitFalClone(bytes, mime, text, mood, tone, key);
   return await pollFalClone(requestId, key);
 }
-
 async function handleVoiceClone(request: Request, env: Env): Promise<Response> {
   let body: {
     audioBase64?: string;
@@ -181,6 +207,8 @@ async function handleVoiceClone(request: Request, env: Env): Promise<Response> {
     text?: string;
     target_text?: string;
     prompt?: string;
+    mood?: string;
+    tone?: string;
   };
   try {
     body = (await request.json()) as typeof body;
@@ -200,9 +228,14 @@ async function handleVoiceClone(request: Request, env: Env): Promise<Response> {
     const decoded = decodeBase64(encodedAudio);
     const mime = body.audioMimeType || decoded.mime || "audio/wav";
     const text = body.text?.trim() || body.target_text?.trim() || body.prompt?.trim() || CLONE_TEXT;
-    // Never silently substitute a preset or unrelated voice. A clone request is
-    // successful only when Fal/Chatterbox itself returns validated audio.
-    return await generateWithFal(decoded.bytes, mime, text, env);
+    return await generateWithFal(
+      decoded.bytes,
+      mime,
+      text,
+      body.mood?.trim() || "natural",
+      body.tone?.trim() || "conversational",
+      env,
+    );
   } catch (error) {
     return Response.json(
       {
@@ -215,7 +248,6 @@ async function handleVoiceClone(request: Request, env: Env): Promise<Response> {
     );
   }
 }
-
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext) {
     const url = new URL(request.url);
