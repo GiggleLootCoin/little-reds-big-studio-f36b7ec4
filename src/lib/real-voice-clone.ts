@@ -2,7 +2,7 @@ export type RealCloneResult = { url: string; provider: string; voiceId?: string 
 
 const DEFAULT_CLONE_TEXT =
   "Hi. I'm Buddy. This is my new voice. Let's make something brilliant together.";
-const CLONE_PROVIDER = "Chatterbox via Hugging Face/Fal";
+const CLONE_PROVIDER = "Fal Chatterbox";
 
 function validateAudioBlob(blob: Blob): void {
   if (!blob.size || blob.size < 4096) {
@@ -66,14 +66,24 @@ async function blobToBase64(blob: Blob): Promise<string> {
   return btoa(binary);
 }
 
-async function generateWithRealClone(reference: Blob, text: string): Promise<Blob> {
+async function generateWithRealClone(
+  reference: Blob,
+  text: string,
+  mood = "natural",
+  tone = "conversational",
+): Promise<Blob> {
   const wav = await blobToWav(reference);
   if (wav.size < 4096) throw new Error("The voice sample is too short to clone.");
   const audioBase64 = await blobToBase64(wav);
   const response = await fetch("/api/ai/voice-clone", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ audioBase64, text: text.trim() || DEFAULT_CLONE_TEXT }),
+    body: JSON.stringify({
+      audioBase64,
+      text: text.trim() || DEFAULT_CLONE_TEXT,
+      mood,
+      tone,
+    }),
   });
   if (!response.ok) {
     let message = "Voice cloning failed.";
@@ -96,9 +106,11 @@ export async function createRealVoiceClone(
   _refText = "",
   text = DEFAULT_CLONE_TEXT,
   _language = "English",
+  mood = "natural",
+  tone = "conversational",
 ): Promise<RealCloneResult> {
   if (!reference.size) throw new Error("The voice recording is empty.");
-  const blob = await generateWithRealClone(reference, text || DEFAULT_CLONE_TEXT);
+  const blob = await generateWithRealClone(reference, text || DEFAULT_CLONE_TEXT, mood, tone);
   return { url: URL.createObjectURL(blob), provider: CLONE_PROVIDER };
 }
 
@@ -107,6 +119,8 @@ export async function speakWithRealVoiceClone(
   refText = "",
   text = DEFAULT_CLONE_TEXT,
   language = "English",
+  mood = "natural",
+  tone = "conversational",
 ): Promise<RealCloneResult> {
-  return createRealVoiceClone(reference, refText, text, language);
+  return createRealVoiceClone(reference, refText, text, language, mood, tone);
 }
