@@ -11,11 +11,16 @@ type DtypeConfig = {
   conditional_decoder: "fp32";
 };
 
-type ChatterboxInstance = Awaited<ReturnType<typeof ChatterboxModel.from_pretrained>>;
-type ProcessorInstance = Awaited<ReturnType<typeof AutoProcessor.from_pretrained>>;
+type LocalChatterboxModel = {
+  encode_speech: (audio: Tensor) => Promise<Record<string, unknown>>;
+  generate: (inputs: Record<string, unknown>) => Promise<{ data: Float32Array }>;
+};
+type LocalProcessor = {
+  _call: (text: string) => Promise<Record<string, unknown>>;
+};
 
-let model: ChatterboxInstance | null = null;
-let processor: ProcessorInstance | null = null;
+let model: LocalChatterboxModel | null = null;
+let processor: LocalProcessor | null = null;
 let speakerData: Record<string, unknown> | null = null;
 
 const dtypeFor = (device: Device): DtypeConfig =>
@@ -50,12 +55,14 @@ async function loadModel() {
     type: "progress",
     message: webgpu ? "Preparing WebGPU voice engine…" : "Preparing browser voice engine…",
   });
-  processor = await AutoProcessor.from_pretrained(MODEL_ID);
-  model = await ChatterboxModel.from_pretrained(MODEL_ID, {
+  const loadedProcessor = await AutoProcessor.from_pretrained(MODEL_ID);
+  processor = loadedProcessor as unknown as LocalProcessor;
+  const loadedModel = await ChatterboxModel.from_pretrained(MODEL_ID, {
     device,
     dtype: dtypeFor(device),
     progress_callback: (progress: unknown) => self.postMessage({ type: "progress", progress }),
   });
+  model = loadedModel as unknown as LocalChatterboxModel;
   self.postMessage({ type: "loaded", device });
 }
 
@@ -80,7 +87,7 @@ async function generate(text: string, exaggeration: number) {
     do_sample: true,
     temperature: 0.2,
   });
-  const data = waveform.data as Float32Array;
+  const data = waveform.data;
   const buffer = data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength);
   self.postMessage({ type: "audio", sampleRate: 24000, waveform: buffer }, [buffer]);
 }
