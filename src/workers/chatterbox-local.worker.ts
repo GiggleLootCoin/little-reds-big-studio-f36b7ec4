@@ -11,8 +11,11 @@ type DtypeConfig = {
   conditional_decoder: "fp32";
 };
 
-let model: ChatterboxModel | null = null;
-let processor: Awaited<ReturnType<typeof AutoProcessor.from_pretrained>> | null = null;
+type ChatterboxInstance = Awaited<ReturnType<typeof ChatterboxModel.from_pretrained>>;
+type ProcessorInstance = Awaited<ReturnType<typeof AutoProcessor.from_pretrained>>;
+
+let model: ChatterboxInstance | null = null;
+let processor: ProcessorInstance | null = null;
 let speakerData: Record<string, unknown> | null = null;
 
 const dtypeFor = (device: Device): DtypeConfig =>
@@ -31,9 +34,10 @@ const dtypeFor = (device: Device): DtypeConfig =>
       };
 
 async function detectWebGpu(): Promise<boolean> {
-  if (!("gpu" in navigator)) return false;
+  const gpu = (navigator as Navigator & { gpu?: { requestAdapter: () => Promise<unknown> } }).gpu;
+  if (!gpu) return false;
   try {
-    return Boolean(await navigator.gpu.requestAdapter());
+    return Boolean(await gpu.requestAdapter());
   } catch {
     return false;
   }
@@ -42,7 +46,10 @@ async function detectWebGpu(): Promise<boolean> {
 async function loadModel() {
   const webgpu = await detectWebGpu();
   const device: Device = webgpu ? "webgpu" : "wasm";
-  self.postMessage({ type: "progress", message: webgpu ? "Preparing WebGPU voice engine…" : "Preparing browser voice engine…" });
+  self.postMessage({
+    type: "progress",
+    message: webgpu ? "Preparing WebGPU voice engine…" : "Preparing browser voice engine…",
+  });
   processor = await AutoProcessor.from_pretrained(MODEL_ID);
   model = await ChatterboxModel.from_pretrained(MODEL_ID, {
     device,
