@@ -1,12 +1,17 @@
 import studioServer from "./server";
 
 type Env = { HF_TOKEN?: string; FAL_KEY?: string };
+type JsonObject = Record<string, unknown>;
 
 const CLONE_BACKEND = "fal-chatterbox-queue";
 const CLONE_VERSION = "voice-clone-v5.0";
 const FAL_MODEL = "fal-ai/chatterbox/text-to-speech";
 const HF_ROUTE = "https://router.huggingface.co/fal-ai/fal-ai/chatterbox/text-to-speech";
 const CLONE_TEXT = "Hi. I'm Buddy. This is my new voice. Let's make something brilliant together.";
+
+function asJsonObject(value: unknown): JsonObject {
+  return value && typeof value === "object" ? (value as JsonObject) : {};
+}
 
 function cloneHeaders(base?: HeadersInit): Headers {
   const headers = new Headers(base);
@@ -57,16 +62,21 @@ function validatedAudioResponse(bytes: Uint8Array, contentType: string): Respons
   return new Response(bodyArrayBuffer(bytes), { status: 200, headers });
 }
 
-async function falRequest(path: string, method: string, key: string, body?: unknown): Promise<any> {
+async function falRequest(
+  path: string,
+  method: string,
+  key: string,
+  body?: unknown,
+): Promise<JsonObject> {
   const response = await fetch(`https://queue.fal.run/${path}`, {
     method,
     headers: { Authorization: `Key ${key}`, "Content-Type": "application/json" },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   const raw = await response.text();
-  let payload: any = null;
+  let payload: JsonObject = {};
   try {
-    payload = JSON.parse(raw);
+    payload = asJsonObject(JSON.parse(raw));
   } catch {
     /* handled below */
   }
@@ -82,16 +92,18 @@ async function uploadReferenceToFal(bytes: Uint8Array, mime: string, key: string
     body: bodyArrayBuffer(bytes),
   });
   const raw = await response.text();
-  let payload: any = null;
+  let payload: JsonObject = {};
   try {
-    payload = JSON.parse(raw);
+    payload = asJsonObject(JSON.parse(raw));
   } catch {
     /* handled below */
   }
   if (!response.ok)
     throw new Error(`Fal audio upload failed (${response.status}): ${raw.slice(0, 1200)}`);
-  const url = payload?.url || payload?.file?.url;
-  if (!url) throw new Error("Fal accepted the reference audio but returned no hosted audio URL.");
+  const file = asJsonObject(payload.file);
+  const url = typeof payload.url === "string" ? payload.url : file.url;
+  if (typeof url !== "string" || !url)
+    throw new Error("Fal accepted the reference audio but returned no hosted audio URL.");
   return url;
 }
 
@@ -112,7 +124,12 @@ async function submitFalClone(
       seed: 0,
     },
   });
-  const requestId = result?.request_id || result?.requestId;
+  const requestId =
+    typeof result.request_id === "string"
+      ? result.request_id
+      : typeof result.requestId === "string"
+        ? result.requestId
+        : "";
   if (!requestId) throw new Error("Fal accepted the clone request but returned no request ID.");
   return requestId;
 }
@@ -126,14 +143,20 @@ async function pollFalClone(requestId: string, key: string): Promise<Response> {
       "GET",
       key,
     );
-    const state = String(status?.status || "").toUpperCase();
+    const state = String(status.status || "").toUpperCase();
     if (state === "COMPLETED" || state === "SUCCESS") {
       const result = await falRequest(
         `${FAL_MODEL}/requests/${encodeURIComponent(requestId)}`,
         "GET",
         key,
       );
-      const audioUrl = result?.audio?.url || result?.data?.audio?.url;
+      const resultAudio = asJsonObject(result.audio);
+      const resultData = asJsonObject(result.data);
+      const dataAudio = asJsonObject(resultData.audio);
+      const audioUrl =
+        (typeof resultAudio.url === "string" && resultAudio.url) ||
+        (typeof dataAudio.url === "string" && dataAudio.url) ||
+        "";
       if (!audioUrl) throw new Error("Fal completed the clone but returned no audio URL.");
       const audio = await fetch(audioUrl);
       if (!audio.ok)
@@ -194,18 +217,17 @@ async function generateWithHfFallback(
     );
   const contentType = response.headers.get("content-type") || "";
   if (contentType.startsWith("audio/")) return validatedAudioResponse(raw, contentType);
-  let payload: any;
-  try {
-    payload = JSON.parse(new TextDecoder().decode(raw));
-  } catch {
-    throw new Error("Hugging Face returned invalid audio data.");
+  const payload = asJsonObject(JSON.parse(new TextDecoder().decode(raw)));
+  const audioPayload = asJsonObject(payload.audio);
+  if (typeof audioPayload.file_data === "string") {
+    const decoded = decodeBase64(audioPayload.file_data);
+    return validatedAudioResponse(
+      decoded.bytes,
+      typeof audioPayload.content_type === "string" ? audioPayload.content_type : "audio/wav",
+    );
   }
-  if (payload?.audio?.file_data) {
-    const decoded = decodeBase64(payload.audio.file_data);
-    return validatedAudioResponse(decoded.bytes, payload.audio.content_type || "audio/wav");
-  }
-  if (payload?.audio?.url) {
-    const audio = await fetch(payload.audio.url);
+  if (typeof audioPayload.url === "string") {
+    const audio = await fetch(audioPayload.url);
     if (!audio.ok) throw new Error(`Hugging Face audio download failed (${audio.status}).`);
     return validatedAudioResponse(
       new Uint8Array(await audio.arrayBuffer()),
