@@ -88,7 +88,7 @@ async function generate(text: string, exaggeration: number) {
     temperature: 0.2,
   });
   const data = waveform.data;
-  const buffer = data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength);
+  const buffer = data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer;
   self.postMessage({ type: "audio", sampleRate: 24000, waveform: buffer }, [buffer]);
 }
 
