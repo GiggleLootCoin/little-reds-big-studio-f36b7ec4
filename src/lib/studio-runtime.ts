@@ -67,6 +67,7 @@ export async function runStudioJob(
       String(input.language ?? profile.language ?? "English"),
       String(input.mood ?? profile.mood ?? "natural"),
       String(input.tone ?? profile.tone ?? "conversational"),
+      onStatus,
     );
     if (!result.url) throw new Error("The clone engine returned no playable audio.");
 
@@ -94,6 +95,7 @@ export async function runStudioJob(
       String(input.language ?? profile.language ?? "English"),
       String(input.mood ?? profile.mood ?? "natural"),
       String(input.tone ?? profile.tone ?? "conversational"),
+      onStatus,
     );
     if (!result.url) throw new Error("The custom voice returned no playable audio.");
     onStatus?.("Ready — Buddy used the verified custom voice.");
