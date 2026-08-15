@@ -3,7 +3,7 @@ import { consumeLastCapturedError } from "./lib/error-capture";
 import { renderErrorPage } from "./lib/error-page";
 
 type WorkersAI = { run: (model: string, input: unknown, options?: unknown) => Promise<unknown> };
-type ServerEnv = { AI?: WorkersAI };
+type ServerEnv = { AI?: WorkersAI; OPENROUTERAI_API_KEY?: string };
 type ServerEntry = {
   fetch: (request: Request, env: unknown, ctx: unknown) => Promise<Response> | Response;
 };
@@ -204,6 +204,34 @@ function chatText(result: unknown): string {
   }
   return "";
 }
+async function openRouterChat(env: ServerEnv, messages: unknown[]): Promise<unknown> {
+  const key = env.OPENROUTERAI_API_KEY?.trim();
+  if (!key) throw new Error("OpenRouter API key is not configured");
+  const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${key}`,
+      "Content-Type": "application/json",
+      "HTTP-Referer": "https://little-reds-big-studio-f36b7ec4.gigglelootcoin.workers.dev",
+      "X-Title": "Buddy AI",
+    },
+    body: JSON.stringify({
+      model: "openrouter/free",
+      messages,
+      max_tokens: 1024,
+      temperature: 0.6,
+    }),
+  });
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    const detail =
+      payload && typeof payload === "object" && payload.error
+        ? JSON.stringify(payload.error)
+        : `HTTP ${response.status}`;
+    throw new Error(`OpenRouter request failed: ${detail}`);
+  }
+  return payload;
+}
 function ttsLanguage(value: string | undefined): string {
   const raw = String(value || "en")
     .trim()
@@ -236,69 +264,18 @@ function ttsLanguage(value: string | undefined): string {
   return map[raw] || raw.split(/[-_]/)[0] || "en";
 }
 const AURA_EN_SPEAKERS = new Set([
-  "amalthea",
-  "andromeda",
-  "apollo",
-  "arcas",
-  "aries",
-  "asteria",
-  "athena",
-  "atlas",
-  "aurora",
-  "callista",
-  "cora",
-  "cordelia",
-  "delia",
-  "draco",
-  "electra",
-  "harmonia",
-  "helena",
-  "hera",
-  "hermes",
-  "hyperion",
-  "iris",
-  "janus",
-  "juno",
-  "jupiter",
-  "luna",
-  "mars",
-  "minerva",
-  "neptune",
-  "odysseus",
-  "ophelia",
-  "orion",
-  "orpheus",
-  "pandora",
-  "phoebe",
-  "pluto",
-  "saturn",
-  "thalia",
-  "theia",
-  "vesta",
-  "zeus",
+  "amalthea", "andromeda", "apollo", "arcas", "aries", "asteria", "athena", "atlas",
+  "aurora", "callista", "cora", "cordelia", "delia", "draco", "electra", "harmonia",
+  "helena", "hera", "hermes", "hyperion", "iris", "janus", "juno", "jupiter", "luna",
+  "mars", "minerva", "neptune", "odysseus", "ophelia", "orion", "orpheus", "pandora",
+  "phoebe", "pluto", "saturn", "thalia", "theia", "vesta", "zeus",
 ]);
 const AURA_ES_SPEAKERS = new Set([
-  "sirio",
-  "nestor",
-  "carina",
-  "celeste",
-  "alvaro",
-  "diana",
-  "aquila",
-  "selena",
-  "estrella",
-  "javier",
+  "sirio", "nestor", "carina", "celeste", "alvaro", "diana", "aquila", "selena", "estrella", "javier",
 ]);
 const BUDDY_TO_AURA: Record<string, string> = {
-  Ryan: "luna",
-  Aiden: "orpheus",
-  Vivian: "athena",
-  Serena: "asteria",
-  Uncle_Fu: "atlas",
-  Dylan: "juno",
-  Eric: "zeus",
-  Ono_Anna: "phoebe",
-  Sohee: "delia",
+  Ryan: "luna", Aiden: "orpheus", Vivian: "athena", Serena: "asteria", Uncle_Fu: "atlas",
+  Dylan: "juno", Eric: "zeus", Ono_Anna: "phoebe", Sohee: "delia",
 };
 async function cloudflareAI(request: Request, env: ServerEnv): Promise<Response | null> {
   const url = new URL(request.url);
@@ -306,75 +283,38 @@ async function cloudflareAI(request: Request, env: ServerEnv): Promise<Response 
   if (!env.AI) return jsonError("Cloudflare Workers AI binding is not configured.", 503);
   if (request.method !== "POST") return jsonError("POST required.", 405);
   let body: {
-    capability?: string;
-    prompt?: string;
-    text?: string;
-    lyrics?: string;
-    language?: string;
-    messages?: unknown[];
-    speaker?: string;
-    audioBase64?: string;
-    image?: string;
-    duration?: number;
-    aspectRatio?: string;
-    resolution?: string;
-    instrumental?: boolean;
-    lyricsOptimizer?: boolean;
+    capability?: string; prompt?: string; text?: string; lyrics?: string; language?: string;
+    messages?: unknown[]; speaker?: string; audioBase64?: string; image?: string; duration?: number;
+    aspectRatio?: string; resolution?: string; instrumental?: boolean; lyricsOptimizer?: boolean;
   };
-  try {
-    body = await request.json();
-  } catch {
-    return jsonError("Invalid JSON request.", 400);
-  }
+  try { body = await request.json(); } catch { return jsonError("Invalid JSON request.", 400); }
   const capability = body.capability ?? "";
   const prompt = String(body.prompt ?? body.text ?? body.lyrics ?? "").trim();
-  if (!prompt && !["speech-to-text", "video"].includes(capability))
-    return jsonError("Prompt is required.", 400);
+  if (!prompt && !["speech-to-text", "video"].includes(capability)) return jsonError("Prompt is required.", 400);
   try {
     if (capability === "speech-to-text") {
       if (!body.audioBase64) return jsonError("Audio is required for speech recognition.", 400);
       const audio = body.audioBase64.trim();
       if (!audio) return jsonError("The recorded audio was empty.", 400);
-      const input = {
-        audio,
-        task: "transcribe",
-        ...(body.language && body.language !== "Auto" ? { language: body.language } : {}),
-        vad_filter: true,
-      };
+      const input = { audio, task: "transcribe", ...(body.language && body.language !== "Auto" ? { language: body.language } : {}), vad_filter: true };
       let result: unknown;
-      try {
-        result = await env.AI.run("@cf/openai/whisper-large-v3-turbo", input);
-      } catch (primaryError) {
+      try { result = await env.AI.run("@cf/openai/whisper-large-v3-turbo", input); }
+      catch (primaryError) {
         console.warn("Whisper Turbo failed; trying standard Whisper", primaryError);
-        try {
-          result = await env.AI.run("@cf/openai/whisper", audio);
-        } catch (secondaryError) {
+        try { result = await env.AI.run("@cf/openai/whisper", audio); }
+        catch (secondaryError) {
           console.warn("Standard Whisper failed", secondaryError);
-          return jsonError(
-            `Speech recognition temporarily unavailable. ${isCapacityError(primaryError) || isCapacityError(secondaryError) ? "The AI service is at capacity." : "The audio request was rejected."}`,
-            503,
-          );
+          return jsonError(`Speech recognition temporarily unavailable. ${isCapacityError(primaryError) || isCapacityError(secondaryError) ? "The AI service is at capacity." : "The audio request was rejected."}`, 503);
         }
       }
       const text = chatText(result);
       if (!text) return jsonError("Whisper returned no usable transcription.", 502);
-      return Response.json(
-        { text, transcription: text },
-        { headers: { "cache-control": "no-store" } },
-      );
+      return Response.json({ text, transcription: text }, { headers: { "cache-control": "no-store" } });
     }
     if (capability === "image") {
-      const form = new FormData();
-      form.append("prompt", prompt);
-      form.append("width", "1024");
-      form.append("height", "768");
+      const form = new FormData(); form.append("prompt", prompt); form.append("width", "1024"); form.append("height", "768");
       const formResponse = new Response(form);
-      const result = await env.AI.run("@cf/black-forest-labs/flux-2-klein-4b", {
-        multipart: {
-          body: formResponse.body,
-          contentType: formResponse.headers.get("content-type") || "multipart/form-data",
-        },
-      });
+      const result = await env.AI.run("@cf/black-forest-labs/flux-2-klein-4b", { multipart: { body: formResponse.body, contentType: formResponse.headers.get("content-type") || "multipart/form-data" } });
       const image = await rawImageResponse(result);
       if (!image) return jsonError("Image model returned no usable image.", 502);
       return image;
@@ -384,125 +324,61 @@ async function cloudflareAI(request: Request, env: ServerEnv): Promise<Response 
       const requested = String(body.speaker || "").trim();
       const auraSpeaker = BUDDY_TO_AURA[requested] || requested.toLowerCase();
       let lastError: unknown;
-      // Prefer Aura for English/Spanish because it has real selectable speakers.
-      // MeloTTS remains the multilingual fallback, not the first provider, so the
-      // preset picker no longer collapses every English choice into one voice.
       if (lang === "en" && AURA_EN_SPEAKERS.has(auraSpeaker)) {
         try {
-          const aura = await env.AI.run("@cf/deepgram/aura-2-en", {
-            text: prompt,
-            encoding: "mp3",
-            speaker: auraSpeaker,
-          });
-          const audio = await rawAudioResponse(aura);
-          if (audio) return audio;
+          const aura = await env.AI.run("@cf/deepgram/aura-2-en", { text: prompt, encoding: "mp3", speaker: auraSpeaker });
+          const audio = await rawAudioResponse(aura); if (audio) return audio;
           lastError = new Error("Aura-2 English returned no audio");
-        } catch (error) {
-          lastError = error;
-          console.warn("Aura-2 English failed; trying fallback", error);
-        }
+        } catch (error) { lastError = error; console.warn("Aura-2 English failed", error); }
       }
       if (lang === "es" && AURA_ES_SPEAKERS.has(auraSpeaker)) {
         try {
-          const aura = await env.AI.run("@cf/deepgram/aura-2-es", {
-            text: prompt,
-            encoding: "mp3",
-            speaker: auraSpeaker,
-          });
-          const audio = await rawAudioResponse(aura);
-          if (audio) return audio;
+          const aura = await env.AI.run("@cf/deepgram/aura-2-es", { text: prompt, encoding: "mp3", speaker: auraSpeaker });
+          const audio = await rawAudioResponse(aura); if (audio) return audio;
           lastError = new Error("Aura-2 Spanish returned no audio");
-        } catch (error) {
-          lastError = error;
-          console.warn("Aura-2 Spanish failed; trying fallback", error);
-        }
+        } catch (error) { lastError = error; console.warn("Aura-2 Spanish failed", error); }
+      }
+      // Never silently substitute another speaker. A selected preset either works or fails honestly.
+      if ((lang === "en" && AURA_EN_SPEAKERS.has(auraSpeaker)) || (lang === "es" && AURA_ES_SPEAKERS.has(auraSpeaker))) {
+        return jsonError(`The selected voice (${requested || auraSpeaker}) could not produce audio.${isCapacityError(lastError) ? " The AI service is at capacity." : ""}`, 503);
       }
       try {
         const result = await env.AI.run("@cf/myshell-ai/melotts", { prompt, lang });
-        const audio = await rawAudioResponse(result);
-        if (audio) return audio;
+        const audio = await rawAudioResponse(result); if (audio) return audio;
         lastError = new Error("MeloTTS returned no audio");
-      } catch (error) {
-        lastError = error;
-        console.warn("MeloTTS failed; trying Aura-1", error);
-      }
-      if (lang === "en" && AURA_EN_SPEAKERS.has(auraSpeaker)) {
-        try {
-          const aura1 = await env.AI.run("@cf/deepgram/aura-1", {
-            text: prompt,
-            encoding: "mp3",
-            speaker: auraSpeaker,
-          });
-          const audio = await rawAudioResponse(aura1);
-          if (audio) return audio;
-          lastError = new Error("Aura-1 returned no audio");
-        } catch (error) {
-          lastError = error;
-        }
-      }
-      return jsonError(
-        `TTS providers returned no usable audio.${isCapacityError(lastError) ? " The AI service is at capacity." : ""}`,
-        503,
-      );
+      } catch (error) { lastError = error; console.warn("MeloTTS failed", error); }
+      return jsonError(`TTS returned no usable audio.${isCapacityError(lastError) ? " The AI service is at capacity." : ""}`, 503);
     }
     if (capability === "chat") {
-      const messages =
-        Array.isArray(body.messages) && body.messages.length
-          ? body.messages
-          : [{ role: "user", content: prompt }];
-      const model = hasImageContent(messages)
-        ? "@cf/google/gemma-4-26b-a4b-it"
-        : "@cf/qwen/qwen3-30b-a3b-fp8";
+      const messages = Array.isArray(body.messages) && body.messages.length ? body.messages : [{ role: "user", content: prompt }];
+      const model = hasImageContent(messages) ? "@cf/google/gemma-4-26b-a4b-it" : "@cf/qwen/qwen3-30b-a3b-fp8";
       let result: unknown;
       try {
         result = await env.AI.run(model, { messages, max_tokens: 1024, temperature: 0.6 });
       } catch (primaryError) {
-        console.warn("Primary Buddy model failed; using GPT-OSS fallback", primaryError);
-        result = await env.AI.run("@cf/openai/gpt-oss-20b", {
-          messages,
-          max_tokens: 1024,
-          temperature: 0.6,
-        });
+        console.warn("Primary Buddy model failed; trying OpenRouter", primaryError);
+        try {
+          result = await openRouterChat(env, messages);
+        } catch (openRouterError) {
+          console.warn("OpenRouter fallback failed; using GPT-OSS fallback", openRouterError);
+          result = await env.AI.run("@cf/openai/gpt-oss-20b", { messages, max_tokens: 1024, temperature: 0.6 });
+        }
       }
       const text = chatText(result);
       if (!text) return jsonError("Buddy model returned no usable response.", 502);
-      return Response.json(
-        { response: text, text, result },
-        { headers: { "cache-control": "no-store" } },
-      );
+      return Response.json({ response: text, text, result }, { headers: { "cache-control": "no-store" } });
     }
     if (capability === "music") {
-      const result = await env.AI.run("minimax/music-2.6", {
-        prompt: prompt.slice(0, 2000),
-        lyrics: body.lyrics || undefined,
-        is_instrumental: Boolean(body.instrumental),
-        lyrics_optimizer: body.lyricsOptimizer ?? !body.lyrics,
-      });
+      const result = await env.AI.run("minimax/music-2.6", { prompt: prompt.slice(0, 2000), lyrics: body.lyrics || undefined, is_instrumental: Boolean(body.instrumental), lyrics_optimizer: body.lyricsOptimizer ?? !body.lyrics });
       const audio = mediaUrl(result, ["audio", "url", "uri", "result", "output"]);
       if (!audio) return jsonError("Music model returned no usable audio URL.", 502);
-      return Response.json(
-        { audio, provider: "MiniMax Music 2.6" },
-        { headers: { "cache-control": "no-store" } },
-      );
+      return Response.json({ audio, provider: "MiniMax Music 2.6" }, { headers: { "cache-control": "no-store" } });
     }
     if (capability === "video") {
-      const result = await env.AI.run("bytedance/seedance-2.0-fast", {
-        prompt: prompt || "Create a cinematic short video",
-        duration: Math.min(12, Math.max(4, Number(body.duration) || 5)),
-        resolution: body.resolution || "720p",
-        aspect_ratio: body.aspectRatio || "16:9",
-        fps: 24,
-        generate_audio: true,
-        watermark: false,
-        use_virtual_avatar: false,
-        ...(body.image ? { image: body.image } : {}),
-      });
+      const result = await env.AI.run("bytedance/seedance-2.0-fast", { prompt: prompt || "Create a cinematic short video", duration: Math.min(12, Math.max(4, Number(body.duration) || 5)), resolution: body.resolution || "720p", aspect_ratio: body.aspectRatio || "16:9", fps: 24, generate_audio: true, watermark: false, use_virtual_avatar: false, ...(body.image ? { image: body.image } : {}) });
       const video = mediaUrl(result, ["video", "url", "uri", "result", "output"]);
       if (!video) return jsonError("Video model returned no usable video URL.", 502);
-      return Response.json(
-        { video, provider: "Seedance 2.0 Fast" },
-        { headers: { "cache-control": "no-store" } },
-      );
+      return Response.json({ video, provider: "Seedance 2.0 Fast" }, { headers: { "cache-control": "no-store" } });
     }
     return jsonError(`Cloudflare AI does not provide the ${capability} capability.`, 400);
   } catch (error) {
@@ -517,35 +393,23 @@ async function normalizeCatastrophicSsrResponse(response: Response): Promise<Res
   const body = await response.clone().text();
   if (!isH3SwallowedErrorBody(body)) return response;
   console.error(consumeLastCapturedError() ?? new Error(`h3 swallowed SSR error: ${body}`));
-  return new Response(renderErrorPage(), {
-    status: 500,
-    headers: { "content-type": "text/html; charset=utf-8" },
-  });
+  return new Response(renderErrorPage(), { status: 500, headers: { "content-type": "text/html; charset=utf-8" } });
 }
 function isH3SwallowedErrorBody(body: string): boolean {
-  try {
-    const payload = JSON.parse(body) as { unhandled?: unknown; message?: unknown };
-    return payload.unhandled === true && payload.message === "HTTPError";
-  } catch {
-    return false;
-  }
+  try { const payload = JSON.parse(body) as { unhandled?: unknown; message?: unknown }; return payload.unhandled === true && payload.message === "HTTPError"; }
+  catch { return false; }
 }
 export default {
   async fetch(request: Request, env: unknown, ctx: unknown) {
     try {
-      const cloudflare = await cloudflareAI(request, env as ServerEnv);
-      if (cloudflare) return cloudflare;
-      const proxied = await proxyHfSpace(request);
-      if (proxied) return proxied;
+      const cloudflare = await cloudflareAI(request, env as ServerEnv); if (cloudflare) return cloudflare;
+      const proxied = await proxyHfSpace(request); if (proxied) return proxied;
       const handler = await getServerEntry();
       const response = await handler.fetch(request, env, ctx);
       return await normalizeCatastrophicSsrResponse(response);
     } catch (error) {
       console.error(error);
-      return new Response(renderErrorPage(), {
-        status: 500,
-        headers: { "content-type": "text/html; charset=utf-8" },
-      });
+      return new Response(renderErrorPage(), { status: 500, headers: { "content-type": "text/html; charset=utf-8" } });
     }
   },
 };
