@@ -2,6 +2,7 @@ export type RealCloneResult = { url: string; provider: string; voiceId?: string 
 
 const DEFAULT_CLONE_TEXT =
   "Hi. I'm Buddy. This is my new voice. Let's make something brilliant together.";
+const CLONE_PROVIDER = "Chatterbox via Hugging Face/Fal";
 
 function validateAudioBlob(blob: Blob): void {
   if (!blob.size || blob.size < 4096) {
@@ -98,7 +99,7 @@ export async function createRealVoiceClone(
 ): Promise<RealCloneResult> {
   if (!reference.size) throw new Error("The voice recording is empty.");
   const blob = await generateWithRealClone(reference, text || DEFAULT_CLONE_TEXT);
-  return { url: URL.createObjectURL(blob), provider: "Chatterbox — Resemble AI voice clone" };
+  return { url: URL.createObjectURL(blob), provider: CLONE_PROVIDER };
 }
 
 export async function speakWithRealVoiceClone(
