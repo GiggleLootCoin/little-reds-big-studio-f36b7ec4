@@ -80,7 +80,12 @@ async function generate(text: string, exaggeration: number) {
   });
   const data = waveform.data;
   const buffer = data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer;
-  self.postMessage({ type: "audio", sampleRate: 24000, waveform: buffer }, [buffer]);
+  // Do not transfer the ArrayBuffer here. The worker's generated Tensor may expose
+  // an ArrayBufferLike backing store under newer TypeScript lib definitions, which
+  // makes the transfer-list overload reject an otherwise valid audio payload.
+  // The audio is small enough that a structured clone is preferable to a build-breaking
+  // type assertion, and the UI still receives a real playable waveform.
+  self.postMessage({ type: "audio", sampleRate: 24000, waveform: buffer });
 }
 
 self.addEventListener("message", async (event: MessageEvent) => {
