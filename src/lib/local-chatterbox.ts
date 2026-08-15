@@ -84,7 +84,9 @@ async function decodeAt24k(blob: Blob): Promise<Float32Array> {
 async function fingerprint(reference: Blob): Promise<string> {
   const bytes = new Uint8Array(await reference.arrayBuffer());
   const digest = await crypto.subtle.digest("SHA-256", bytes);
-  return Array.from(new Uint8Array(digest), (value) => value.toString(16).padStart(2, "0")).join("");
+  return Array.from(new Uint8Array(digest), (value) => value.toString(16).padStart(2, "0")).join(
+    "",
+  );
 }
 
 function wavBlob(samples: Float32Array, sampleRate: number): Blob {
@@ -129,7 +131,11 @@ export async function createLocalChatterboxClone(
   onStatus?.("Loading the free local voice engine… first use may download about 1.5 GB.");
   await load();
   const key = await fingerprint(reference);
-  onStatus?.(encodedKey === key ? "Using your saved local voice profile…" : "Learning your voice from the recording…");
+  onStatus?.(
+    encodedKey === key
+      ? "Using your saved local voice profile…"
+      : "Learning your voice from the recording…",
+  );
   if (encodedKey !== key) {
     const audio = await decodeAt24k(reference);
     encodePromise = (async () => {

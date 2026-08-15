@@ -27,10 +27,7 @@ function exaggerationFor(mood: string, tone: string): number {
     gentle: -0.08,
     professional: -0.06,
   };
-  return Math.max(
-    0.25,
-    Math.min(1, (moodValues[mood] ?? 0.5) + (toneAdjust[tone] ?? 0)),
-  );
+  return Math.max(0.25, Math.min(1, (moodValues[mood] ?? 0.5) + (toneAdjust[tone] ?? 0)));
 }
 
 export async function createRealVoiceClone(
