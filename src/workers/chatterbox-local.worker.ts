@@ -1,15 +1,6 @@
-import { ChatterboxModel, AutoProcessor, Tensor } from "@huggingface/transformers";
+import { ChatterboxModel, ChatterboxProcessor, Tensor } from "@huggingface/transformers";
 
-const MODEL_ID = "onnx-community/chatterbox-ONNX";
-
-type Device = "webgpu" | "wasm";
-
-type DtypeConfig = {
-  embed_tokens: "fp32";
-  speech_encoder: "fp32";
-  language_model: "q4" | "q4f16";
-  conditional_decoder: "fp32";
-};
+const MODEL_ID = "ttslab/chatterbox-turbo-webgpu";
 
 type LocalChatterboxModel = {
   encode_speech: (audio: Tensor) => Promise<Record<string, unknown>>;
@@ -23,21 +14,6 @@ let model: LocalChatterboxModel | null = null;
 let processor: LocalProcessor | null = null;
 let speakerData: Record<string, unknown> | null = null;
 
-const dtypeFor = (device: Device): DtypeConfig =>
-  device === "webgpu"
-    ? {
-        embed_tokens: "fp32",
-        speech_encoder: "fp32",
-        language_model: "q4f16",
-        conditional_decoder: "fp32",
-      }
-    : {
-        embed_tokens: "fp32",
-        speech_encoder: "fp32",
-        language_model: "q4",
-        conditional_decoder: "fp32",
-      };
-
 async function detectWebGpu(): Promise<boolean> {
   const gpu = (navigator as Navigator & { gpu?: { requestAdapter: () => Promise<unknown> } }).gpu;
   if (!gpu) return false;
@@ -49,21 +25,36 @@ async function detectWebGpu(): Promise<boolean> {
 }
 
 async function loadModel() {
-  const webgpu = await detectWebGpu();
-  const device: Device = webgpu ? "webgpu" : "wasm";
-  self.postMessage({
-    type: "progress",
-    message: webgpu ? "Preparing WebGPU voice engine…" : "Preparing browser voice engine…",
-  });
-  const loadedProcessor = await AutoProcessor.from_pretrained(MODEL_ID);
-  processor = loadedProcessor as unknown as LocalProcessor;
-  const loadedModel = await ChatterboxModel.from_pretrained(MODEL_ID, {
-    device,
-    dtype: dtypeFor(device),
-    progress_callback: (progress: unknown) => self.postMessage({ type: "progress", progress }),
-  });
-  model = loadedModel as unknown as LocalChatterboxModel;
-  self.postMessage({ type: "loaded", device });
+  if (!(await detectWebGpu())) {
+    throw new Error(
+      "This Android browser does not expose WebGPU. The free local voice clone needs Chrome WebGPU; no paid cloud fallback was used.",
+    );
+  }
+  self.postMessage({ type: "progress", message: "Preparing the lightweight WebGPU voice engine…" });
+  try {
+    processor = (await ChatterboxProcessor.from_pretrained(MODEL_ID)) as unknown as LocalProcessor;
+    model = (await ChatterboxModel.from_pretrained(MODEL_ID, {
+      device: "webgpu",
+      dtype: {
+        embed_tokens: "fp32",
+        speech_encoder: "q4f16",
+        language_model: "q4f16",
+        conditional_decoder: "q4f16",
+      },
+      progress_callback: (progress: unknown) => self.postMessage({ type: "progress", progress }),
+    })) as unknown as LocalChatterboxModel;
+    self.postMessage({ type: "loaded", device: "webgpu" });
+  } catch (error) {
+    model = null;
+    processor = null;
+    const message = error instanceof Error ? error.message : String(error);
+    if (message.toLowerCase().includes("fetch")) {
+      throw new Error(
+        "The free Chatterbox Turbo model could not be downloaded to this phone. Check the connection and try again; your voice was not sent to a provider.",
+      );
+    }
+    throw new Error(`The free local Chatterbox Turbo engine could not start: ${message}`);
+  }
 }
 
 async function encode(audio: Float32Array) {
@@ -82,26 +73,18 @@ async function generate(text: string, exaggeration: number) {
     ...inputs,
     ...speakerData,
     exaggeration,
-    max_new_tokens: 256,
+    max_new_tokens: 2048,
     repetition_penalty: 1.2,
     do_sample: true,
     temperature: 0.2,
   });
   const data = waveform.data;
-  const buffer = data.buffer.slice(
-    data.byteOffset,
-    data.byteOffset + data.byteLength,
-  ) as ArrayBuffer;
-  self.postMessage({ type: "audio", sampleRate: 24000, waveform: buffer });
+  const buffer = data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer;
+  self.postMessage({ type: "audio", sampleRate: 24000, waveform: buffer }, [buffer]);
 }
 
 self.addEventListener("message", async (event: MessageEvent) => {
-  const message = event.data as {
-    type: string;
-    audio?: ArrayBuffer;
-    text?: string;
-    exaggeration?: number;
-  };
+  const message = event.data as { type: string; audio?: ArrayBuffer; text?: string; exaggeration?: number };
   try {
     if (message.type === "load") await loadModel();
     else if (message.type === "encode") {
@@ -112,9 +95,6 @@ self.addEventListener("message", async (event: MessageEvent) => {
       await generate(message.text || "Hello from Buddy.", message.exaggeration ?? 0.5);
     }
   } catch (error) {
-    self.postMessage({
-      type: "error",
-      message: error instanceof Error ? error.message : "Local Chatterbox failed.",
-    });
+    self.postMessage({ type: "error", message: error instanceof Error ? error.message : "Local Chatterbox failed." });
   }
 });
