@@ -58,7 +58,10 @@ function validatedAudioResponse(bytes: Uint8Array, contentType: string): Respons
 function falKey(env: Env): string {
   return env.FALAI_API_KEY?.trim() || env.FAL_KEY?.trim() || "";
 }
-function voiceControls(mood: string, tone: string): {
+function voiceControls(
+  mood: string,
+  tone: string,
+): {
   exaggeration: number;
   temperature: number;
   cfg: number;
