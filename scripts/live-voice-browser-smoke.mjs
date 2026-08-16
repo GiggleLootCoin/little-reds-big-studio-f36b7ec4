@@ -53,7 +53,9 @@ try {
     const status = await page.locator("body").innerText();
     const callsBeforeFailure = await page.evaluate(() => window.__buddyPlayCalls || []);
     if (!/REAL VOICE CLONE VERIFIED/.test(status)) {
-      throw new Error(`Clone did not verify. Status: ${status.slice(-2000)} Playback calls: ${JSON.stringify(callsBeforeFailure)}`);
+      throw new Error(
+        `Clone did not verify. Status: ${status.slice(-2000)} Playback calls: ${JSON.stringify(callsBeforeFailure)}`,
+      );
     }
     const playback = await page.evaluate(async () => {
       const calls = await Promise.all(window.__buddyPlayCalls || []);
@@ -63,10 +65,16 @@ try {
       probe.preload = "metadata";
       await new Promise((resolve, reject) => {
         probe.onloadedmetadata = resolve;
-        probe.onerror = () => reject(new Error("HTMLAudioElement could not decode normalized clone"));
+        probe.onerror = () =>
+          reject(new Error("HTMLAudioElement could not decode normalized clone"));
         probe.load();
       });
-      return { calls, duration: probe.duration, readyState: probe.readyState, paused: probe.paused };
+      return {
+        calls,
+        duration: probe.duration,
+        readyState: probe.readyState,
+        paused: probe.paused,
+      };
     });
     console.log(JSON.stringify({ status: "ok", playback }, null, 2));
     if (!playback.duration || playback.duration <= 0.25)
@@ -78,7 +86,9 @@ try {
     }
     await context.close();
   } catch (error) {
-    console.error(`::error::ANDROID_BROWSER_VOICE_TEST ${error instanceof Error ? error.message : String(error)}`);
+    console.error(
+      `::error::ANDROID_BROWSER_VOICE_TEST ${error instanceof Error ? error.message : String(error)}`,
+    );
     throw error;
   }
 } finally {
