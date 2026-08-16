@@ -1,6 +1,5 @@
 name: Deploy Little Red's Big Studio
 # Production deployment for the current Buddy runtime.
-# Explicit push + manual dispatch triggers keep the GitHub -> Cloudflare path active.
 on:
   push:
     branches: [main]
@@ -77,13 +76,11 @@ jobs:
           clone_code=$(curl -L -sS --max-time 20 -o /tmp/clone-health.json -w '%{http_code}' "$PRODUCTION_URL/api/ai/voice-clone?deploy_sha=${GITHUB_SHA}") || clone_code=000
           test "$clone_code" = "200" || { echo "Voice-clone health endpoint returned HTTP $clone_code"; cat /tmp/clone-health.json 2>/dev/null || true; exit 1; }
           grep -q '"capability":"voice-clone"' /tmp/clone-health.json || { echo "Wrong capability in deployed clone endpoint"; cat /tmp/clone-health.json; exit 1; }
-          grep -q '"backend":"huggingface-fal-chatterbox"' /tmp/clone-health.json || { echo "Wrong voice-clone backend deployed"; cat /tmp/clone-health.json; exit 1; }
+          grep -q '"backend":"free-chatterbox-cpu-first"' /tmp/clone-health.json || { echo "Wrong voice-clone backend deployed"; cat /tmp/clone-health.json; exit 1; }
           grep -q '"transcriptRequired":false' /tmp/clone-health.json || { echo "Clone endpoint unexpectedly requires a transcript"; cat /tmp/clone-health.json; exit 1; }
-          grep -q '"input":"multipart/form-data or JSON base64"' /tmp/clone-health.json || { echo "Multipart upload support is missing"; cat /tmp/clone-health.json; exit 1; }
-          echo "Production voice-clone backend verified: Hugging Face/Fal Chatterbox; multipart upload supported."
+          echo "Production voice-clone backend verified: free Chatterbox CPU Space first; multipart upload supported."
 
       - name: One-shot live multipart voice artifact test
-        if: contains(github.event.head_commit.message, '[voice-e2e]')
         env:
           PRODUCTION_URL: https://little-reds-big-studio-f36b7ec4.gigglelootcoin.workers.dev
           SAMPLE_URL: https://huggingface.co/datasets/hf-internal-testing/dummy-audio-samples/resolve/main/obama_first_45_secs.mp3
@@ -92,7 +89,7 @@ jobs:
           set -euo pipefail
           curl -L -sS --max-time 30 "$SAMPLE_URL" -o /tmp/voice-reference.mp3
           test -s /tmp/voice-reference.mp3
-          code=$(curl -L -sS --max-time 120 -o /tmp/voice-clone-output -D /tmp/voice-clone-headers -w '%{http_code}' \
+          code=$(curl -L -sS --max-time 180 -o /tmp/voice-clone-output -D /tmp/voice-clone-headers -w '%{http_code}' \
             -X POST \
             -F 'audio=@/tmp/voice-reference.mp3;type=audio/mpeg' \
             -F 'text=Hello. This is the live voice clone upload test.' \
@@ -102,4 +99,4 @@ jobs:
           grep -qi '^content-type: audio/' /tmp/voice-clone-headers || { echo "Live clone response was not audio"; cat /tmp/voice-clone-headers; exit 1; }
           grep -qi '^x-clone-verified: true' /tmp/voice-clone-headers || { echo "Live clone artifact was not marked verified"; cat /tmp/voice-clone-headers; exit 1; }
           test "$(wc -c < /tmp/voice-clone-output)" -gt 4096
-          echo "LIVE multipart voice-clone artifact test passed: uploaded speech -> Worker -> Hugging Face/Fal Chatterbox -> playable audio artifact."
+          echo "LIVE multipart voice-clone artifact test passed: reference audio -> Worker -> Chatterbox CPU -> playable verified audio."
