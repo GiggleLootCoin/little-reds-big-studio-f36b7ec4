@@ -98,6 +98,8 @@ async function cloneWithProductionGateway(
   if (!serverVerified) {
     throw new Error("The server returned audio without a verified non-silent artifact signature.");
   }
+  const browserWindow = window as Window & { __buddyLastCloneUrl?: string };
+  browserWindow.__buddyLastCloneUrl = normalized.url;
   await saveBuddyClonePreview(normalized.blob, provider);
   onStatus?.(
     `Clone audio verified: ${normalized.stats.duration.toFixed(2)}s, peak ${normalized.stats.peak.toFixed(3)}, RMS ${normalized.stats.rms.toFixed(4)}. Android audio element decoded it successfully.`,
