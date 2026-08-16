@@ -1,105 +1,63 @@
 import type { StudioArtifact, StudioCapability, StudioJobInput } from "./studio-runtime-impl";
-import { createRealVoiceClone, speakWithRealVoiceClone } from "./real-voice-clone";
 import { getBuddyVoiceProfile, getBuddyVoiceSample, markBuddyCloneVerified } from "./buddy-voice";
 import { saveVoiceSample } from "./voice-profile";
+import { createBestFreeVoiceClone } from "./real-voice-clone-v2";
 
 export type { StudioArtifact, StudioCapability, StudioJobInput } from "./studio-runtime-impl";
 export { runtimeProviders } from "./studio-runtime-impl";
 
-const DEFAULT_CLONE_TEXT =
-  "Hi. I'm Buddy. This is my new voice. Let's make something brilliant together.";
+const DEFAULT_CLONE_TEXT = "Hello. This is your cloned voice sample. Would you like to use this voice for Buddy now, or would you like to record again?";
 
 export function artifactText(value: unknown): string {
   if (typeof value === "string") return value.trim();
   if (Array.isArray(value)) return value.map(artifactText).find(Boolean) ?? "";
   if (value && typeof value === "object") {
-    for (const k of [
-      "text",
-      "response",
-      "generated_text",
-      "transcription",
-      "transcript",
-      "content",
-      "value",
-      "data",
-      "output",
-      "result",
-    ]) {
-      const t = artifactText((value as Record<string, unknown>)[k]);
-      if (t) return t;
+    for (const key of ["text", "response", "generated_text", "transcription", "transcript", "content", "value", "data", "output", "result"]) {
+      const found = artifactText((value as Record<string, unknown>)[key]);
+      if (found) return found;
     }
   }
   return "";
 }
 
-function customVoiceSelected(): boolean {
-  if (typeof window === "undefined") return false;
-  try {
-    const profile = getBuddyVoiceProfile();
-    return profile.mode === "clone" && profile.cloneVerified === true;
-  } catch {
-    return false;
-  }
+function cloneProfile() {
+  return getBuddyVoiceProfile();
 }
 
-export async function runStudioJob(
-  capability: StudioCapability,
-  input: StudioJobInput,
-  onStatus?: (s: string) => void,
-): Promise<StudioArtifact> {
+async function runVerifiedClone(sample: Blob, refText: string, text: string, onStatus?: (s: string) => void) {
+  const result = await createBestFreeVoiceClone(sample, refText, text, onStatus);
+  if (!result.url) throw new Error("The voice engine returned no playable audio.");
+  await saveVoiceSample(sample, refText);
+  await markBuddyCloneVerified(`${result.provider}${result.verification ? ` — ${result.verification}` : ""}`);
+  return result;
+}
+
+export async function runStudioJob(capability: StudioCapability, input: StudioJobInput, onStatus?: (s: string) => void): Promise<StudioArtifact> {
   if (capability === "voice-clone") {
     const sample = input.refAudio ?? input.referenceAudio ?? input.audio;
-    if (!(sample instanceof Blob))
-      throw new Error("A reference voice recording is required for a real clone.");
-
-    const refText = String(
-      input.refText ?? input.referenceText ?? input.referenceTranscript ?? "",
-    ).trim();
-    const targetText =
-      String(input.target_text ?? input.text ?? input.prompt ?? "").trim() || DEFAULT_CLONE_TEXT;
-    const profile = getBuddyVoiceProfile();
-
-    onStatus?.("Creating a real custom voice from your recording…");
-    const result = await createRealVoiceClone(
-      sample,
-      refText,
-      targetText,
-      String(input.language ?? profile.language ?? "English"),
-      String(input.mood ?? profile.mood ?? "natural"),
-      String(input.tone ?? profile.tone ?? "conversational"),
-      onStatus,
-    );
-    if (!result.url) throw new Error("The clone engine returned no playable audio.");
-
-    await saveVoiceSample(sample, refText);
-    await markBuddyCloneVerified(result.provider);
-    onStatus?.("Real custom voice generated, audio validated, and clone marked ready.");
-    return {
-      capability: "voice-clone",
-      value: result,
-      url: result.url,
-      provider: result.provider,
-    };
+    if (!(sample instanceof Blob)) throw new Error("A reference voice recording is required for a real clone.");
+    const refText = String(input.refText ?? input.referenceText ?? input.referenceTranscript ?? cloneProfile().referenceTranscript ?? "").trim();
+    if (!refText) throw new Error("Your reference transcript is missing. Record or upload the supplied reference sentence again.");
+    const targetText = String(input.target_text ?? input.text ?? input.prompt ?? DEFAULT_CLONE_TEXT).trim() || DEFAULT_CLONE_TEXT;
+    onStatus?.("Building your voice from the actual reference recording — no preset speaker is being used.");
+    const result = await runVerifiedClone(sample, refText, targetText, onStatus);
+    onStatus?.("Your reference-conditioned voice produced playable audio.");
+    return { capability, value: result, url: result.url, provider: result.provider };
   }
 
-  if (capability === "tts" && customVoiceSelected()) {
-    const profile = getBuddyVoiceProfile();
-    const sample = await getBuddyVoiceSample();
-    if (!sample)
-      throw new Error("The verified custom voice reference is missing. Generate the clone again.");
-    onStatus?.("Speaking with the verified custom voice…");
-    const result = await speakWithRealVoiceClone(
-      sample,
-      profile.referenceTranscript || "",
-      String(input.text ?? input.target_text ?? input.prompt ?? ""),
-      String(input.language ?? profile.language ?? "English"),
-      String(input.mood ?? profile.mood ?? "natural"),
-      String(input.tone ?? profile.tone ?? "conversational"),
-      onStatus,
-    );
-    if (!result.url) throw new Error("The custom voice returned no playable audio.");
-    onStatus?.("Ready — Buddy used the verified custom voice.");
-    return { capability: "tts", value: result, url: result.url, provider: result.provider };
+  if (capability === "tts") {
+    const profile = cloneProfile();
+    if (profile.mode === "clone" && profile.cloneVerified) {
+      const sample = await getBuddyVoiceSample();
+      if (!sample) throw new Error("The saved custom voice sample is missing. Please create the clone again.");
+      const refText = profile.referenceTranscript?.trim();
+      if (!refText) throw new Error("The saved custom voice has no reference transcript. Please create the clone again.");
+      const text = String(input.text ?? input.target_text ?? input.prompt ?? "").trim();
+      if (!text) throw new Error("Voice text is empty.");
+      onStatus?.("Generating Buddy speech from your saved reference voice…");
+      const result = await runVerifiedClone(sample, refText, text, onStatus);
+      return { capability: "tts", value: result, url: result.url, provider: result.provider };
+    }
   }
 
   const mod = await import("./studio-runtime-impl");
