@@ -73,6 +73,15 @@ jobs:
           upload=$(curl -L -sS --max-time 30 -X POST -F 'files=@/tmp/ref.mp3;type=audio/mpeg' "$SPACE/gradio_api/upload")
           echo "UPLOAD=$upload"
           test -n "$upload"
+      - name: Install FFmpeg for codec/container verification
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! command -v ffmpeg >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y ffmpeg
+          fi
+          ffmpeg -version | head -1
       - name: One-shot live multipart voice artifact test
         env:
           PRODUCTION_URL: https://little-reds-big-studio-f36b7ec4.gigglelootcoin.workers.dev
