@@ -1,8 +1,5 @@
 import studioServer from "./server";
-import {
-  handleProductionVoiceClone,
-  voiceCloneHealth,
-} from "./lib/production-voice-clone";
+import { handleProductionVoiceClone, voiceCloneHealth } from "./lib/production-voice-clone";
 
 type Env = { HF_TOKEN?: string };
 
@@ -11,8 +8,7 @@ export default {
     const url = new URL(request.url);
     const path = url.pathname.replace(/\/$/, "") || "/";
 
-    if (path === "/api/ai/voice-clone" && request.method === "GET")
-      return voiceCloneHealth();
+    if (path === "/api/ai/voice-clone" && request.method === "GET") return voiceCloneHealth();
 
     if (path === "/api/ai/voice-clone" && request.method === "POST")
       return handleProductionVoiceClone(request, env);
