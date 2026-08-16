@@ -8,11 +8,18 @@ export type AudioArtifactStats = {
   rms: number;
 };
 
+type Pcm16WavParts = {
+  sampleRate: number;
+  channels: number;
+  frames: number;
+  data: Uint8Array;
+};
+
 function ascii(bytes: Uint8Array, offset: number, length: number): string {
   return new TextDecoder().decode(bytes.subarray(offset, offset + length));
 }
 
-export function inspectPcm16Wav(bytes: Uint8Array): AudioArtifactStats {
+function readPcm16WavParts(bytes: Uint8Array): Pcm16WavParts {
   if (bytes.length < 44 || ascii(bytes, 0, 4) !== "RIFF" || ascii(bytes, 8, 4) !== "WAVE") {
     throw new Error("Audio artifact is not a RIFF/WAVE container.");
   }
@@ -48,7 +55,16 @@ export function inspectPcm16Wav(bytes: Uint8Array): AudioArtifactStats {
   }
   const bytesPerFrame = channels * 2;
   const frames = Math.floor(dataSize / bytesPerFrame);
-  const view = new DataView(bytes.buffer, bytes.byteOffset + dataOffset, frames * bytesPerFrame);
+  const exactDataSize = frames * bytesPerFrame;
+  const data = new Uint8Array(exactDataSize);
+  data.set(bytes.subarray(dataOffset, dataOffset + exactDataSize));
+  return { sampleRate, channels, frames, data };
+}
+
+export function inspectPcm16Wav(bytes: Uint8Array): AudioArtifactStats {
+  const { sampleRate, channels, frames, data } = readPcm16WavParts(bytes);
+  const bytesPerFrame = channels * 2;
+  const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
   const step = Math.max(1, Math.floor(frames / 200000));
   let sumSquares = 0;
   let peak = 0;
@@ -64,11 +80,39 @@ export function inspectPcm16Wav(bytes: Uint8Array): AudioArtifactStats {
   }
   const rms = Math.sqrt(sumSquares / Math.max(1, samplesChecked));
   const duration = frames / sampleRate;
-  if (!Number.isFinite(duration) || duration <= 0.25)
+  if (!Number.isFinite(duration) || duration <= 0.25) {
     throw new Error("Audio artifact has no usable duration.");
-  if (peak < 0.005 || rms < 0.0005)
+  }
+  if (peak < 0.005 || rms < 0.0005) {
     throw new Error("Audio artifact is silent or effectively silent.");
+  }
   return { container: "wav", sampleRate, channels, frames, duration, peak, rms };
+}
+
+export function canonicalizePcm16Wav(bytes: Uint8Array): Uint8Array {
+  const { sampleRate, channels, data } = readPcm16WavParts(bytes);
+  const blockAlign = channels * 2;
+  const dataSize = data.byteLength;
+  const canonical = new Uint8Array(44 + dataSize);
+  const view = new DataView(canonical.buffer);
+  const write = (offset: number, value: string) => {
+    for (let i = 0; i < value.length; i++) canonical[offset + i] = value.charCodeAt(i);
+  };
+  write(0, "RIFF");
+  view.setUint32(4, 36 + dataSize, true);
+  write(8, "WAVE");
+  write(12, "fmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, channels, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * blockAlign, true);
+  view.setUint16(32, blockAlign, true);
+  view.setUint16(34, 16, true);
+  write(36, "data");
+  view.setUint32(40, dataSize, true);
+  canonical.set(data, 44);
+  return canonical;
 }
 
 export function encodePcm16Wav(buffer: {
