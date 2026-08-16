@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { inspectPcm16Wav } from "../src/lib/audio-artifact.ts";
+import { canonicalizePcm16Wav, inspectPcm16Wav } from "../src/lib/audio-artifact.ts";
 
 function wavFromSamples(samples: number[], sampleRate = 24000): Uint8Array {
   const dataSize = samples.length * 2;
@@ -38,6 +38,19 @@ test("accepts non-silent PCM16 WAV and reports duration", () => {
   assert.equal(stats.channels, 1);
   assert.equal(stats.duration, 1);
   assert.ok(stats.peak > 0.3);
+  assert.ok(stats.rms > 0.1);
+});
+
+test("canonicalizes a structurally valid but malformed-size WAV header", () => {
+  const source = wavFromSamples(
+    Array.from({ length: 24000 }, (_, i) => Math.round(Math.sin(i / 20) * 12000)),
+  );
+  new DataView(source.buffer).setUint32(4, 0xffffffff, true);
+  const canonical = canonicalizePcm16Wav(source);
+  assert.equal(canonical.length, source.length);
+  assert.equal(new DataView(canonical.buffer).getUint32(4, true), canonical.length - 8);
+  const stats = inspectPcm16Wav(canonical);
+  assert.equal(stats.duration, 1);
   assert.ok(stats.rms > 0.1);
 });
 
