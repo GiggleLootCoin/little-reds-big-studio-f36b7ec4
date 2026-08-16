@@ -6,3 +6,5 @@ pnpm-lock.yaml
 package-lock.json
 bun.lock
 routeTree.gen.ts
+# Worker adapter intentionally hand-formatted for Cloudflare runtime compatibility.
+src/lib/production-voice-clone.ts
