@@ -78,13 +78,15 @@ async function cloneWithProductionGateway(
     throw new Error(`Voice clone returned ${contentType || "unknown content"} instead of audio.`);
 
   const artifact = await response.blob();
-  if (artifact.size < 4096) throw new Error("Voice clone returned an empty or unusably small audio artifact.");
+  if (artifact.size < 4096)
+    throw new Error("Voice clone returned an empty or unusably small audio artifact.");
 
   const url = URL.createObjectURL(artifact);
   const provider = providerFromHeaders(response);
-  const verification = response.headers.get("x-clone-verified") === "true"
-    ? "gateway audio artifact verified"
-    : "gateway audio artifact returned";
+  const verification =
+    response.headers.get("x-clone-verified") === "true"
+      ? "gateway audio artifact verified"
+      : "gateway audio artifact returned";
   await saveBuddyClonePreview(artifact, provider);
   onStatus?.("Chatterbox returned a playable audio artifact from your uploaded reference voice.");
   return { url, provider, verification };
@@ -96,11 +98,5 @@ export async function createBestFreeVoiceClone(
   text: string,
   onStatus?: (s: string) => void,
 ): Promise<CloneResult> {
-  return cloneWithProductionGateway(
-    sample,
-    refText,
-    text,
-    "English",
-    onStatus,
-  );
+  return cloneWithProductionGateway(sample, refText, text, "English", onStatus);
 }

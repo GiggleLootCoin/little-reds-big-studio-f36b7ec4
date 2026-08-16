@@ -32,7 +32,10 @@ function errorJson(message: string, status: number, extra: Record<string, unknow
 }
 
 function normalizeMime(raw: string, name = ""): string {
-  const mime = String(raw || "").toLowerCase().split(";")[0].trim();
+  const mime = String(raw || "")
+    .toLowerCase()
+    .split(";")[0]
+    .trim();
   if (mime.startsWith("audio/")) return mime;
   const extension = name.toLowerCase().split(".").pop() || "";
   const byExtension: Record<string, string> = {
@@ -87,10 +90,19 @@ async function readCloneInput(request: Request): Promise<{
     if (!candidate.size) throw new Error("The uploaded voice sample is empty.");
     const name = candidate.name || "voice-sample";
     const mime = normalizeMime(candidate.type, name);
-    const text = String(form.get("text") || form.get("target_text") || form.get("prompt") || "").trim();
+    const text = String(
+      form.get("text") || form.get("target_text") || form.get("prompt") || "",
+    ).trim();
     const refText = String(form.get("refText") || form.get("referenceTranscript") || "").trim();
     const language = String(form.get("language") || "English").trim();
-    return { bytes: new Uint8Array(await candidate.arrayBuffer()), mime, name, text, refText, language };
+    return {
+      bytes: new Uint8Array(await candidate.arrayBuffer()),
+      mime,
+      name,
+      text,
+      refText,
+      language,
+    };
   }
 
   let body: CloneBody;
@@ -189,7 +201,9 @@ export async function handleProductionVoiceClone(
     const raw = new Uint8Array(await upstream.arrayBuffer());
     if (!upstream.ok) {
       const detail = new TextDecoder().decode(raw).slice(0, 1200);
-      throw new Error(`Chatterbox generation failed (${upstream.status})${detail ? `: ${detail}` : ""}`);
+      throw new Error(
+        `Chatterbox generation failed (${upstream.status})${detail ? `: ${detail}` : ""}`,
+      );
     }
 
     if (type.toLowerCase().includes("json")) {

@@ -354,7 +354,8 @@ async function cloneUploadedSample(sample: Blob): Promise<{ blob: Blob; provider
   if (!contentType.toLowerCase().startsWith("audio/"))
     throw new Error(`Voice clone returned ${contentType || "unknown content"} instead of audio.`);
   const artifact = await response.blob();
-  if (artifact.size < 4096) throw new Error("Voice clone returned an empty or unusably small audio artifact.");
+  if (artifact.size < 4096)
+    throw new Error("Voice clone returned an empty or unusably small audio artifact.");
   const provider = response.headers.get("x-clone-provider") || "Hugging Face Chatterbox";
   await saveBuddyClonePreview(artifact, provider);
   if (typeof window !== "undefined") localStorage.setItem(PENDING_CLONE_PROVIDER_KEY, provider);
