@@ -88,20 +88,36 @@ jobs:
             -F 'text=Hello. This is the live voice clone upload test.' \
             -F 'target_text=Hello. This is the live voice clone upload test.' \
             "$PRODUCTION_URL/api/ai/voice-clone?deploy_sha=${GITHUB_SHA}") || code=000
-          test "$code" = "200" || { echo "Live multipart voice clone failed with HTTP $code"; cat /tmp/voice-clone-output 2>/dev/null || true; cat /tmp/voice-clone-headers; exit 1; }
-          grep -qi '^content-type: audio/wav' /tmp/voice-clone-headers
-          grep -qi '^x-clone-verified: true' /tmp/voice-clone-headers
-          grep -qi '^x-clone-duration: ' /tmp/voice-clone-headers
-          grep -qi '^x-clone-peak: ' /tmp/voice-clone-headers
-          grep -qi '^x-clone-rms: ' /tmp/voice-clone-headers
-          test "$(wc -c < /tmp/voice-clone-output)" -gt 4096
-          ffmpeg -v error -i /tmp/voice-clone-output -f null -
-          duration=$(ffprobe -v error -show_entries format=duration -of default=nw=1:nk=1 /tmp/voice-clone-output)
-          awk -v d="$duration" 'BEGIN { exit !(d > 0.25) }'
-          max_volume=$(ffmpeg -hide_banner -i /tmp/voice-clone-output -af volumedetect -f null - 2>&1 | awk '/max_volume:/ {print $5}' | tail -1)
-          test -n "$max_volume" && test "$max_volume" != "-inf"
-          awk -v v="$max_volume" 'BEGIN { gsub("dB", "", v); exit !(v > -50) }'
-          echo "LIVE_AUDIO duration=${duration}s max_volume=${max_volume}"
+          echo '--- clone response headers ---'
+          cat /tmp/voice-clone-headers
+          if [ "$code" != "200" ]; then
+            echo "::error::Live voice clone returned HTTP $code"
+            cat /tmp/voice-clone-output 2>/dev/null || true
+            exit 1
+          fi
+          python - <<'PY'
+          import math, struct, wave
+          path='/tmp/voice-clone-output'
+          try:
+              with wave.open(path, 'rb') as w:
+                  channels=w.getnchannels(); rate=w.getframerate(); width=w.getsampwidth(); frames=w.getnframes()
+                  raw=w.readframes(frames)
+              if width != 2: raise ValueError(f'expected PCM16 WAV, got sample width {width * 8} bits')
+              samples=struct.unpack('<' + 'h'*(len(raw)//2), raw)
+              peak=max((abs(x) for x in samples), default=0)/32768
+              rms=math.sqrt(sum((x/32768)**2 for x in samples)/max(1,len(samples)))
+              duration=frames/rate if rate else 0
+              print(f'LIVE_AUDIO container=PCM16_WAV channels={channels} rate={rate} frames={frames} duration={duration:.6f}s peak={peak:.6f} rms={rms:.6f}')
+              if duration <= 0.25: raise ValueError(f'non-usable duration: {duration:.6f}s')
+              if peak < 0.005 or rms < 0.0005: raise ValueError(f'silent artifact: peak={peak:.6f}, rms={rms:.6f}')
+          except Exception as exc:
+              print(f'::error::LIVE_AUDIO verification failed: {exc}')
+              raise
+          PY
+          ffmpeg -v error -i /tmp/voice-clone-output -f null - || { echo '::error::FFmpeg could not decode the returned WAV artifact'; exit 1; }
+          grep -qi '^content-type: audio/wav' /tmp/voice-clone-headers || { echo '::error::Worker did not return audio/wav'; exit 1; }
+          grep -qi '^x-clone-verified: true' /tmp/voice-clone-headers || { echo '::error::Worker did not mark the artifact verified'; exit 1; }
+          test "$(wc -c < /tmp/voice-clone-output)" -gt 4096 || { echo '::error::Returned audio artifact is too small'; exit 1; }
       - name: Android-style browser playback test
         env:
           PRODUCTION_URL: https://little-reds-big-studio-f36b7ec4.gigglelootcoin.workers.dev
