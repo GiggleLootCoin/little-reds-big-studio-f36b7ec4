@@ -48,8 +48,8 @@ function normalizeMime(raw: string, name = ""): string {
     webm: "audio/webm",
     flac: "audio/flac",
     amr: "audio/amr",
-    3gp: "audio/3gpp",
-    3gpp: "audio/3gpp",
+    "3gp": "audio/3gpp",
+    "3gpp": "audio/3gpp",
   };
   return byExtension[extension] || "application/octet-stream";
 }
