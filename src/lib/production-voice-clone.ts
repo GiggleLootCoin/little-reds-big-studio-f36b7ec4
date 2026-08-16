@@ -1,186 +1,20 @@
-const BACKEND = "self-hosted-chatterbox-first";
-const VERSION = "voice-clone-v8.0";
-const ROUTE = "https://router.huggingface.co/fal-ai/fal-ai/chatterbox/text-to-speech";
-const SPACE = "https://resembleai-chatterbox.hf.space";
+const BACKEND = "free-chatterbox-cpu-first";
+const VERSION = "voice-clone-v9.0";
+const HF_CPU_SPACE = "https://rahul7star-chatterbox-multilingual-tts.hf.space";
+const HF_GPU_SPACE = "https://resembleai-chatterbox.hf.space";
 const DEFAULT_TEXT = "Hello. This is your cloned voice sample. Would you like to use this voice for Buddy now, or would you like to record again?";
 
 type CloneEnv = { HF_TOKEN?: string; CHATTERBOX_ENDPOINT?: string; CHATTERBOX_TOKEN?: string };
 type CloneBody = { audioBase64?: string; audio?: string; refAudio?: string; referenceAudio?: string; audioMimeType?: string; text?: string; target_text?: string; prompt?: string };
 
-function headers(): Headers {
-  const value = new Headers({ "cache-control": "no-store, no-cache, must-revalidate" });
-  value.set("x-buddy-clone-backend", BACKEND);
-  value.set("x-buddy-clone-version", VERSION);
-  return value;
-}
-function errorJson(message: string, status: number, extra: Record<string, unknown> = {}) {
-  return Response.json({ ok: false, backend: BACKEND, version: VERSION, error: message, ...extra }, { status, headers: headers() });
-}
-function normalizeMime(raw: string, name = ""): string {
-  const mime = String(raw || "").toLowerCase().split(";")[0].trim();
-  if (mime.startsWith("audio/")) return mime;
-  const extension = name.toLowerCase().split(".").pop() || "";
-  const byExtension: Record<string, string> = { wav: "audio/wav", wave: "audio/wav", mp3: "audio/mpeg", m4a: "audio/mp4", mp4: "audio/mp4", aac: "audio/aac", ogg: "audio/ogg", oga: "audio/ogg", opus: "audio/opus", webm: "audio/webm", flac: "audio/flac", amr: "audio/amr", "3gp": "audio/3gpp", "3gpp": "audio/3gpp" };
-  return byExtension[extension] || "application/octet-stream";
-}
-function decodeBase64(value: string, fallbackMime = "audio/wav", fallbackName = "reference.wav") {
-  const match = value.match(/^data:([^;,]+)(?:;[^,]*)?;base64,(.*)$/s);
-  const mime = normalizeMime(match?.[1] || fallbackMime, fallbackName);
-  const raw = (match?.[2] || value).replace(/\s/g, "");
-  let binary: string;
-  try { binary = atob(raw); } catch { throw new Error("The uploaded voice sample was not valid base64 audio data."); }
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
-  return { bytes, mime };
-}
-async function readCloneInput(request: Request): Promise<{ bytes: Uint8Array; mime: string; name: string; text?: string; refText?: string; language?: string }> {
-  const contentType = (request.headers.get("content-type") || "").toLowerCase();
-  if (contentType.includes("multipart/form-data")) {
-    const form = await request.formData();
-    const candidate = ["audio", "file", "voice", "referenceAudio", "refAudio"].map((key) => form.get(key)).find((value) => value instanceof File) as File | undefined;
-    if (!candidate) throw new Error("No audio file was found in the upload. Use the audio field.");
-    if (!candidate.size) throw new Error("The uploaded voice sample is empty.");
-    const name = candidate.name || "voice-sample";
-    const mime = normalizeMime(candidate.type, name);
-    const text = String(form.get("text") || form.get("target_text") || form.get("prompt") || "").trim();
-    const refText = String(form.get("refText") || form.get("referenceTranscript") || "").trim();
-    const language = String(form.get("language") || "English").trim();
-    return { bytes: new Uint8Array(await candidate.arrayBuffer()), mime, name, text, refText, language };
-  }
-  let body: CloneBody;
-  try { body = (await request.json()) as CloneBody; } catch { throw new Error("The clone request was not valid JSON or multipart form data."); }
-  const encoded = body.audioBase64 || body.audio || body.refAudio || body.referenceAudio;
-  if (!encoded) throw new Error("A voice sample is required.");
-  const decoded = decodeBase64(encoded, body.audioMimeType || "audio/wav", "reference.wav");
-  return { bytes: decoded.bytes, mime: decoded.mime, name: "reference.wav", text: body.text?.trim() || body.target_text?.trim() || body.prompt?.trim() || "", refText: "", language: "English" };
-}
-function audioResponse(bytes: Uint8Array, contentType: string, provider = "Chatterbox"): Response {
-  if (bytes.byteLength < 4096) throw new Error("The voice service returned an empty or unusably small audio file.");
-  const type = contentType.toLowerCase();
-  const wav = bytes.byteLength >= 12 && new TextDecoder().decode(bytes.subarray(0, 4)) === "RIFF" && new TextDecoder().decode(bytes.subarray(8, 12)) === "WAVE";
-  if (!type.startsWith("audio/") && !wav) throw new Error("The voice service returned non-audio data; clone was not marked ready.");
-  const responseHeaders = headers();
-  responseHeaders.set("content-type", type.startsWith("audio/") ? contentType : "audio/wav");
-  responseHeaders.set("content-length", String(bytes.byteLength));
-  responseHeaders.set("x-clone-provider", provider);
-  responseHeaders.set("x-clone-verified", "true");
-  return new Response(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer, { status: 200, headers: responseHeaders });
-}
-async function cloneViaSelfHosted(input: { bytes: Uint8Array; mime: string; name: string }, text: string, env: CloneEnv): Promise<Response | null> {
-  const endpoint = env.CHATTERBOX_ENDPOINT?.trim();
-  if (!endpoint) return null;
-  const form = new FormData();
-  const arrayBuffer = input.bytes.buffer.slice(input.bytes.byteOffset, input.bytes.byteOffset + input.bytes.byteLength) as ArrayBuffer;
-  form.append("audio", new Blob([arrayBuffer], { type: normalizeMime(input.mime, input.name) }), input.name || "voice-reference.wav");
-  form.append("text", text.slice(0, 5000));
-  const requestHeaders: Record<string, string> = {};
-  if (env.CHATTERBOX_TOKEN) requestHeaders.Authorization = `Bearer ${env.CHATTERBOX_TOKEN}`;
-  const response = await fetch(endpoint, { method: "POST", headers: requestHeaders, body: form });
-  const type = response.headers.get("content-type") || "";
-  const raw = new Uint8Array(await response.arrayBuffer());
-  if (!response.ok) {
-    const detail = new TextDecoder().decode(raw).slice(0, 1200);
-    throw new Error(`Self-hosted Chatterbox backend failed (${response.status})${detail ? `: ${detail}` : ""}`);
-  }
-  return audioResponse(raw, type || "audio/wav", "self-hosted Chatterbox GPU");
-}
-function toDataUri(bytes: Uint8Array, mime: string): string {
-  let binary = "";
-  for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, Math.min(i + 0x8000, bytes.length)));
-  return `data:${normalizeMime(mime)};base64,${btoa(binary)}`;
-}
-async function cloneViaHuggingFaceSpace(input: { bytes: Uint8Array; mime: string; name: string }, text: string): Promise<Response> {
-  const uploadForm = new FormData();
-  const arrayBuffer = input.bytes.buffer.slice(input.bytes.byteOffset, input.bytes.byteOffset + input.bytes.byteLength) as ArrayBuffer;
-  const blob = new Blob([arrayBuffer], { type: normalizeMime(input.mime, input.name) });
-  uploadForm.append("files", blob, input.name || "voice-reference.wav");
-  const upload = await fetch(`${SPACE}/gradio_api/upload`, { method: "POST", body: uploadForm });
-  if (!upload.ok) { const detail = (await upload.text()).slice(0, 1000); throw new Error(`Hugging Face Chatterbox Space upload failed (${upload.status})${detail ? `: ${detail}` : ""}`); }
-  const uploaded = (await upload.json()) as unknown;
-  const uploadedPath = Array.isArray(uploaded) ? String(uploaded[0] || "") : "";
-  if (!uploadedPath) throw new Error("Hugging Face Chatterbox Space did not return an uploaded file path.");
-  const call = await fetch(`${SPACE}/gradio_api/call/generate_tts_audio`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ data: [text.slice(0, 300), { path: uploadedPath, meta: { _type: "gradio.FileData" }, orig_name: input.name || "voice-reference.wav" }, 0.5, 0.8, 0, 0.5] }) });
-  if (!call.ok) { const detail = (await call.text()).slice(0, 1000); throw new Error(`Hugging Face Chatterbox Space queue failed (${call.status})${detail ? `: ${detail}` : ""}`); }
-  const callPayload = (await call.json()) as { event_id?: string };
-  if (!callPayload.event_id) throw new Error("Hugging Face Chatterbox Space did not return a queue event.");
-  const result = await fetch(`${SPACE}/gradio_api/call/generate_tts_audio/${encodeURIComponent(callPayload.event_id)}`, { headers: { Accept: "text/event-stream" } });
-  if (!result.ok) { const detail = (await result.text()).slice(0, 1200); throw new Error(`Hugging Face Chatterbox Space generation failed (${result.status})${detail ? `: ${detail}` : ""}`); }
-  const stream = await result.text();
-  const blocks = stream.split(/\n\s*\n/).map((block) => block.trim()).filter(Boolean);
-  let completeData = "";
-  let errorData = "";
-  for (const block of blocks) {
-    const event = block.match(/^event:\s*(.+)$/m)?.[1]?.trim();
-    const data = block.match(/^data:\s*(.*)$/m)?.[1]?.trim() || "";
-    if (event === "complete") completeData = data;
-    if (event === "error") errorData = data;
-  }
-  if (errorData) throw new Error(`Hugging Face Chatterbox Space generation error: ${errorData}`);
-  if (!completeData) throw new Error(`Hugging Face Chatterbox Space returned no completed audio event. Raw SSE: ${stream.slice(-600)}`);
-  let outputs: unknown;
-  try { outputs = JSON.parse(completeData); } catch { throw new Error("Hugging Face Chatterbox Space returned malformed completion data."); }
-  const first = Array.isArray(outputs) ? outputs[0] : null;
-  const outputUrl = typeof first === "string" ? first : first && typeof first === "object" ? String((first as Record<string, unknown>).url || (first as Record<string, unknown>).path || "") : "";
-  if (!outputUrl) throw new Error("Hugging Face Chatterbox Space completed without an audio file URL.");
-  const audioUrl = outputUrl.startsWith("http") ? outputUrl : `${SPACE}/gradio_api/file=${outputUrl}`;
-  const audio = await fetch(audioUrl);
-  if (!audio.ok) throw new Error(`Hugging Face Chatterbox Space audio fetch failed (${audio.status}).`);
-  return audioResponse(new Uint8Array(await audio.arrayBuffer()), audio.headers.get("content-type") || "audio/wav", "Chatterbox via Hugging Face Space public ZeroGPU pool");
-}
-export function voiceCloneHealth(env?: CloneEnv): Response {
-  return Response.json({ ok: true, capability: "voice-clone", backend: BACKEND, version: VERSION, transcriptRequired: false, input: "multipart/form-data or JSON base64", uploadField: "audio", primary: env?.CHATTERBOX_ENDPOINT ? "self-hosted-chatterbox" : "huggingface-fal-chatterbox", fallback: "Hugging Face Chatterbox Space" }, { headers: headers() });
-}
-export async function handleProductionVoiceClone(request: Request, env: CloneEnv): Promise<Response> {
-  if (request.method !== "POST") return errorJson("POST required.", 405);
-  try {
-    const input = await readCloneInput(request);
-    if (input.bytes.byteLength < 4096) throw new Error("The voice sample is too short or empty.");
-    const text = input.text || DEFAULT_TEXT;
-
-    // Primary: our own Chatterbox GPU service. This removes the hosted inference-credit
-    // dependency entirely when CHATTERBOX_ENDPOINT is configured.
-    if (env.CHATTERBOX_ENDPOINT) {
-      try {
-        const result = await cloneViaSelfHosted(input, text, env);
-        if (result) return result;
-      } catch (selfHostedError) {
-        // Continue to the existing provider fallbacks; do not silently claim success.
-        const message = selfHostedError instanceof Error ? selfHostedError.message : "Self-hosted Chatterbox failed.";
-        console.warn(`[voice-clone] ${message}`);
-      }
-    }
-
-    // Secondary: existing Hugging Face/Fal Chatterbox provider.
-    if (env.HF_TOKEN) {
-      const upstream = await fetch(ROUTE, { method: "POST", headers: { Authorization: `Bearer ${env.HF_TOKEN}`, "Content-Type": "application/json", Accept: "application/json" }, body: JSON.stringify({ text: text.slice(0, 5000), audio_url: toDataUri(input.bytes, input.mime), exaggeration: 0.5, temperature: 0.8, cfg: 0.5, seed: 0 }) });
-      const type = upstream.headers.get("content-type") || "";
-      const raw = new Uint8Array(await upstream.arrayBuffer());
-      if (upstream.ok) {
-        if (type.toLowerCase().includes("json")) {
-          const payload = JSON.parse(new TextDecoder().decode(raw)) as { audio?: { url?: string; content_type?: string; file_data?: string }; error?: string };
-          if (payload.error) throw new Error(`Chatterbox generation error: ${payload.error}`);
-          if (payload.audio?.file_data) return audioResponse(decodeBase64(payload.audio.file_data, payload.audio.content_type || "audio/wav").bytes, payload.audio.content_type || "audio/wav");
-          if (payload.audio?.url) {
-            const audio = await fetch(payload.audio.url);
-            if (!audio.ok) throw new Error(`Chatterbox returned unusable audio (${audio.status}).`);
-            return audioResponse(new Uint8Array(await audio.arrayBuffer()), audio.headers.get("content-type") || "audio/wav");
-          }
-          throw new Error("Chatterbox completed without returning audio.");
-        }
-        if (type.toLowerCase().startsWith("audio/")) return audioResponse(raw, type);
-      } else if (![402, 429, 503].includes(upstream.status)) {
-        const detail = new TextDecoder().decode(raw).slice(0, 1200);
-        throw new Error(`Chatterbox generation failed (${upstream.status})${detail ? `: ${detail}` : ""}`);
-      }
-    }
-
-    // Last-resort free hosted fallback. It is intentionally last because its capacity is limited.
-    try { return await cloneViaHuggingFaceSpace(input, text); }
-    catch (fallbackError) {
-      const fallbackMessage = fallbackError instanceof Error ? fallbackError.message : "Hugging Face Space fallback failed.";
-      throw new Error(`No Chatterbox backend could generate a verified audio artifact. ${fallbackMessage}`);
-    }
-  } catch (error) {
-    return errorJson(error instanceof Error ? error.message : "Voice cloning failed.", 502);
-  }
-}
+function headers(): Headers { const h=new Headers({"cache-control":"no-store, no-cache, must-revalidate"}); h.set("x-buddy-clone-backend",BACKEND); h.set("x-buddy-clone-version",VERSION); return h; }
+function errorJson(message:string,status:number){return Response.json({ok:false,backend:BACKEND,version:VERSION,error:message},{status,headers:headers()});}
+function normalizeMime(raw:string,name=""):string{const mime=String(raw||"").toLowerCase().split(";")[0].trim();if(mime.startsWith("audio/"))return mime;const ext=name.toLowerCase().split(".").pop()||"";return ({wav:"audio/wav",wave:"audio/wav",mp3:"audio/mpeg",m4a:"audio/mp4",mp4:"audio/mp4",aac:"audio/aac",ogg:"audio/ogg",oga:"audio/ogg",opus:"audio/opus",webm:"audio/webm",flac:"audio/flac",amr:"audio/amr","3gp":"audio/3gpp","3gpp":"audio/3gpp"} as Record<string,string>)[ext]||"application/octet-stream";}
+function decodeBase64(value:string,mime="audio/wav"){const match=value.match(/^data:([^;,]+)(?:;[^,]*)?;base64,(.*)$/s);const raw=(match?.[2]||value).replace(/\s/g,"");let binary="";try{binary=atob(raw);}catch{throw new Error("The uploaded voice sample is not valid base64 audio.");}const bytes=new Uint8Array(binary.length);for(let i=0;i<binary.length;i++)bytes[i]=binary.charCodeAt(i);return{bytes,mime:normalizeMime(match?.[1]||mime)};}
+async function readInput(request:Request){if((request.headers.get("content-type")||"").toLowerCase().includes("multipart/form-data")){const form=await request.formData();const file=["audio","file","voice","referenceAudio","refAudio"].map(k=>form.get(k)).find(v=>v instanceof File) as File|undefined;if(!file?.size)throw new Error("No usable voice sample was uploaded.");return{bytes:new Uint8Array(await file.arrayBuffer()),mime:normalizeMime(file.type,file.name),name:file.name||"voice-reference.wav",text:String(form.get("text")||form.get("target_text")||form.get("prompt")||"").trim()};}let body:CloneBody;try{body=await request.json();}catch{throw new Error("The clone request was not valid JSON or multipart form data.");}const encoded=body.audioBase64||body.audio||body.refAudio||body.referenceAudio;if(!encoded)throw new Error("A voice sample is required.");const d=decodeBase64(encoded,body.audioMimeType||"audio/wav");return{bytes:d.bytes,mime:d.mime,name:"voice-reference.wav",text:(body.text||body.target_text||body.prompt||"").trim()};}
+function audioResponse(bytes:Uint8Array,contentType:string,provider:string):Response{if(bytes.byteLength<4096)throw new Error("The voice service returned an empty or unusably small audio file.");const wav=bytes.length>=12&&new TextDecoder().decode(bytes.subarray(0,4))==="RIFF"&&new TextDecoder().decode(bytes.subarray(8,12))==="WAVE";if(!contentType.toLowerCase().startsWith("audio/")&&!wav)throw new Error("The voice service returned non-audio data; clone was not verified.");const h=headers();h.set("content-type",contentType.toLowerCase().startsWith("audio/")?contentType:"audio/wav");h.set("content-length",String(bytes.length));h.set("x-clone-provider",provider);h.set("x-clone-verified","true");return new Response(bytes.buffer.slice(bytes.byteOffset,bytes.byteOffset+bytes.byteLength) as ArrayBuffer,{status:200,headers:h});}
+async function uploadReference(base:string,input:{bytes:Uint8Array;mime:string;name:string}){const form=new FormData();const ab=input.bytes.buffer.slice(input.bytes.byteOffset,input.bytes.byteOffset+input.bytes.byteLength) as ArrayBuffer;form.append("files",new Blob([ab],{type:input.mime}),input.name);const r=await fetch(`${base}/gradio_api/upload`,{method:"POST",body:form});if(!r.ok)throw new Error(`Chatterbox CPU upload failed (${r.status}).`);const j=await r.json() as unknown;const path=Array.isArray(j)?String(j[0]||""):"";if(!path)throw new Error("Chatterbox CPU backend did not return a reference-file path.");return path;}
+async function callCpuSpace(input:{bytes:Uint8Array;mime:string;name:string},text:string):Promise<Response>{const path=await uploadReference(HF_CPU_SPACE,input);const data=[text.slice(0,300),"","Speak ️","en",{path,meta:{_type:"gradio.FileData"},orig_name:input.name},0.5,0.8,0,0.5];const q=await fetch(`${HF_CPU_SPACE}/gradio_api/call/generate_tts_audio`,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({data})});if(!q.ok)throw new Error(`Chatterbox CPU queue failed (${q.status}).`);const {event_id}=await q.json() as {event_id?:string};if(!event_id)throw new Error("Chatterbox CPU backend returned no event ID.");const result=await fetch(`${HF_CPU_SPACE}/gradio_api/call/generate_tts_audio/${encodeURIComponent(event_id)}`,{headers:{Accept:"text/event-stream"}});if(!result.ok)throw new Error(`Chatterbox CPU generation failed (${result.status}).`);const stream=await result.text();let complete="",failure="";for(const block of stream.split(/\n\s*\n/)){const ev=block.match(/^event:\s*(.+)$/m)?.[1]?.trim();const d=block.match(/^data:\s*(.*)$/m)?.[1]?.trim()||"";if(ev==="complete")complete=d;if(ev==="error")failure=d;}if(failure)throw new Error(`Chatterbox CPU generation error: ${failure}`);if(!complete)throw new Error("Chatterbox CPU backend returned no completed audio.");let output:unknown;try{output=JSON.parse(complete);}catch{throw new Error("Chatterbox CPU returned malformed completion data.");}const first=Array.isArray(output)?output[0]:null;const url=typeof first==="string"?first:first&&typeof first==="object"?String((first as Record<string,unknown>).url||(first as Record<string,unknown>).path||""):"";if(!url)throw new Error("Chatterbox CPU completed without an audio artifact.");const audio=await fetch(url.startsWith("http")?url:`${HF_CPU_SPACE}/gradio_api/file=${url}`);if(!audio.ok)throw new Error(`Chatterbox CPU audio fetch failed (${audio.status}).`);return audioResponse(new Uint8Array(await audio.arrayBuffer()),audio.headers.get("content-type")||"audio/wav","Chatterbox Multilingual CPU — Hugging Face Space");}
+async function cloneViaSelfHosted(input:{bytes:Uint8Array;mime:string;name:string},text:string,env:CloneEnv):Promise<Response|null>{if(!env.CHATTERBOX_ENDPOINT?.trim())return null;const form=new FormData();const ab=input.bytes.buffer.slice(input.bytes.byteOffset,input.bytes.byteOffset+input.bytes.byteLength) as ArrayBuffer;form.append("audio",new Blob([ab],{type:input.mime}),input.name);form.append("text",text);const h:Record<string,string>={};if(env.CHATTERBOX_TOKEN)h.Authorization=`Bearer ${env.CHATTERBOX_TOKEN}`;const r=await fetch(env.CHATTERBOX_ENDPOINT,{method:"POST",headers:h,body:form});const b=new Uint8Array(await r.arrayBuffer());if(!r.ok)throw new Error(`Self-hosted Chatterbox failed (${r.status}).`);return audioResponse(b,r.headers.get("content-type")||"audio/wav","self-hosted Chatterbox");}
+export function voiceCloneHealth(env?:CloneEnv){return Response.json({ok:true,capability:"voice-clone",backend:BACKEND,version:VERSION,transcriptRequired:false,primary:env?.CHATTERBOX_ENDPOINT?"self-hosted-chatterbox":"free-chatterbox-cpu-space",fallback:"official Chatterbox Hugging Face Space"},{headers:headers()});}
+export async function handleProductionVoiceClone(request:Request,env:CloneEnv):Promise<Response>{if(request.method!=="POST")return errorJson("POST required.",405);try{const input=await readInput(request);if(input.bytes.length<4096)throw new Error("The voice sample is too short or empty.");const text=input.text||DEFAULT_TEXT;if(env.CHATTERBOX_ENDPOINT){try{const r=await cloneViaSelfHosted(input,text,env);if(r)return r;}catch(e){console.warn(`[voice-clone] self-hosted failed: ${e instanceof Error?e.message:String(e)}`);}}try{return await callCpuSpace(input,text);}catch(e){console.warn(`[voice-clone] free CPU Space failed: ${e instanceof Error?e.message:String(e)}`);}if(env.HF_TOKEN){const body={text:text.slice(0,5000),audio_url:`data:${normalizeMime(input.mime)};base64,${(()=>{let b="";for(let i=0;i<input.bytes.length;i+=0x8000)b+=String.fromCharCode(...input.bytes.subarray(i,Math.min(i+0x8000,input.bytes.length)));return b;})()}`,exaggeration:0.5,temperature:0.8,cfg:0.5,seed:0};const r=await fetch("https://router.huggingface.co/fal-ai/fal-ai/chatterbox/text-to-speech",{method:"POST",headers:{Authorization:`Bearer ${env.HF_TOKEN}`,"Content-Type":"application/json",Accept:"application/json"},body:JSON.stringify(body)});const type=r.headers.get("content-type")||"";const b=new Uint8Array(await r.arrayBuffer());if(r.ok&&type.toLowerCase().startsWith("audio/"))return audioResponse(b,type,"Chatterbox via Hugging Face Inference Provider");if(r.ok&&type.toLowerCase().includes("json")){const p=JSON.parse(new TextDecoder().decode(b)) as {audio?:{url?:string;file_data?:string;content_type?:string}};if(p.audio?.file_data)return audioResponse(decodeBase64(p.audio.file_data,p.audio.content_type||"audio/wav").bytes,p.audio.content_type||"audio/wav","Chatterbox via Hugging Face Inference Provider");if(p.audio?.url){const a=await fetch(p.audio.url);if(a.ok)return audioResponse(new Uint8Array(await a.arrayBuffer()),a.headers.get("content-type")||"audio/wav","Chatterbox via Hugging Face Inference Provider");}}}throw new Error("No free Chatterbox backend returned a verified playable audio artifact.");}catch(e){return errorJson(e instanceof Error?e.message:"Voice cloning failed.",502);}}
