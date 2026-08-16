@@ -11,7 +11,10 @@ const sample = await fetch(sampleUrl).then(async (response) => {
 const samplePath = "/tmp/live-voice-reference.mp3";
 await writeFile(samplePath, sample);
 
-const browser = await chromium.launch({ headless: true });
+const browser = await chromium.launch({
+  headless: true,
+  args: ["--autoplay-policy=no-user-gesture-required"],
+});
 try {
   const context = await browser.newContext({
     viewport: { width: 393, height: 852 },
