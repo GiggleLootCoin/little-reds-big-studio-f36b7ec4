@@ -27,7 +27,7 @@ async function detectWebGpu(): Promise<boolean> {
 async function loadModel() {
   if (!(await detectWebGpu())) {
     throw new Error(
-      "This Android browser does not expose WebGPU. The free local voice clone needs Chrome WebGPU; no paid cloud fallback was used.",
+      "This Android browser does not expose WebGPU. The local engine is unavailable, so Buddy will use the free remote voice-clone fallback.",
     );
   }
   self.postMessage({ type: "progress", message: "Preparing the lightweight WebGPU voice engine…" });
@@ -50,7 +50,7 @@ async function loadModel() {
     const message = error instanceof Error ? error.message : String(error);
     if (message.toLowerCase().includes("fetch")) {
       throw new Error(
-        "The free Chatterbox Turbo model could not be downloaded to this phone. Check the connection and try again; your voice was not sent to a provider.",
+        "The free Chatterbox Turbo model could not be downloaded to this phone. Buddy will use the free remote voice-clone fallback.",
       );
     }
     throw new Error(`The free local Chatterbox Turbo engine could not start: ${message}`);
@@ -79,17 +79,20 @@ async function generate(text: string, exaggeration: number) {
     temperature: 0.2,
   });
   const data = waveform.data;
-  const buffer = data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer;
-  // Do not transfer the ArrayBuffer here. The worker's generated Tensor may expose
-  // an ArrayBufferLike backing store under newer TypeScript lib definitions, which
-  // makes the transfer-list overload reject an otherwise valid audio payload.
-  // The audio is small enough that a structured clone is preferable to a build-breaking
-  // type assertion, and the UI still receives a real playable waveform.
+  const buffer = data.buffer.slice(
+    data.byteOffset,
+    data.byteOffset + data.byteLength,
+  ) as ArrayBuffer;
   self.postMessage({ type: "audio", sampleRate: 24000, waveform: buffer });
 }
 
 self.addEventListener("message", async (event: MessageEvent) => {
-  const message = event.data as { type: string; audio?: ArrayBuffer; text?: string; exaggeration?: number };
+  const message = event.data as {
+    type: string;
+    audio?: ArrayBuffer;
+    text?: string;
+    exaggeration?: number;
+  };
   try {
     if (message.type === "load") await loadModel();
     else if (message.type === "encode") {
@@ -100,6 +103,9 @@ self.addEventListener("message", async (event: MessageEvent) => {
       await generate(message.text || "Hello from Buddy.", message.exaggeration ?? 0.5);
     }
   } catch (error) {
-    self.postMessage({ type: "error", message: error instanceof Error ? error.message : "Local Chatterbox failed." });
+    self.postMessage({
+      type: "error",
+      message: error instanceof Error ? error.message : "Local Chatterbox failed.",
+    });
   }
 });
