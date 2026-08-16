@@ -30,7 +30,11 @@ try {
       window.__buddyPlayCalls.push(
         promise
           .then(() => ({ ok: true, duration: this.duration, paused: this.paused }))
-          .catch((error) => ({ ok: false, name: error?.name || "Error", message: error?.message || String(error) })),
+          .catch((error) => ({
+            ok: false,
+            name: error?.name || "Error",
+            message: error?.message || String(error),
+          })),
       );
       return promise;
     };
@@ -39,9 +43,12 @@ try {
   const input = page.locator('input[type="file"][accept="audio/*"]');
   await input.setInputFiles(samplePath);
   await page.getByRole("button", { name: "Generate My Voice Clone" }).click();
-  await page.getByText(/REAL VOICE CLONE VERIFIED|Buddy couldn't create the voice clone yet\./).waitFor({ timeout: 240000 });
+  await page
+    .getByText(/REAL VOICE CLONE VERIFIED|Buddy couldn't create the voice clone yet\./)
+    .waitFor({ timeout: 240000 });
   const status = await page.locator("body").innerText();
-  if (!/REAL VOICE CLONE VERIFIED/.test(status)) throw new Error(`Clone did not verify.\n${status}`);
+  if (!/REAL VOICE CLONE VERIFIED/.test(status))
+    throw new Error(`Clone did not verify.\n${status}`);
   const playback = await page.evaluate(async () => {
     const calls = await Promise.all(window.__buddyPlayCalls || []);
     const url = window.__buddyLastCloneUrl;
@@ -56,9 +63,12 @@ try {
     return { calls, duration: probe.duration, readyState: probe.readyState, paused: probe.paused };
   });
   console.log(JSON.stringify({ status: "ok", playback }, null, 2));
-  if (!playback.duration || playback.duration <= 0.25) throw new Error("Browser reported unusable duration");
+  if (!playback.duration || playback.duration <= 0.25)
+    throw new Error("Browser reported unusable duration");
   if (!playback.calls.some((entry) => entry.ok)) {
-    throw new Error(`No successful HTMLMediaElement.play() call: ${JSON.stringify(playback.calls)}`);
+    throw new Error(
+      `No successful HTMLMediaElement.play() call: ${JSON.stringify(playback.calls)}`,
+    );
   }
   await context.close();
 } finally {

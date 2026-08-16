@@ -91,7 +91,9 @@ async function cloneWithProductionGateway(
     throw new Error("Voice clone returned an empty or unusably small audio artifact.");
   }
 
-  onStatus?.("Decoding the returned clone and checking duration, samples and Android playback compatibility…");
+  onStatus?.(
+    "Decoding the returned clone and checking duration, samples and Android playback compatibility…",
+  );
   const normalized = await normalizeAndVerifyBrowserAudio(artifact);
   const provider = providerFromHeaders(response);
   const serverVerified = response.headers.get("x-clone-verified") === "true";
@@ -107,7 +109,8 @@ async function cloneWithProductionGateway(
   return {
     url: normalized.url,
     provider,
-    verification: "server + browser decode + non-silent sample verification + PCM16 WAV normalization",
+    verification:
+      "server + browser decode + non-silent sample verification + PCM16 WAV normalization",
     duration: normalized.stats.duration,
     peak: normalized.stats.peak,
     rms: normalized.stats.rms,

@@ -64,8 +64,10 @@ export function inspectPcm16Wav(bytes: Uint8Array): AudioArtifactStats {
   }
   const rms = Math.sqrt(sumSquares / Math.max(1, samplesChecked));
   const duration = frames / sampleRate;
-  if (!Number.isFinite(duration) || duration <= 0.25) throw new Error("Audio artifact has no usable duration.");
-  if (peak < 0.005 || rms < 0.0005) throw new Error("Audio artifact is silent or effectively silent.");
+  if (!Number.isFinite(duration) || duration <= 0.25)
+    throw new Error("Audio artifact has no usable duration.");
+  if (peak < 0.005 || rms < 0.0005)
+    throw new Error("Audio artifact is silent or effectively silent.");
   return { container: "wav", sampleRate, channels, frames, duration, peak, rms };
 }
 
@@ -97,7 +99,9 @@ export function encodePcm16Wav(buffer: {
   view.setUint16(34, 16, true);
   write(36, "data");
   view.setUint32(40, dataSize, true);
-  const channelData = Array.from({ length: channels }, (_, channel) => buffer.getChannelData(channel));
+  const channelData = Array.from({ length: channels }, (_, channel) =>
+    buffer.getChannelData(channel),
+  );
   let offset = 44;
   for (let frame = 0; frame < frames; frame++) {
     for (let channel = 0; channel < channels; channel++) {
