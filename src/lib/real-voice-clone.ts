@@ -88,7 +88,9 @@ export async function createRealVoiceClone(
     return { url: result.url, provider: result.provider };
   } catch (localError) {
     const message = localError instanceof Error ? localError.message : String(localError);
-    onStatus?.(`Local voice cloning is unavailable here (${message}). Trying the free remote fallback…`);
+    onStatus?.(
+      `Local voice cloning is unavailable here (${message}). Trying the free remote fallback…`,
+    );
     return cloneWithFreeRemoteFallback(
       reference,
       refText,
