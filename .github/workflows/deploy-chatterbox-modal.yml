@@ -1,0 +1,25 @@
+name: Deploy Buddy Chatterbox GPU backend
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'infra/modal/chatterbox_voice_server.py'
+      - '.github/workflows/deploy-chatterbox-modal.yml'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+      MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install Modal
+        run: python -m pip install --upgrade modal
+      - name: Deploy Chatterbox GPU service
+        run: modal deploy infra/modal/chatterbox_voice_server.py --strategy rolling
