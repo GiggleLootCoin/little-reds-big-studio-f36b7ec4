@@ -15,6 +15,7 @@ import tempfile
 from pathlib import Path
 
 import modal
+from fastapi import File, Form, HTTPException, Response, UploadFile
 
 APP_NAME = "little-reds-buddy-chatterbox"
 MODEL = os.getenv("CHATTERBOX_MODEL", "standard")
@@ -31,27 +32,22 @@ image = (
 app = modal.App(APP_NAME, image=image)
 
 
-def _model():
-    from chatterbox.tts import ChatterboxTTS
-
-    return ChatterboxTTS.from_pretrained(device="cuda")
-
-
 @app.cls(gpu="L4", scaledown_window=300)
 class ChatterboxVoice:
     @modal.enter()
     def load(self):
-        self.tts = _model()
+        from chatterbox.tts import ChatterboxTTS
+
+        self.tts = ChatterboxTTS.from_pretrained(device="cuda")
 
     @modal.fastapi_endpoint(method="POST", docs=False)
-    async def clone(self, audio, text: str = ""):
+    async def clone(
+        self,
+        audio: UploadFile = File(...),
+        text: str = Form(""),
+    ):
         """Generate speech conditioned on the uploaded reference recording."""
-        from fastapi import HTTPException, UploadFile
         import torchaudio as ta
-
-        # Modal/FastAPI may hand this argument a Starlette UploadFile.
-        if not isinstance(audio, UploadFile):
-            raise HTTPException(status_code=400, detail="audio upload is required")
 
         raw = await audio.read()
         if len(raw) < 4096:
@@ -63,7 +59,10 @@ class ChatterboxVoice:
             reference_path = reference.name
 
         try:
-            prompt = (text or "Hello. This is your cloned voice sample. Would you like to use this voice for Buddy now, or would you like to record again?").strip()[:5000]
+            prompt = (
+                text.strip()
+                or "Hello. This is your cloned voice sample. Would you like to use this voice for Buddy now, or would you like to record again?"
+            )[:5000]
             wav = self.tts.generate(prompt, audio_prompt_path=reference_path)
             buffer = io.BytesIO()
             ta.save(buffer, wav, self.tts.sr, format="wav")
@@ -89,7 +88,3 @@ class ChatterboxVoice:
                 "x-buddy-clone-model": MODEL,
             },
         )
-
-
-# FastAPI's Response is imported lazily above so the container image stays small.
-from fastapi import Response  # noqa: E402
