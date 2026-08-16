@@ -139,7 +139,9 @@ export async function normalizeAndVerifyBrowserAudio(
       throw new Error("Generated clone decoded successfully but is silent.");
     }
     const wavBytes = encodePcm16Wav(decoded);
-    const wavBlob = new Blob([wavBytes], { type: "audio/wav" });
+    const wavBuffer = new ArrayBuffer(wavBytes.byteLength);
+    new Uint8Array(wavBuffer).set(wavBytes);
+    const wavBlob = new Blob([wavBuffer], { type: "audio/wav" });
     const stats = inspectPcm16Wav(wavBytes);
     const url = URL.createObjectURL(wavBlob);
     const player = new Audio();
