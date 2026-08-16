@@ -1,13 +1,10 @@
 const BACKEND = "huggingface-fal-chatterbox";
-const VERSION = "voice-clone-v8-colab-failover";
+const VERSION = "voice-clone-v7.3";
 const ROUTE = "https://router.huggingface.co/fal-ai/fal-ai/chatterbox/text-to-speech";
+const SPACE = "https://resembleai-chatterbox.hf.space";
 const DEFAULT_TEXT = "Hello. This is your cloned voice sample. Would you like to use this voice for Buddy now, or would you like to record again?";
 
-type CloneEnv = {
-  HF_TOKEN?: string;
-  COLAB_CHATTERBOX_URL?: string;
-  COLAB_CHATTERBOX_TOKEN?: string;
-};
+type CloneEnv = { HF_TOKEN?: string };
 type CloneBody = { audioBase64?: string; audio?: string; refAudio?: string; referenceAudio?: string; audioMimeType?: string; text?: string; target_text?: string; prompt?: string };
 
 function headers(): Headers {
@@ -57,6 +54,11 @@ async function readCloneInput(request: Request): Promise<{ bytes: Uint8Array; mi
   const decoded = decodeBase64(encoded, body.audioMimeType || "audio/wav", "reference.wav");
   return { bytes: decoded.bytes, mime: decoded.mime, name: "reference.wav", text: body.text?.trim() || body.target_text?.trim() || body.prompt?.trim() || "", refText: "", language: "English" };
 }
+function toDataUri(bytes: Uint8Array, mime: string): string {
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, Math.min(i + 0x8000, bytes.length)));
+  return `data:${normalizeMime(mime)};base64,${btoa(binary)}`;
+}
 function audioResponse(bytes: Uint8Array, contentType: string, provider = "Chatterbox via Hugging Face Inference Providers"): Response {
   if (bytes.byteLength < 4096) throw new Error("The voice service returned an empty or unusably small audio file.");
   const type = contentType.toLowerCase();
@@ -69,74 +71,82 @@ function audioResponse(bytes: Uint8Array, contentType: string, provider = "Chatt
   responseHeaders.set("x-clone-verified", "true");
   return new Response(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer, { status: 200, headers: responseHeaders });
 }
-function toDataUri(bytes: Uint8Array, mime: string): string {
-  let binary = "";
-  for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, Math.min(i + 0x8000, bytes.length)));
-  return `data:${normalizeMime(mime)};base64,${btoa(binary)}`;
-}
-async function cloneViaColab(input: { bytes: Uint8Array; mime: string; name: string; refText?: string; language?: string }, text: string, env: CloneEnv): Promise<Response> {
-  const endpoint = String(env.COLAB_CHATTERBOX_URL || "").trim().replace(/\/+$/, "");
-  const token = String(env.COLAB_CHATTERBOX_TOKEN || "").trim();
-  if (!endpoint || !token) throw new Error("Google Colab Chatterbox backend is not configured. Set COLAB_CHATTERBOX_URL and COLAB_CHATTERBOX_TOKEN.");
+async function cloneViaHuggingFaceSpace(input: { bytes: Uint8Array; mime: string; name: string }, text: string): Promise<Response> {
+  const uploadForm = new FormData();
   const arrayBuffer = input.bytes.buffer.slice(input.bytes.byteOffset, input.bytes.byteOffset + input.bytes.byteLength) as ArrayBuffer;
-  const form = new FormData();
-  form.append("audio", new Blob([arrayBuffer], { type: normalizeMime(input.mime, input.name) }), input.name || "reference-audio");
-  form.append("text", text.slice(0, 3000));
-  form.append("refText", input.refText || "");
-  form.append("referenceTranscript", input.refText || "");
-  form.append("language", input.language || "en");
-  form.append("exaggeration", "0.5");
-  form.append("cfg_weight", "0.5");
-  form.append("temperature", "0.8");
-  let response: Response;
-  try {
-    response = await fetch(`${endpoint}/v1/voice-clone`, { method: "POST", headers: { Authorization: `Bearer ${token}` }, body: form });
-  } catch (error) {
-    throw new Error(`Google Colab Chatterbox backend could not be reached: ${error instanceof Error ? error.message : String(error)}`);
+  const blob = new Blob([arrayBuffer], { type: normalizeMime(input.mime, input.name) });
+  uploadForm.append("files", blob, input.name || "voice-reference.wav");
+  const upload = await fetch(`${SPACE}/gradio_api/upload`, { method: "POST", body: uploadForm });
+  if (!upload.ok) { const detail = (await upload.text()).slice(0, 1000); throw new Error(`Hugging Face Chatterbox Space upload failed (${upload.status})${detail ? `: ${detail}` : ""}`); }
+  const uploaded = (await upload.json()) as unknown;
+  const uploadedPath = Array.isArray(uploaded) ? String(uploaded[0] || "") : "";
+  if (!uploadedPath) throw new Error("Hugging Face Chatterbox Space did not return an uploaded file path.");
+  const call = await fetch(`${SPACE}/gradio_api/call/generate_tts_audio`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ data: [text.slice(0, 300), { path: uploadedPath, meta: { _type: "gradio.FileData" }, orig_name: input.name || "voice-reference.wav" }, 0.5, 0.8, 0, 0.5] }),
+  });
+  if (!call.ok) { const detail = (await call.text()).slice(0, 1000); throw new Error(`Hugging Face Chatterbox Space queue failed (${call.status})${detail ? `: ${detail}` : ""}`); }
+  const callPayload = (await call.json()) as { event_id?: string };
+  if (!callPayload.event_id) throw new Error("Hugging Face Chatterbox Space did not return a queue event.");
+  const result = await fetch(`${SPACE}/gradio_api/call/generate_tts_audio/${encodeURIComponent(callPayload.event_id)}`, { headers: { Accept: "text/event-stream" } });
+  if (!result.ok) { const detail = (await result.text()).slice(0, 1200); throw new Error(`Hugging Face Chatterbox Space generation failed (${result.status})${detail ? `: ${detail}` : ""}`); }
+  const stream = await result.text();
+  const blocks = stream.split(/\n\s*\n/).map((block) => block.trim()).filter(Boolean);
+  let completeData = "";
+  let errorData = "";
+  for (const block of blocks) {
+    const event = block.match(/^event:\s*(.+)$/m)?.[1]?.trim();
+    const data = block.match(/^data:\s*(.*)$/m)?.[1]?.trim() || "";
+    if (event === "complete") completeData = data;
+    if (event === "error") errorData = data;
   }
-  const raw = new Uint8Array(await response.arrayBuffer());
-  if (!response.ok) {
-    let detail = new TextDecoder().decode(raw).slice(0, 1200);
-    try { const payload = JSON.parse(detail) as { detail?: string; error?: string }; detail = String(payload.detail || payload.error || detail); } catch { /* keep raw detail */ }
-    throw new Error(`Google Colab Chatterbox backend failed (${response.status})${detail ? `: ${detail}` : ""}`);
-  }
-  return audioResponse(raw, response.headers.get("content-type") || "audio/wav", "Google Colab / Chatterbox Multilingual V3");
+  if (errorData) throw new Error(`Hugging Face Chatterbox Space generation error: ${errorData}`);
+  if (!completeData) throw new Error(`Hugging Face Chatterbox Space returned no completed audio event. Raw SSE: ${stream.slice(-600)}`);
+  let outputs: unknown;
+  try { outputs = JSON.parse(completeData); } catch { throw new Error("Hugging Face Chatterbox Space returned malformed completion data."); }
+  const first = Array.isArray(outputs) ? outputs[0] : null;
+  const outputUrl = typeof first === "string" ? first : first && typeof first === "object" ? String((first as Record<string, unknown>).url || (first as Record<string, unknown>).path || "") : "";
+  if (!outputUrl) throw new Error("Hugging Face Chatterbox Space completed without an audio file URL.");
+  const audioUrl = outputUrl.startsWith("http") ? outputUrl : `${SPACE}/gradio_api/file=${outputUrl}`;
+  const audio = await fetch(audioUrl);
+  if (!audio.ok) throw new Error(`Hugging Face Chatterbox Space audio fetch failed (${audio.status}).`);
+  return audioResponse(new Uint8Array(await audio.arrayBuffer()), audio.headers.get("content-type") || "audio/wav", "Chatterbox via Hugging Face Space public ZeroGPU pool");
 }
-export function voiceCloneHealth(env?: CloneEnv): Response {
-  const colabConfigured = Boolean(env?.COLAB_CHATTERBOX_URL && env?.COLAB_CHATTERBOX_TOKEN);
-  return Response.json({ ok: true, capability: "voice-clone", backend: BACKEND, version: VERSION, transcriptRequired: false, input: "multipart/form-data or JSON base64", uploadField: "audio", huggingFace: "primary when capacity is available", colabFallbackConfigured: colabConfigured, fallback: colabConfigured ? "Google Colab Chatterbox Multilingual V3 on HF 402/429/503" : "Configure COLAB_CHATTERBOX_URL and COLAB_CHATTERBOX_TOKEN", presetVoices: false }, { headers: headers() });
+export function voiceCloneHealth(): Response {
+  return Response.json({ ok: true, capability: "voice-clone", backend: BACKEND, version: VERSION, transcriptRequired: false, input: "multipart/form-data or JSON base64", uploadField: "audio", fallback: "ResembleAI/Chatterbox Hugging Face Space public ZeroGPU pool when Inference Provider credits are unavailable" }, { headers: headers() });
 }
 export async function handleProductionVoiceClone(request: Request, env: CloneEnv): Promise<Response> {
   if (request.method !== "POST") return errorJson("POST required.", 405);
+  if (!env.HF_TOKEN) return errorJson("Hugging Face voice service is not configured.", 503);
   try {
     const input = await readCloneInput(request);
     if (input.bytes.byteLength < 4096) throw new Error("The voice sample is too short or empty.");
     const text = input.text || DEFAULT_TEXT;
-    if (!env.HF_TOKEN) {
-      if (env.COLAB_CHATTERBOX_URL && env.COLAB_CHATTERBOX_TOKEN) return await cloneViaColab(input, text, env);
-      return errorJson("No voice-cloning backend is configured. Configure Hugging Face or the Google Colab Chatterbox backend.", 503);
-    }
     const upstream = await fetch(ROUTE, { method: "POST", headers: { Authorization: `Bearer ${env.HF_TOKEN}`, "Content-Type": "application/json", Accept: "application/json" }, body: JSON.stringify({ text: text.slice(0, 5000), audio_url: toDataUri(input.bytes, input.mime), exaggeration: 0.5, temperature: 0.8, cfg: 0.5, seed: 0 }) });
     const type = upstream.headers.get("content-type") || "";
     const raw = new Uint8Array(await upstream.arrayBuffer());
     if (!upstream.ok) {
-      if ([402, 429, 503].includes(upstream.status) && env.COLAB_CHATTERBOX_URL && env.COLAB_CHATTERBOX_TOKEN) {
-        try { return await cloneViaColab(input, text, env); }
+      if ([402, 429, 503].includes(upstream.status)) {
+        try { return await cloneViaHuggingFaceSpace(input, text); }
         catch (fallbackError) {
           const detail = new TextDecoder().decode(raw).slice(0, 800);
-          const fallbackMessage = fallbackError instanceof Error ? fallbackError.message : "Google Colab Chatterbox fallback failed.";
-          throw new Error(`Hugging Face Chatterbox unavailable (${upstream.status}); Google Colab fallback also failed: ${fallbackMessage}${detail ? ` Provider detail: ${detail}` : ""}`);
+          const fallbackMessage = fallbackError instanceof Error ? fallbackError.message : "Hugging Face Space fallback failed.";
+          throw new Error(`Chatterbox Inference Provider unavailable (${upstream.status}); Space fallback also failed: ${fallbackMessage}${detail ? ` Provider detail: ${detail}` : ""}`);
         }
       }
       const detail = new TextDecoder().decode(raw).slice(0, 1200);
-      if ([402, 429, 503].includes(upstream.status)) throw new Error(`Hugging Face Chatterbox is unavailable (${upstream.status}) and Google Colab fallback is not configured.`);
       throw new Error(`Chatterbox generation failed (${upstream.status})${detail ? `: ${detail}` : ""}`);
     }
     if (type.toLowerCase().includes("json")) {
       const payload = JSON.parse(new TextDecoder().decode(raw)) as { audio?: { url?: string; content_type?: string; file_data?: string }; error?: string };
       if (payload.error) throw new Error(`Chatterbox generation error: ${payload.error}`);
       if (payload.audio?.file_data) return audioResponse(decodeBase64(payload.audio.file_data, payload.audio.content_type || "audio/wav").bytes, payload.audio.content_type || "audio/wav");
-      if (payload.audio?.url) { const audio = await fetch(payload.audio.url); if (!audio.ok) throw new Error(`Chatterbox returned unusable audio (${audio.status}).`); return audioResponse(new Uint8Array(await audio.arrayBuffer()), audio.headers.get("content-type") || "audio/wav"); }
+      if (payload.audio?.url) {
+        const audio = await fetch(payload.audio.url);
+        if (!audio.ok) throw new Error(`Chatterbox returned unusable audio (${audio.status}).`);
+        return audioResponse(new Uint8Array(await audio.arrayBuffer()), audio.headers.get("content-type") || "audio/wav");
+      }
       throw new Error("Chatterbox completed without returning audio.");
     }
     if (type.toLowerCase().startsWith("audio/")) return audioResponse(raw, type);
