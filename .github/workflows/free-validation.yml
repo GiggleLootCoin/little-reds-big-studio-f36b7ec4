@@ -23,6 +23,8 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: npm install --no-audit --no-fund
+      - name: Audio artifact regression tests
+        run: node --experimental-strip-types --test tests/audio-artifact.test.ts
       - name: Type-check
         run: npx tsc --noEmit
       - name: Format check
