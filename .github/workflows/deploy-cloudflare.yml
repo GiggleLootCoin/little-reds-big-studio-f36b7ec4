@@ -37,8 +37,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test -n "${CLOUDFLARE_API_TOKEN:-}" || { echo "No Cloudflare API token secret is available."; exit 1; }
-          test -n "${CLOUDFLARE_ACCOUNT_ID:-}" || { echo "No Cloudflare account ID secret is available."; exit 1; }
+          test -n "${CLOUDFLARE_API_TOKEN:-}"
+          test -n "${CLOUDFLARE_ACCOUNT_ID:-}"
       - name: Deploy to Cloudflare Workers
         run: npx wrangler deploy --config wrangler.jsonc
       - name: Production smoke test
@@ -60,7 +60,7 @@ jobs:
           grep -q '"transcriptRequired":false' /tmp/clone-health.json
       - name: Probe free Chatterbox CPU Space
         env:
-          SPACE: https://rahul7star-chatterbox-multilingual-tts-api.hf.space
+          SPACE: https://rahul7star-chatterbox-multilingual-tts.hf.space
           SAMPLE_URL: https://huggingface.co/datasets/hf-internal-testing/dummy-audio-samples/resolve/main/obama_first_45_secs.mp3
         shell: bash
         run: |
@@ -91,4 +91,3 @@ jobs:
           grep -qi '^content-type: audio/' /tmp/voice-clone-headers
           grep -qi '^x-clone-verified: true' /tmp/voice-clone-headers
           test "$(wc -c < /tmp/voice-clone-output)" -gt 4096
-          echo "LIVE multipart voice-clone artifact test passed."
