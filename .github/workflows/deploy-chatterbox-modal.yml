@@ -19,7 +19,15 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - name: Install Modal
-        run: python -m pip install --upgrade modal
+      - name: Install deployment dependencies
+        run: python -m pip install --upgrade modal 'fastapi[standard]'
+      - name: Verify Modal credentials are present
+        shell: bash
+        run: |
+          if [[ -z "$MODAL_TOKEN_ID" || -z "$MODAL_TOKEN_SECRET" ]]; then
+            echo 'MODAL_TOKEN_ID/MODAL_TOKEN_SECRET are not configured in GitHub Actions secrets.'
+            echo 'The Chatterbox service cannot be deployed until a Modal workspace token is available.'
+            exit 1
+          fi
       - name: Deploy Chatterbox GPU service
         run: modal deploy infra/modal/chatterbox_voice_server.py --strategy rolling
