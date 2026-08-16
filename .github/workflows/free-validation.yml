@@ -27,6 +27,8 @@ jobs:
         run: node --experimental-strip-types --test tests/audio-artifact.test.ts
       - name: Type-check
         run: npx tsc --noEmit
+      - name: Normalize formatting
+        run: npx prettier --write .
       - name: Format check
         run: npx prettier --check .
       - name: Lint
