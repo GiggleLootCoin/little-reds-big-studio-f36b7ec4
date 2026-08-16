@@ -1,6 +1,7 @@
 const BACKEND = "huggingface-fal-chatterbox";
-const VERSION = "voice-clone-v6.0";
+const VERSION = "voice-clone-v7.0";
 const ROUTE = "https://router.huggingface.co/fal-ai/fal-ai/chatterbox/text-to-speech";
+const SPACE = "https://resembleai-chatterbox.hf.space";
 const DEFAULT_TEXT =
   "Hello. This is your cloned voice sample. Would you like to use this voice for Buddy now, or would you like to record again?";
 
@@ -32,10 +33,7 @@ function errorJson(message: string, status: number, extra: Record<string, unknow
 }
 
 function normalizeMime(raw: string, name = ""): string {
-  const mime = String(raw || "")
-    .toLowerCase()
-    .split(";")[0]
-    .trim();
+  const mime = String(raw || "").toLowerCase().split(";")[0].trim();
   if (mime.startsWith("audio/")) return mime;
   const extension = name.toLowerCase().split(".").pop() || "";
   const byExtension: Record<string, string> = {
@@ -90,19 +88,10 @@ async function readCloneInput(request: Request): Promise<{
     if (!candidate.size) throw new Error("The uploaded voice sample is empty.");
     const name = candidate.name || "voice-sample";
     const mime = normalizeMime(candidate.type, name);
-    const text = String(
-      form.get("text") || form.get("target_text") || form.get("prompt") || "",
-    ).trim();
+    const text = String(form.get("text") || form.get("target_text") || form.get("prompt") || "").trim();
     const refText = String(form.get("refText") || form.get("referenceTranscript") || "").trim();
     const language = String(form.get("language") || "English").trim();
-    return {
-      bytes: new Uint8Array(await candidate.arrayBuffer()),
-      mime,
-      name,
-      text,
-      refText,
-      language,
-    };
+    return { bytes: new Uint8Array(await candidate.arrayBuffer()), mime, name, text, refText, language };
   }
 
   let body: CloneBody;
@@ -132,7 +121,11 @@ function toDataUri(bytes: Uint8Array, mime: string): string {
   return `data:${normalizeMime(mime)};base64,${btoa(binary)}`;
 }
 
-function audioResponse(bytes: Uint8Array, contentType: string): Response {
+function audioResponse(
+  bytes: Uint8Array,
+  contentType: string,
+  provider = "Chatterbox via Hugging Face Inference Providers",
+): Response {
   if (bytes.byteLength < 4096)
     throw new Error("The voice service returned an empty or unusably small audio file.");
   const type = contentType.toLowerCase();
@@ -145,11 +138,91 @@ function audioResponse(bytes: Uint8Array, contentType: string): Response {
   const responseHeaders = headers();
   responseHeaders.set("content-type", type.startsWith("audio/") ? contentType : "audio/wav");
   responseHeaders.set("content-length", String(bytes.byteLength));
-  responseHeaders.set("x-clone-provider", "Chatterbox via Hugging Face Inference Providers");
+  responseHeaders.set("x-clone-provider", provider);
   responseHeaders.set("x-clone-verified", "true");
   return new Response(
     bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer,
     { status: 200, headers: responseHeaders },
+  );
+}
+
+async function cloneViaHuggingFaceSpace(
+  input: { bytes: Uint8Array; mime: string; name: string },
+  text: string,
+  token: string,
+): Promise<Response> {
+  const uploadForm = new FormData();
+  const blob = new Blob([input.bytes], { type: normalizeMime(input.mime, input.name) });
+  uploadForm.append("files", blob, input.name || "voice-reference.wav");
+  const upload = await fetch(`${SPACE}/gradio_api/upload`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body: uploadForm,
+  });
+  if (!upload.ok) {
+    const detail = (await upload.text()).slice(0, 1000);
+    throw new Error(`Hugging Face Chatterbox Space upload failed (${upload.status})${detail ? `: ${detail}` : ""}`);
+  }
+  const uploaded = (await upload.json()) as unknown;
+  const uploadedPath = Array.isArray(uploaded) ? String(uploaded[0] || "") : "";
+  if (!uploadedPath) throw new Error("Hugging Face Chatterbox Space did not return an uploaded file path.");
+
+  const call = await fetch(`${SPACE}/gradio_api/call/v2/generate_tts_audio`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({
+      data: [
+        text.slice(0, 300),
+        { path: uploadedPath, meta: { _type: "gradio.FileData" }, orig_name: input.name || "voice-reference.wav" },
+        0.5,
+        0.8,
+        0,
+        0.5,
+      ],
+    }),
+  });
+  if (!call.ok) {
+    const detail = (await call.text()).slice(0, 1000);
+    throw new Error(`Hugging Face Chatterbox Space queue failed (${call.status})${detail ? `: ${detail}` : ""}`);
+  }
+  const callPayload = (await call.json()) as { event_id?: string };
+  if (!callPayload.event_id) throw new Error("Hugging Face Chatterbox Space did not return a queue event.");
+
+  const result = await fetch(`${SPACE}/gradio_api/call/generate_tts_audio/${encodeURIComponent(callPayload.event_id)}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!result.ok) {
+    const detail = (await result.text()).slice(0, 1200);
+    throw new Error(`Hugging Face Chatterbox Space generation failed (${result.status})${detail ? `: ${detail}` : ""}`);
+  }
+  const stream = await result.text();
+  const completeLine = stream.split("\n").reverse().find((line) => line.startsWith("data:") && line.includes("["));
+  if (!completeLine) throw new Error("Hugging Face Chatterbox Space returned no completed audio event.");
+
+  let outputs: unknown;
+  try {
+    outputs = JSON.parse(completeLine.slice(5).trim());
+  } catch {
+    throw new Error("Hugging Face Chatterbox Space returned malformed completion data.");
+  }
+  const first = Array.isArray(outputs) ? outputs[0] : null;
+  const outputUrl =
+    typeof first === "string"
+      ? first
+      : first && typeof first === "object"
+        ? String((first as Record<string, unknown>).url || (first as Record<string, unknown>).path || "")
+        : "";
+  if (!outputUrl) throw new Error("Hugging Face Chatterbox Space completed without an audio file URL.");
+  const audioUrl = outputUrl.startsWith("http") ? outputUrl : `${SPACE}/gradio_api/file=${outputUrl}`;
+  const audio = await fetch(audioUrl, { headers: { Authorization: `Bearer ${token}` } });
+  if (!audio.ok) throw new Error(`Hugging Face Chatterbox Space audio fetch failed (${audio.status}).`);
+  return audioResponse(
+    new Uint8Array(await audio.arrayBuffer()),
+    audio.headers.get("content-type") || "audio/wav",
+    "Chatterbox via Hugging Face Space (ZeroGPU fallback)",
   );
 }
 
@@ -163,15 +236,13 @@ export function voiceCloneHealth(): Response {
       transcriptRequired: false,
       input: "multipart/form-data or JSON base64",
       uploadField: "audio",
+      fallback: "ResembleAI/Chatterbox Hugging Face Space when Inference Provider credits are unavailable",
     },
     { headers: headers() },
   );
 }
 
-export async function handleProductionVoiceClone(
-  request: Request,
-  env: CloneEnv,
-): Promise<Response> {
+export async function handleProductionVoiceClone(request: Request, env: CloneEnv): Promise<Response> {
   if (request.method !== "POST") return errorJson("POST required.", 405);
   if (!env.HF_TOKEN) return errorJson("Hugging Face voice service is not configured.", 503);
 
@@ -200,10 +271,17 @@ export async function handleProductionVoiceClone(
     const type = upstream.headers.get("content-type") || "";
     const raw = new Uint8Array(await upstream.arrayBuffer());
     if (!upstream.ok) {
+      if ([402, 429, 503].includes(upstream.status)) {
+        try {
+          return await cloneViaHuggingFaceSpace(input, text, env.HF_TOKEN);
+        } catch (fallbackError) {
+          const detail = new TextDecoder().decode(raw).slice(0, 800);
+          const fallbackMessage = fallbackError instanceof Error ? fallbackError.message : "Hugging Face Space fallback failed.";
+          throw new Error(`Chatterbox Inference Provider unavailable (${upstream.status}); Space fallback also failed: ${fallbackMessage}${detail ? ` Provider detail: ${detail}` : ""}`);
+        }
+      }
       const detail = new TextDecoder().decode(raw).slice(0, 1200);
-      throw new Error(
-        `Chatterbox generation failed (${upstream.status})${detail ? `: ${detail}` : ""}`,
-      );
+      throw new Error(`Chatterbox generation failed (${upstream.status})${detail ? `: ${detail}` : ""}`);
     }
 
     if (type.toLowerCase().includes("json")) {
