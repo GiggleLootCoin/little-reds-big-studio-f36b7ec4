@@ -1,9 +1,8 @@
 const BACKEND = "huggingface-fal-chatterbox";
-const VERSION = "voice-clone-v7.1";
+const VERSION = "voice-clone-v7.2";
 const ROUTE = "https://router.huggingface.co/fal-ai/fal-ai/chatterbox/text-to-speech";
 const SPACE = "https://resembleai-chatterbox.hf.space";
-const DEFAULT_TEXT =
-  "Hello. This is your cloned voice sample. Would you like to use this voice for Buddy now, or would you like to record again?";
+const DEFAULT_TEXT = "Hello. This is your cloned voice sample. Would you like to use this voice for Buddy now, or would you like to record again?";
 
 type CloneEnv = { HF_TOKEN?: string };
 type CloneBody = { audioBase64?: string; audio?: string; refAudio?: string; referenceAudio?: string; audioMimeType?: string; text?: string; target_text?: string; prompt?: string };
@@ -21,11 +20,7 @@ function normalizeMime(raw: string, name = ""): string {
   const mime = String(raw || "").toLowerCase().split(";")[0].trim();
   if (mime.startsWith("audio/")) return mime;
   const extension = name.toLowerCase().split(".").pop() || "";
-  const byExtension: Record<string, string> = {
-    wav: "audio/wav", wave: "audio/wav", mp3: "audio/mpeg", m4a: "audio/mp4", mp4: "audio/mp4",
-    aac: "audio/aac", ogg: "audio/ogg", oga: "audio/ogg", opus: "audio/opus", webm: "audio/webm",
-    flac: "audio/flac", amr: "audio/amr", "3gp": "audio/3gpp", "3gpp": "audio/3gpp",
-  };
+  const byExtension: Record<string, string> = { wav: "audio/wav", wave: "audio/wav", mp3: "audio/mpeg", m4a: "audio/mp4", mp4: "audio/mp4", aac: "audio/aac", ogg: "audio/ogg", oga: "audio/ogg", opus: "audio/opus", webm: "audio/webm", flac: "audio/flac", amr: "audio/amr", "3gp": "audio/3gpp", "3gpp": "audio/3gpp" };
   return byExtension[extension] || "application/octet-stream";
 }
 function decodeBase64(value: string, fallbackMime = "audio/wav", fallbackName = "reference.wav") {
@@ -94,13 +89,22 @@ async function cloneViaHuggingFaceSpace(input: { bytes: Uint8Array; mime: string
   if (!call.ok) { const detail = (await call.text()).slice(0, 1000); throw new Error(`Hugging Face Chatterbox Space queue failed (${call.status})${detail ? `: ${detail}` : ""}`); }
   const callPayload = (await call.json()) as { event_id?: string };
   if (!callPayload.event_id) throw new Error("Hugging Face Chatterbox Space did not return a queue event.");
-  const result = await fetch(`${SPACE}/gradio_api/call/generate_tts_audio/${encodeURIComponent(callPayload.event_id)}`, { headers: { Authorization: `Bearer ${token}` } });
+  const result = await fetch(`${SPACE}/gradio_api/call/generate_tts_audio/${encodeURIComponent(callPayload.event_id)}`, { headers: { Authorization: `Bearer ${token}`, Accept: "text/event-stream" } });
   if (!result.ok) { const detail = (await result.text()).slice(0, 1200); throw new Error(`Hugging Face Chatterbox Space generation failed (${result.status})${detail ? `: ${detail}` : ""}`); }
   const stream = await result.text();
-  const completeLine = stream.split("\n").reverse().find((line) => line.startsWith("data:") && line.includes("["));
-  if (!completeLine) throw new Error("Hugging Face Chatterbox Space returned no completed audio event.");
+  const blocks = stream.split(/\n\s*\n/).map((block) => block.trim()).filter(Boolean);
+  let completeData = "";
+  let errorData = "";
+  for (const block of blocks) {
+    const event = block.match(/^event:\s*(.+)$/m)?.[1]?.trim();
+    const data = block.match(/^data:\s*(.*)$/m)?.[1]?.trim() || "";
+    if (event === "complete") completeData = data;
+    if (event === "error") errorData = data;
+  }
+  if (errorData) throw new Error(`Hugging Face Chatterbox Space generation error: ${errorData}`);
+  if (!completeData) throw new Error("Hugging Face Chatterbox Space returned no completed audio event.");
   let outputs: unknown;
-  try { outputs = JSON.parse(completeLine.slice(5).trim()); } catch { throw new Error("Hugging Face Chatterbox Space returned malformed completion data."); }
+  try { outputs = JSON.parse(completeData); } catch { throw new Error("Hugging Face Chatterbox Space returned malformed completion data."); }
   const first = Array.isArray(outputs) ? outputs[0] : null;
   const outputUrl = typeof first === "string" ? first : first && typeof first === "object" ? String((first as Record<string, unknown>).url || (first as Record<string, unknown>).path || "") : "";
   if (!outputUrl) throw new Error("Hugging Face Chatterbox Space completed without an audio file URL.");
