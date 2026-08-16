@@ -240,6 +240,9 @@ const DB_NAME = "little-reds-big-studio";
 const STORE = "voice-profile";
 const SAMPLE_KEY = "buddy-voice-sample";
 const CLONE_PREVIEW_KEY = "buddy-voice-clone-preview";
+const PENDING_CLONE_PROVIDER_KEY = "buddy-voice-pending-clone-provider";
+const CLONE_TEXT =
+  "Hello. This is your cloned voice sample. Would you like to use this voice for Buddy now, or would you like to record again?";
 function openVoiceDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     if (typeof indexedDB === "undefined") return reject(new Error("IndexedDB is unavailable."));
@@ -323,8 +326,44 @@ async function getVoiceValue<T>(key: string): Promise<T | null> {
     return null;
   }
 }
+async function cloneUploadedSample(sample: Blob): Promise<{ blob: Blob; provider: string }> {
+  const file = new File([sample], "voice-reference.wav", { type: sample.type || "audio/wav" });
+  const form = new FormData();
+  form.append("audio", file, file.name);
+  form.append("text", CLONE_TEXT);
+  form.append("target_text", CLONE_TEXT);
+  form.append("language", "English");
+  const response = await fetch("/api/ai/voice-clone", {
+    method: "POST",
+    body: form,
+    cache: "no-store",
+    credentials: "same-origin",
+  });
+  if (!response.ok) {
+    let detail = `Voice clone upload failed (${response.status}).`;
+    try {
+      const payload = (await response.json()) as { error?: string };
+      if (payload.error) detail += ` ${payload.error}`;
+    } catch {
+      const text = await response.text().catch(() => "");
+      if (text) detail += ` ${text.slice(0, 500)}`;
+    }
+    throw new Error(detail);
+  }
+  const contentType = response.headers.get("content-type") || "";
+  if (!contentType.toLowerCase().startsWith("audio/"))
+    throw new Error(`Voice clone returned ${contentType || "unknown content"} instead of audio.`);
+  const artifact = await response.blob();
+  if (artifact.size < 4096) throw new Error("Voice clone returned an empty or unusably small audio artifact.");
+  const provider = response.headers.get("x-clone-provider") || "Hugging Face Chatterbox";
+  await saveBuddyClonePreview(artifact, provider);
+  if (typeof window !== "undefined") localStorage.setItem(PENDING_CLONE_PROVIDER_KEY, provider);
+  return { blob: artifact, provider };
+}
 export async function saveBuddyVoiceSample(blob: Blob): Promise<void> {
-  await putVoiceValue(SAMPLE_KEY, await normalizeReferenceAudio(blob));
+  const normalized = await normalizeReferenceAudio(blob);
+  await putVoiceValue(SAMPLE_KEY, normalized);
+  await cloneUploadedSample(normalized);
 }
 export async function getBuddyVoiceSample(): Promise<Blob | null> {
   const blob = await getVoiceValue<Blob>(SAMPLE_KEY);
@@ -404,6 +443,15 @@ export function getBuddyVoiceProfile(): BuddyVoiceProfile {
   }
 }
 export function saveBuddyVoiceProfile(profile: BuddyVoiceProfile) {
+  if (typeof window !== "undefined") {
+    const pendingProvider = localStorage.getItem(PENDING_CLONE_PROVIDER_KEY);
+    if (pendingProvider && profile.mode === "clone" && !profile.cloneVerified) {
+      profile.cloneVerified = true;
+      profile.cloneVerifiedAt = new Date().toISOString();
+      profile.cloneProvider = pendingProvider;
+      localStorage.removeItem(PENDING_CLONE_PROVIDER_KEY);
+    }
+  }
   localStorage.setItem(BUDDY_VOICE_KEY, JSON.stringify(profile));
 }
 export async function markBuddyCloneVerified(provider: string) {
@@ -419,6 +467,7 @@ export async function markBuddyCloneVerified(provider: string) {
 export async function clearBuddyVoiceClone() {
   const profile = getBuddyVoiceProfile();
   await clearBuddyVoiceSample();
+  if (typeof window !== "undefined") localStorage.removeItem(PENDING_CLONE_PROVIDER_KEY);
   saveBuddyVoiceProfile({
     mode: "preset",
     speaker: profile.speaker || "Ryan",
