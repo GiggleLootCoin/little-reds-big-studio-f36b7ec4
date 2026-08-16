@@ -1,6 +1,14 @@
+import { normalizeAndVerifyBrowserAudio } from "./audio-artifact";
 import { saveBuddyClonePreview } from "./buddy-voice";
 
-export type CloneResult = { url: string; provider: string; verification: string };
+export type CloneResult = {
+  url: string;
+  provider: string;
+  verification: string;
+  duration: number;
+  peak: number;
+  rms: number;
+};
 
 const ENDPOINT = "/api/ai/voice-clone";
 
@@ -74,22 +82,34 @@ async function cloneWithProductionGateway(
   }
 
   const contentType = response.headers.get("content-type") || "";
-  if (!contentType.toLowerCase().startsWith("audio/"))
+  if (!contentType.toLowerCase().startsWith("audio/")) {
     throw new Error(`Voice clone returned ${contentType || "unknown content"} instead of audio.`);
+  }
 
   const artifact = await response.blob();
-  if (artifact.size < 4096)
+  if (artifact.size < 4096) {
     throw new Error("Voice clone returned an empty or unusably small audio artifact.");
+  }
 
-  const url = URL.createObjectURL(artifact);
+  onStatus?.("Decoding the returned clone and checking duration, samples and Android playback compatibility…");
+  const normalized = await normalizeAndVerifyBrowserAudio(artifact);
   const provider = providerFromHeaders(response);
-  const verification =
-    response.headers.get("x-clone-verified") === "true"
-      ? "gateway audio artifact verified"
-      : "gateway audio artifact returned";
-  await saveBuddyClonePreview(artifact, provider);
-  onStatus?.("Chatterbox returned a playable audio artifact from your uploaded reference voice.");
-  return { url, provider, verification };
+  const serverVerified = response.headers.get("x-clone-verified") === "true";
+  if (!serverVerified) {
+    throw new Error("The server returned audio without a verified non-silent artifact signature.");
+  }
+  await saveBuddyClonePreview(normalized.blob, provider);
+  onStatus?.(
+    `Clone audio verified: ${normalized.stats.duration.toFixed(2)}s, peak ${normalized.stats.peak.toFixed(3)}, RMS ${normalized.stats.rms.toFixed(4)}. Android audio element decoded it successfully.`,
+  );
+  return {
+    url: normalized.url,
+    provider,
+    verification: "server + browser decode + non-silent sample verification + PCM16 WAV normalization",
+    duration: normalized.stats.duration,
+    peak: normalized.stats.peak,
+    rms: normalized.stats.rms,
+  };
 }
 
 export async function createBestFreeVoiceClone(
