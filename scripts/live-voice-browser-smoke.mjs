@@ -43,13 +43,15 @@ try {
     };
   });
   await page.goto(`${base}/?android_smoke=1`, { waitUntil: "networkidle", timeout: 60000 });
-  await page.getByRole("button", { name: /Clone a Voice/i }).click();
-  const input = page.locator('input[type="file"][accept="audio/*"]');
+  const cloneModeButton = page.getByRole("button", { name: /Clone a Voice/i }).first();
+  await cloneModeButton.click();
+  const input = page.locator('input[type="file"][accept="audio/*"]').first();
   await input.waitFor({ state: "attached", timeout: 30000 });
   await input.setInputFiles(samplePath);
-  await page.getByRole("button", { name: "Generate My Voice Clone" }).click();
+  await page.getByRole("button", { name: "Generate My Voice Clone" }).first().click();
   await page
     .getByText(/REAL VOICE CLONE VERIFIED|Buddy couldn't create the voice clone yet\./)
+    .first()
     .waitFor({ timeout: 240000 });
   const status = await page.locator("body").innerText();
   const callsBeforeFailure = await page.evaluate(() => window.__buddyPlayCalls || []);
