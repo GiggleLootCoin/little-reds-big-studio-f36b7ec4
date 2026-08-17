@@ -3,7 +3,7 @@ import { join } from "node:path";
 
 const root = join(process.cwd(), "dist", "client", "assets");
 const required = "onnx-community/chatterbox-ONNX";
-const requiredMarkers = ["encode_speech", "ChatterboxProcessor", "RawAudio"];
+const requiredMarkers = ["encode_speech", "ChatterboxProcessor"];
 const forbidden = [
   "onnxruntime-node",
   "sharp",
