@@ -14,7 +14,8 @@ function openVoiceDb(): Promise<IDBDatabase> {
       if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE);
     };
     request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error || new Error("Could not open local voice storage."));
+    request.onerror = () =>
+      reject(request.error || new Error("Could not open local voice storage."));
   });
 }
 
