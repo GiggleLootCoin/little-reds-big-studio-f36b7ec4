@@ -27,7 +27,7 @@ jobs:
           cache: npm
       - name: Install browser-only production dependencies
         run: |
-          npm install --no-audit --no-fund --omit=optional --ignore-scripts
+          npm install --no-audit --no-fund --ignore-scripts
           node node_modules/esbuild/install.js
           node node_modules/workerd/install.js
       - name: Typecheck
