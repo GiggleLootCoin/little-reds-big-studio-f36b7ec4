@@ -14,7 +14,7 @@ const required = [
   ["reference is sent to encoder worker", files.local, 'type: "encode"'],
   ["worker performs speaker encoding", files.worker, "model.encode_speech"],
   ["worker uses encoded speaker data for generation", files.worker, "...speakerData"],
-  ["worker requires WebGPU", files.worker, "navigator.gpu"],
+  ["worker checks WebGPU adapter", files.worker, "requestAdapter"],
   ["worker loads Chatterbox Turbo", files.worker, "ttslab/chatterbox-turbo-webgpu"],
 ];
 
