@@ -7,8 +7,8 @@ import {
   getBuddyVoiceSample,
   markBuddyCloneVerified,
   saveBuddyVoiceProfile,
-  saveBuddyVoiceSample,
 } from "@/lib/buddy-voice";
+import { saveLocalBuddyVoiceReference } from "@/lib/local-voice-reference";
 import { BUDDY_MOODS, BUDDY_TONES, BUDDY_VOICE_PRESETS } from "@/lib/buddy-voice";
 import { BUDDY_EXPANDED_LANGUAGES, BUDDY_EXPANDED_VOICES } from "@/lib/buddy-voice-expanded";
 import { StudioButton } from "./ui";
@@ -71,7 +71,7 @@ export function BuddyVoicePicker() {
     if (!Number.isFinite(duration) || duration < 3 || duration > 30) {
       throw new Error("Use a clear voice recording between 3 and 30 seconds.");
     }
-    await saveBuddyVoiceSample(file);
+    await saveLocalBuddyVoiceReference(file);
     const next = {
       ...getBuddyVoiceProfile(),
       mode: "clone" as const,
@@ -89,7 +89,7 @@ export function BuddyVoicePicker() {
 
   const uploadClone = async (file: File) => {
     setBusy(true);
-    setStatus("Saving your voice sample…");
+    setStatus("Saving your voice sample locally…");
     try {
       await saveReference(file);
     } catch (error) {
