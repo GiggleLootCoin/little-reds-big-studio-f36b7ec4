@@ -19,13 +19,55 @@ function getWorker(): Worker {
   return worker;
 }
 
-function waitFor(type: string): Promise<MessageEvent["data"]> {
+async function assertBrowserWebGpu(onStatus?: (status: string) => void) {
+  const gpu = (navigator as Navigator & { gpu?: { requestAdapter: (options?: unknown) => Promise<any> } }).gpu;
+  if (!gpu) {
+    throw new Error(
+      "WebGPU is unavailable in this Android browser. Local Chatterbox cannot run here; no remote/preset voice will be substituted.",
+    );
+  }
+  let adapter: any = null;
+  try {
+    adapter = await gpu.requestAdapter();
+    if (!adapter) {
+      adapter = await gpu.requestAdapter({ featureLevel: "compatibility" });
+    }
+  } catch {
+    adapter = null;
+  }
+  if (!adapter) {
+    throw new Error(
+      "Chrome exposes WebGPU but this phone has no usable GPU adapter for local Chatterbox. Update Chrome and enable hardware acceleration, then retry.",
+    );
+  }
+  const memory = (navigator as Navigator & { deviceMemory?: number }).deviceMemory;
+  if (typeof memory === "number" && memory > 0 && memory < 3) {
+    throw new Error(
+      `This browser reports about ${memory} GB of device memory. The local Chatterbox model is too large to run reliably at that memory level. No fallback voice will be used.`,
+    );
+  }
+  onStatus?.("WebGPU is available. Starting the local Chatterbox engine…");
+}
+
+function waitFor(type: string, onProgress?: (status: string) => void): Promise<MessageEvent["data"]> {
   const current = getWorker();
   return new Promise((resolve, reject) => {
     const onMessage = (event: MessageEvent) => {
       if (event.data?.type === type) {
         cleanup();
         resolve(event.data);
+      } else if (event.data?.type === "progress") {
+        const progress = event.data.progress;
+        if (typeof progress?.status === "string") {
+          const pct = Number(progress.progress);
+          onProgress?.(
+            Number.isFinite(pct)
+              ? `Downloading/preparing Chatterbox model… ${Math.round(pct)}%`
+              : progress.status,
+          );
+        } else if (typeof event.data.message === "string") {
+          onProgress?.(event.data.message);
+        }
       } else if (event.data?.type === "error") {
         cleanup();
         reject(new Error(String(event.data.message || "Local Chatterbox failed.")));
@@ -44,18 +86,18 @@ function waitFor(type: string): Promise<MessageEvent["data"]> {
   });
 }
 
-async function load() {
+async function load(onStatus?: (status: string) => void) {
   if (!loadPromise) {
     loadPromise = (async () => {
+      await assertBrowserWebGpu(onStatus);
       const memory = (navigator as Navigator & { deviceMemory?: number }).deviceMemory;
       if (typeof memory === "number" && memory > 0 && memory < 3) {
         throw new Error(
           "This phone reports less than 3 GB of device memory. The local Chatterbox model needs more memory than this browser can safely provide.",
         );
       }
-      // Register the listener BEFORE posting the message. The worker can finish
-      // synchronously on a warm/cache hit, so posting first can lose the loaded event.
-      const loaded = waitFor("loaded");
+      // Register the listener BEFORE posting the message.
+      const loaded = waitFor("loaded", onStatus);
       getWorker().postMessage({ type: "load" });
       await loaded;
     })().catch((error) => {
@@ -131,11 +173,7 @@ function wavBlob(samples: Float32Array, sampleRate: number): Blob {
   return new Blob([bytes], { type: "audio/wav" });
 }
 
-export type LocalCloneResult = {
-  url: string;
-  provider: string;
-  duration: number;
-};
+export type LocalCloneResult = { url: string; provider: string; duration: number };
 
 export async function createLocalChatterboxClone(
   reference: Blob,
@@ -144,10 +182,8 @@ export async function createLocalChatterboxClone(
   onStatus?: (status: string) => void,
 ): Promise<LocalCloneResult> {
   if (!reference.size) throw new Error("The voice recording is empty.");
-  onStatus?.(
-    "Loading the free local Chatterbox voice-cloning engine… first use downloads the model files.",
-  );
-  await load();
+  onStatus?.("Checking this phone for local WebGPU Chatterbox support…");
+  await load(onStatus);
   const key = await fingerprint(reference);
   onStatus?.(
     encodedKey === key
@@ -157,9 +193,7 @@ export async function createLocalChatterboxClone(
   if (encodedKey !== key) {
     const audio = await decodeAt24k(reference);
     encodePromise = (async () => {
-      // Register the listener before transferring the reference so the encoded
-      // acknowledgement cannot be lost on fast devices or cached model runs.
-      const encoded = waitFor("encoded");
+      const encoded = waitFor("encoded", onStatus);
       getWorker().postMessage({ type: "encode", audio: audio.buffer }, [audio.buffer]);
       await encoded;
     })().catch((error) => {
@@ -173,7 +207,7 @@ export async function createLocalChatterboxClone(
     await encodePromise;
   }
   onStatus?.("Generating speech locally on this phone from your reference voice…");
-  const audioResult = waitFor("audio");
+  const audioResult = waitFor("audio", onStatus);
   getWorker().postMessage({ type: "generate", text, exaggeration });
   const result = await audioResult;
   const waveform = new Float32Array(result.waveform as ArrayBuffer);
@@ -181,11 +215,7 @@ export async function createLocalChatterboxClone(
   const sampleRate = Number(result.sampleRate) || MODEL_SAMPLE_RATE;
   const blob = wavBlob(waveform, sampleRate);
   if (blob.size < 4096) throw new Error("The local engine returned an empty audio result.");
-  return {
-    url: URL.createObjectURL(blob),
-    provider: "Chatterbox local — WebGPU",
-    duration: waveform.length / sampleRate,
-  };
+  return { url: URL.createObjectURL(blob), provider: "Chatterbox local — WebGPU", duration: waveform.length / sampleRate };
 }
 
 export function resetLocalChatterbox() {
