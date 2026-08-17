@@ -134,7 +134,7 @@ export async function createLocalChatterboxClone(
   onStatus?.(
     encodedKey === key
       ? "Using your saved local voice profile…"
-      : "Learning your voice from the recording…",
+      : "Conditioning Chatterbox on your actual reference recording…",
   );
   if (encodedKey !== key) {
     const audio = await decodeAt24k(reference);
@@ -151,7 +151,7 @@ export async function createLocalChatterboxClone(
   } else if (encodePromise) {
     await encodePromise;
   }
-  onStatus?.("Generating speech locally on this phone…");
+  onStatus?.("Generating speech locally on this phone from your reference voice…");
   getWorker().postMessage({ type: "generate", text, exaggeration });
   const result = await waitFor("audio");
   const waveform = new Float32Array(result.waveform as ArrayBuffer);
