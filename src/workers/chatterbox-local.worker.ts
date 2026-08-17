@@ -33,7 +33,11 @@ async function loadModel() {
       "This Android browser does not expose WebGPU. The API-keyless local Chatterbox voice engine cannot run on this device.",
     );
   }
-  self.postMessage({ type: "progress", message: "Preparing the local Chatterbox voice-cloning engine… first use downloads the model files." });
+  self.postMessage({
+    type: "progress",
+    message:
+      "Preparing the local Chatterbox voice-cloning engine… first use downloads the model files.",
+  });
   try {
     processor = (await ChatterboxProcessor.from_pretrained(MODEL_ID)) as unknown as LocalProcessor;
     model = (await ChatterboxModel.from_pretrained(MODEL_ID, {
@@ -71,7 +75,9 @@ async function encode(audio: Float32Array) {
   }
   speakerData = await model.encode_speech(inputs.input_values);
   if (!speakerData || Object.keys(speakerData).length === 0) {
-    throw new Error("Chatterbox returned no speaker-conditioning data for your reference recording.");
+    throw new Error(
+      "Chatterbox returned no speaker-conditioning data for your reference recording.",
+    );
   }
 }
 

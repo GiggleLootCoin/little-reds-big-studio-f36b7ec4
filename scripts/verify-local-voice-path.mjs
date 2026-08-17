@@ -12,7 +12,11 @@ const required = [
   ["local API accepts Blob reference", files.local, "reference: Blob"],
   ["reference is decoded before conditioning", files.local, "decodeAt24k(reference)"],
   ["reference is sent to encoder worker", files.local, 'type: "encode"'],
-  ["worker uses official RawAudio conditioning path", files.worker, "new RawAudio(audio, SAMPLE_RATE)"],
+  [
+    "worker uses official RawAudio conditioning path",
+    files.worker,
+    "new RawAudio(audio, SAMPLE_RATE)",
+  ],
   ["worker performs speaker encoding", files.worker, "model.encode_speech"],
   ["worker uses encoded speaker data for generation", files.worker, "...speakerData"],
   ["worker checks WebGPU adapter", files.worker, "requestAdapter"],
