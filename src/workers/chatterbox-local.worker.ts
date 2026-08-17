@@ -10,7 +10,7 @@ type LocalChatterboxModel = {
   generate: (inputs: Record<string, unknown>) => Promise<{ data: Float32Array }>;
 };
 type LocalProcessor = {
-  _call: (text: string, audio?: unknown) => Promise<Record<string, unknown>>;
+  (text: string, audio?: unknown): Promise<Record<string, unknown>>;
 };
 
 let model: LocalChatterboxModel | null = null;
@@ -64,12 +64,11 @@ async function encode(audio: Float32Array) {
   if (!model || !processor) await loadModel();
   if (!model || !processor) throw new Error("The local Chatterbox model could not be loaded.");
 
-  // Use the same processor path as the official Transformers.js cloning
-  // example: reference audio is converted into the model's input_values
-  // before encode_speech, rather than treating the raw PCM tensor as an
-  // already-processed speaker input.
+  // Transformers.js' supported Chatterbox API is processor(text, audio).
+  // The reference is therefore explicitly processed into input_values before
+  // speaker encoding. Do not use the private _call method here.
   const reference = new RawAudio(audio, SAMPLE_RATE);
-  const inputs = await processor._call("", reference);
+  const inputs = await processor("", reference);
   if (!inputs.input_values) {
     throw new Error("Chatterbox could not extract speaker features from your reference recording.");
   }
@@ -85,7 +84,10 @@ async function generate(text: string, exaggeration: number) {
   if (!model || !processor || !speakerData) {
     throw new Error("Your reference-conditioned voice profile is not loaded yet.");
   }
-  const inputs = await processor._call(text);
+  const inputs = await processor(text);
+  if (!inputs.input_ids || !inputs.attention_mask) {
+    throw new Error("Chatterbox could not tokenize the requested speech text.");
+  }
   const waveform = await model.generate({
     ...speakerData,
     input_ids: inputs.input_ids,
@@ -101,8 +103,6 @@ async function generate(text: string, exaggeration: number) {
     data.byteOffset,
     data.byteOffset + data.byteLength,
   ) as ArrayBuffer;
-  // Do not transfer the buffer here: WorkerGlobalScope typings in the current
-  // TS lib target do not expose the browser-style transfer-list overload.
   self.postMessage({ type: "audio", sampleRate: SAMPLE_RATE, waveform: buffer });
 }
 
