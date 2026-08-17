@@ -5,8 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite dev",
-    "build": "npm install --no-save @cloudflare/vite-plugin@1.48.0 @huggingface/transformers@4.2.0 && vite build && node scripts/write-worker-wrapper.mjs",
-    "build:dev": "npm install --no-save @cloudflare/vite-plugin@1.48.0 @huggingface/transformers@4.2.0 && vite build --mode development && node scripts/write-worker-wrapper.mjs",
+    "build": "vite build && node scripts/write-worker-wrapper.mjs",
+    "build:dev": "vite build --mode development && node scripts/write-worker-wrapper.mjs",
     "preview": "vite preview",
     "deploy": "npm run build && wrangler deploy",
     "preview:worker": "npm run build && wrangler dev",
