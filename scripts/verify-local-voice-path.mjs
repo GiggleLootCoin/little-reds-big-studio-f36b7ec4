@@ -12,10 +12,11 @@ const required = [
   ["local API accepts Blob reference", files.local, "reference: Blob"],
   ["reference is decoded before conditioning", files.local, "decodeAt24k(reference)"],
   ["reference is sent to encoder worker", files.local, 'type: "encode"'],
+  ["worker uses official RawAudio conditioning path", files.worker, "new RawAudio(audio, SAMPLE_RATE)"],
   ["worker performs speaker encoding", files.worker, "model.encode_speech"],
   ["worker uses encoded speaker data for generation", files.worker, "...speakerData"],
   ["worker checks WebGPU adapter", files.worker, "requestAdapter"],
-  ["worker loads Chatterbox Turbo", files.worker, "ttslab/chatterbox-turbo-webgpu"],
+  ["worker loads official Chatterbox clone model", files.worker, "onnx-community/chatterbox-ONNX"],
 ];
 
 for (const [label, source, needle] of required) {
@@ -46,5 +47,5 @@ if (!voiceBlock.includes("fallbackIds: []")) {
 }
 
 console.log(
-  "Local Buddy voice path verified statically: reference recording -> Chatterbox speaker conditioning -> WebGPU generation, with no public Space or user API key fallback.",
+  "Local Buddy voice path verified statically: uploaded reference -> official Chatterbox speaker conditioning -> WebGPU generation, with no public Space or user API key fallback.",
 );
