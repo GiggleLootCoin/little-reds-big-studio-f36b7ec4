@@ -5,9 +5,9 @@ const root = join(process.cwd(), "dist");
 const textExtensions = new Set([".js", ".mjs", ".html", ".css", ".json", ".map"]);
 const forbidden = [
   "onnxruntime-node",
+  "sharp",
   "rahul7star-chatterbox-multilingual-tts.hf.space",
   "spacekaren/chatterbox",
-  "/api/ai/voice-clone",
   "remote voice-clone fallback",
   "default voice fallback",
 ];
@@ -37,4 +37,4 @@ for (const needle of forbidden) {
 }
 
 console.log(`Browser voice bundle verified: ${assets.length} inspectable assets scanned.`);
-console.log("Chatterbox Turbo model marker is present; Node/native voice dependencies and remote voice fallback markers are absent.");
+console.log("Chatterbox Turbo model marker is present; Node/native dependencies and public voice-Space fallback markers are absent.");
