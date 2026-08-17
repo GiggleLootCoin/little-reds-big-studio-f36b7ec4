@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 
+// This verifier intentionally covers only the production Buddy custom-voice path.
 const files = {
   clone: await readFile("src/lib/real-voice-clone-v2.ts", "utf8"),
   local: await readFile("src/lib/local-chatterbox.ts", "utf8"),
