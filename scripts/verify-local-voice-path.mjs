@@ -22,13 +22,18 @@ for (const [label, source, needle] of required) {
   if (!source.includes(needle)) throw new Error(`Voice-path verification failed: ${label}`);
 }
 
+const forbidden = [".hf.space", "rahul7star", "spacekaren", "/api/ai/voice-clone", "OPENROUTERAI_API_KEY"];
 for (const [name, source] of Object.entries(files)) {
-  if (/hf\.space|rahul7star|spacekaren|/api/ai/voice-clone|OPENROUTERAI_API_KEY/i.test(source)) {
-    throw new Error(`Voice-path verification failed: forbidden remote/API-key dependency found in ${name}.`);
+  for (const needle of forbidden) {
+    if (source.includes(needle)) {
+      throw new Error(`Voice-path verification failed: forbidden remote/API-key dependency found in ${name}: ${needle}`);
+    }
   }
 }
 
-if (!/fallbackIds:\s*\[\]/.test(await readFile("src/lib/free-runtime.ts", "utf8"))) {
+const runtime = await readFile("src/lib/free-runtime.ts", "utf8");
+const voiceBlock = runtime.match(/id:\s*"voice-chatterbox-local"[\s\S]*?(?=\n\s*\},)/)?.[0] ?? "";
+if (!voiceBlock.includes("fallbackIds: []")) {
   throw new Error("Voice capability registry must not advertise a voice fallback.");
 }
 
