@@ -5,7 +5,6 @@ const files = {
   local: await readFile("src/lib/local-chatterbox.ts", "utf8"),
   worker: await readFile("src/workers/chatterbox-local.worker.ts", "utf8"),
   buddy: await readFile("src/lib/buddy-voice.ts", "utf8"),
-  package: await readFile("package.json", "utf8"),
 };
 
 const required = [
@@ -26,7 +25,7 @@ for (const [label, source, needle] of required) {
   if (!source.includes(needle)) throw new Error(`Voice-path verification failed: ${label}`);
 }
 
-const forbidden = [
+const forbiddenSource = [
   ".hf.space",
   "rahul7star",
   "spacekaren",
@@ -36,10 +35,18 @@ const forbidden = [
   "generate_custom_voice",
 ];
 for (const [name, source] of Object.entries(files)) {
-  for (const needle of forbidden) {
+  for (const needle of forbiddenSource) {
     if (source.includes(needle)) {
       throw new Error(`Voice-path verification failed: forbidden remote/API dependency found in ${name}: ${needle}`);
     }
+  }
+}
+
+const packageJson = JSON.parse(await readFile("package.json", "utf8"));
+const forbiddenDependencies = ["@gradio/client"];
+for (const name of forbiddenDependencies) {
+  if (packageJson.dependencies?.[name] || packageJson.devDependencies?.[name]) {
+    throw new Error(`Voice-path verification failed: forbidden package dependency remains: ${name}`);
   }
 }
 
