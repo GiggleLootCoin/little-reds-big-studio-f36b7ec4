@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 
+// This verifier intentionally covers only the production Buddy custom-voice path.
 const files = {
   clone: await readFile("src/lib/real-voice-clone-v2.ts", "utf8"),
   local: await readFile("src/lib/local-chatterbox.ts", "utf8"),
@@ -16,8 +17,11 @@ const required = [
   ["reference is sent to encoder worker", files.local, 'type: "encode"'],
   ["worker wraps reference as RawAudio", files.worker, "new RawAudio(audio, SAMPLE_RATE)"],
   ["worker uses the public processor call", files.worker, "processor(\"\", reference)"],
+  ["worker reads processor audio_values", files.worker, "inputs.audio_values"],
   ["worker performs speaker encoding", files.worker, "model.encode_speech"],
-  ["worker uses encoded speaker data for generation", files.worker, "...speakerData"],
+  ["worker requires all four conditioning outputs", files.worker, "speakerConditioning.speaker_features"],
+  ["worker passes explicit audio features", files.worker, "audio_features: speakerConditioning.audio_features"],
+  ["worker passes explicit speaker embedding", files.worker, "speaker_embeddings: speakerConditioning.speaker_embeddings"],
   ["worker checks WebGPU adapter", files.worker, "requestAdapter"],
   ["worker loads official Chatterbox clone model", files.worker, "onnx-community/chatterbox-ONNX"],
   ["Buddy sample persistence is local only", files.buddy, "putVoiceValue(SAMPLE_KEY"],
@@ -44,9 +48,12 @@ for (const [name, source] of Object.entries(files)) {
   }
 }
 
-const runtime = await readFile("src/lib/free-runtime.ts", "utf8");
-const voiceBlock = runtime.match(/id:\s*"voice-chatterbox-local"[\s\S]*?(?=\n\s*\},)/)?.[0] ?? "";
-if (!voiceBlock.includes("fallbackIds: []"))
+const runtimeRegistry = await readFile("src/lib/free-runtime.ts", "utf8");
+const voiceBlock = runtimeRegistry.match(/id:\s*"voice-chatterbox-local"[\s\S]*?(?=\n\s*\},)/)?.[0] ?? "";
+if (!voiceBlock.includes("fallbackIds: []")) {
   throw new Error("Voice capability registry must not advertise a voice fallback.");
+}
 
-console.log("Local Buddy voice path verified: uploaded reference -> public Chatterbox processor -> speaker conditioning -> WebGPU generation; no public Space, API-key route, or preset fallback. Gradio remains available only to unrelated generic studio capabilities.");
+console.log(
+  "Local Buddy voice path verified: uploaded reference -> RawAudio -> ChatterboxProcessor -> speech encoder -> explicit audio/speaker conditioning tensors -> WebGPU generation; no public Space, API-key route, or preset fallback in the Buddy voice path.",
+);

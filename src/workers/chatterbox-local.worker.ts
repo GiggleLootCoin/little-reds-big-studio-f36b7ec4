@@ -5,8 +5,14 @@ import { ChatterboxModel, ChatterboxProcessor, RawAudio } from "@huggingface/tra
 const MODEL_ID = "onnx-community/chatterbox-ONNX";
 const SAMPLE_RATE = 24000;
 
+type SpeakerConditioning = {
+  audio_features: unknown;
+  audio_tokens: unknown;
+  speaker_embeddings: unknown;
+  speaker_features: unknown;
+};
 type LocalChatterboxModel = {
-  encode_speech: (audio: unknown) => Promise<Record<string, unknown>>;
+  encode_speech: (audio: unknown) => Promise<SpeakerConditioning>;
   generate: (inputs: Record<string, unknown>) => Promise<{ data: Float32Array }>;
 };
 type LocalProcessor = {
@@ -15,7 +21,7 @@ type LocalProcessor = {
 
 let model: LocalChatterboxModel | null = null;
 let processor: LocalProcessor | null = null;
-let speakerData: Record<string, unknown> | null = null;
+let speakerConditioning: SpeakerConditioning | null = null;
 
 async function detectWebGpu(): Promise<boolean> {
   const gpu = (navigator as Navigator & { gpu?: { requestAdapter: () => Promise<unknown> } }).gpu;
@@ -54,7 +60,7 @@ async function loadModel() {
   } catch (error) {
     model = null;
     processor = null;
-    speakerData = null;
+    speakerConditioning = null;
     const message = error instanceof Error ? error.message : String(error);
     throw new Error(`The free local Chatterbox voice-cloning engine could not start: ${message}`);
   }
@@ -64,34 +70,48 @@ async function encode(audio: Float32Array) {
   if (!model || !processor) await loadModel();
   if (!model || !processor) throw new Error("The local Chatterbox model could not be loaded.");
 
-  // Transformers.js' supported Chatterbox API is processor(text, audio).
-  // The reference is therefore explicitly processed into input_values before
-  // speaker encoding. Do not use the private _call method here.
+  // This is the official Transformers.js Chatterbox conditioning contract:
+  // RawAudio -> processor audio features -> speech encoder -> four conditioning tensors.
+  // Keep every returned tensor; the conditional decoder needs both speaker fields
+  // as well as the audio token/features returned by the speech encoder.
   const reference = new RawAudio(audio, SAMPLE_RATE);
   const inputs = await processor("", reference);
-  if (!inputs.input_values) {
-    throw new Error("Chatterbox could not extract speaker features from your reference recording.");
+  const audioValues = inputs.audio_values;
+  if (!audioValues) {
+    throw new Error("Chatterbox could not prepare the uploaded reference recording.");
   }
-  speakerData = await model.encode_speech(inputs.input_values);
-  if (!speakerData || Object.keys(speakerData).length === 0) {
-    throw new Error(
-      "Chatterbox returned no speaker-conditioning data for your reference recording.",
-    );
+  const encoded = await model.encode_speech(audioValues);
+  if (
+    !encoded ||
+    !encoded.audio_features ||
+    !encoded.audio_tokens ||
+    !encoded.speaker_embeddings ||
+    !encoded.speaker_features
+  ) {
+    throw new Error("Chatterbox could not extract usable speaker-conditioning data from your reference recording.");
   }
+  speakerConditioning = encoded;
+  self.postMessage({ type: "encoded" });
 }
 
 async function generate(text: string, exaggeration: number) {
-  if (!model || !processor || !speakerData) {
-    throw new Error("Your reference-conditioned voice profile is not loaded yet.");
+  if (!model || !processor || !speakerConditioning) {
+    throw new Error("Your uploaded reference voice has not been conditioned yet.");
   }
   const inputs = await processor(text);
   if (!inputs.input_ids || !inputs.attention_mask) {
     throw new Error("Chatterbox could not tokenize the requested speech text.");
   }
+
+  // Pass the exact four tensors explicitly. This prevents the reference speaker
+  // conditioning from being lost through an untyped object spread.
   const waveform = await model.generate({
-    ...speakerData,
     input_ids: inputs.input_ids,
     attention_mask: inputs.attention_mask,
+    audio_features: speakerConditioning.audio_features,
+    audio_tokens: speakerConditioning.audio_tokens,
+    speaker_embeddings: speakerConditioning.speaker_embeddings,
+    speaker_features: speakerConditioning.speaker_features,
     exaggeration,
     max_new_tokens: 2048,
     repetition_penalty: 1.2,
@@ -118,7 +138,6 @@ self.addEventListener("message", async (event: MessageEvent) => {
     else if (message.type === "encode") {
       if (!message.audio) throw new Error("No voice sample was supplied to the local engine.");
       await encode(new Float32Array(message.audio));
-      self.postMessage({ type: "encoded" });
     } else if (message.type === "generate") {
       await generate(message.text || "Hello from Buddy.", message.exaggeration ?? 0.5);
     }
