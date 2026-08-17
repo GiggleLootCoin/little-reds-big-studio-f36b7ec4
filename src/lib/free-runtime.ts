@@ -1,6 +1,6 @@
 /**
  * Free-only runtime capability registry.
- * Core Studio code must never require a paid provider or API key.
+ * Core Studio code must never require a paid provider or user-supplied API key.
  */
 export type RuntimeKind = "local-webgpu" | "free-hosted" | "browser-native";
 
@@ -52,13 +52,22 @@ export const FREE_CAPABILITIES: FreeCapability[] = [
     notes: "Only enabled when a current free/open public engine is verified reachable.",
   },
   {
+    id: "voice-chatterbox-local",
+    label: "Chatterbox — local reference voice",
+    kind: "local-webgpu",
+    requiresApiKey: false,
+    capabilities: ["voice-clone", "tts"],
+    fallbackIds: [],
+    notes: "Uses the user's actual reference recording for conditioning on-device. No remote voice fallback is allowed.",
+  },
+  {
     id: "voice-rvc",
     label: "RVC / Applio",
     kind: "free-hosted",
     requiresApiKey: false,
     capabilities: ["voice-conversion", "vocal-swap"],
     fallbackIds: [],
-    notes: "Designed for free Colab/public open runtimes; no paid voice API.",
+    notes: "Only expose a route after a real authorized model/reference input produces a validated artifact.",
   },
   {
     id: "browser-audio",
