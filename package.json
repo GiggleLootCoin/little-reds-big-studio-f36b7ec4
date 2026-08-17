@@ -5,11 +5,14 @@
   "type": "module",
   "scripts": {
     "dev": "vite dev",
-    "build": "npm install --no-save @cloudflare/vite-plugin@1.48.0 @huggingface/transformers@4.2.0 && vite build && node scripts/write-worker-wrapper.mjs",
-    "build:dev": "npm install --no-save @cloudflare/vite-plugin@1.48.0 @huggingface/transformers@4.2.0 && vite build --mode development && node scripts/write-worker-wrapper.mjs",
+    "build": "vite build && node scripts/write-worker-wrapper.mjs",
+    "build:dev": "vite build --mode development && node scripts/write-worker-wrapper.mjs",
+    "verify:local-voice": "node scripts/verify-local-voice-path.mjs",
+    "verify:browser-bundle": "node scripts/verify-browser-voice-bundle.mjs",
     "preview": "vite preview",
     "deploy": "npm run build && wrangler deploy",
     "preview:worker": "npm run build && wrangler dev",
+    "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "format": "prettier --write ."
   },
@@ -89,5 +92,10 @@
     "typescript-eslint": "^8.56.1",
     "vite": "^8.0.16",
     "wrangler": "^4.122.0"
+  },
+  "overrides": {
+    "onnxruntime-node": "1.27.0",
+    "adm-zip": "0.6.0",
+    "sharp": "0.35.3"
   }
 }

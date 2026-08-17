@@ -23,7 +23,7 @@ jobs:
         with:
           node-version: 24
           cache: npm
-      - name: Install dependencies
+      - name: Install dependencies with security overrides
         run: npm install --no-audit --no-fund
       - name: TypeScript
         run: npx tsc --noEmit
@@ -33,7 +33,11 @@ jobs:
         run: npx prettier --check .
       - name: ESLint
         run: npm run lint
-      - name: Dependency audit
-        run: npm audit --audit-level=high
+      - name: Static local Buddy voice-path verification
+        run: npm run verify:local-voice
       - name: Production build
         run: npm run build
+      - name: Verify browser voice production bundle
+        run: npm run verify:browser-bundle
+      - name: Dependency audit
+        run: npm audit --audit-level=high

@@ -47,6 +47,12 @@ function waitFor(type: string): Promise<MessageEvent["data"]> {
 async function load() {
   if (!loadPromise) {
     loadPromise = (async () => {
+      const memory = (navigator as Navigator & { deviceMemory?: number }).deviceMemory;
+      if (typeof memory === "number" && memory > 0 && memory < 3) {
+        throw new Error(
+          "This phone reports less than 3 GB of device memory. The local Chatterbox model needs more memory than this browser can safely provide.",
+        );
+      }
       getWorker().postMessage({ type: "load" });
       await waitFor("loaded");
     })().catch((error) => {
@@ -62,6 +68,13 @@ async function decodeAt24k(blob: Blob): Promise<Float32Array> {
     window.AudioContext ||
     (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
   if (!AudioContextCtor) throw new Error("This browser cannot run the local voice engine.");
+  const OfflineAudioContextCtor =
+    window.OfflineAudioContext ||
+    (window as typeof window & { webkitOfflineAudioContext?: typeof OfflineAudioContext })
+      .webkitOfflineAudioContext;
+  if (!OfflineAudioContextCtor) {
+    throw new Error("This browser cannot resample the reference recording for local Chatterbox.");
+  }
   const context = new AudioContextCtor();
   try {
     const decoded = await context.decodeAudioData(await blob.arrayBuffer());
@@ -69,7 +82,7 @@ async function decodeAt24k(blob: Blob): Promise<Float32Array> {
       throw new Error("Use a clear voice recording between 3 and 30 seconds.");
     }
     const length = Math.max(1, Math.ceil(decoded.duration * MODEL_SAMPLE_RATE));
-    const offline = new OfflineAudioContext(1, length, MODEL_SAMPLE_RATE);
+    const offline = new OfflineAudioContextCtor(1, length, MODEL_SAMPLE_RATE);
     const source = offline.createBufferSource();
     source.buffer = decoded;
     source.connect(offline.destination);
@@ -134,7 +147,7 @@ export async function createLocalChatterboxClone(
   onStatus?.(
     encodedKey === key
       ? "Using your saved local voice profile…"
-      : "Learning your voice from the recording…",
+      : "Conditioning Chatterbox on your actual reference recording…",
   );
   if (encodedKey !== key) {
     const audio = await decodeAt24k(reference);
@@ -151,7 +164,7 @@ export async function createLocalChatterboxClone(
   } else if (encodePromise) {
     await encodePromise;
   }
-  onStatus?.("Generating speech locally on this phone…");
+  onStatus?.("Generating speech locally on this phone from your reference voice…");
   getWorker().postMessage({ type: "generate", text, exaggeration });
   const result = await waitFor("audio");
   const waveform = new Float32Array(result.waveform as ArrayBuffer);

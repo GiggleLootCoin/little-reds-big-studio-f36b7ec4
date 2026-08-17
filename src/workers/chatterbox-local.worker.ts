@@ -27,7 +27,7 @@ async function detectWebGpu(): Promise<boolean> {
 async function loadModel() {
   if (!(await detectWebGpu())) {
     throw new Error(
-      "This Android browser does not expose WebGPU. The local engine is unavailable, so Buddy will use the free remote voice-clone fallback.",
+      "This Android browser does not expose WebGPU. The API-keyless local Chatterbox voice engine cannot run on this device.",
     );
   }
   self.postMessage({ type: "progress", message: "Preparing the lightweight WebGPU voice engine…" });
@@ -48,11 +48,6 @@ async function loadModel() {
     model = null;
     processor = null;
     const message = error instanceof Error ? error.message : String(error);
-    if (message.toLowerCase().includes("fetch")) {
-      throw new Error(
-        "The free Chatterbox Turbo model could not be downloaded to this phone. Buddy will use the free remote voice-clone fallback.",
-      );
-    }
     throw new Error(`The free local Chatterbox Turbo engine could not start: ${message}`);
   }
 }
@@ -66,7 +61,7 @@ async function encode(audio: Float32Array) {
 
 async function generate(text: string, exaggeration: number) {
   if (!model || !processor || !speakerData) {
-    throw new Error("Your voice profile is not loaded yet.");
+    throw new Error("Your reference-conditioned voice profile is not loaded yet.");
   }
   const inputs = await processor._call(text);
   const waveform = await model.generate({

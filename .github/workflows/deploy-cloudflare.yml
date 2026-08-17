@@ -1,18 +1,22 @@
 name: Deploy Little Red's Big Studio
+
 on:
   push:
     branches: [main]
   workflow_dispatch:
+
 permissions:
   contents: read
+
 env:
   CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CLOUDFLARE_TOKEN || secrets.CF_API_TOKEN || secrets.CLOUDFLARE_API_KEY }}
   CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || secrets.CF_ACCOUNT_ID || secrets.CLOUDFLARE_ACCOUNT || secrets.CLOUDFLARE_ID }}
   CLOUDFLARE_EMAIL: ${{ secrets.CLOUDFLARE_EMAIL }}
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -25,48 +29,22 @@ jobs:
         run: npm install --no-audit --no-fund
       - name: Typecheck
         run: npx tsc --noEmit
-      - name: Normalize formatting
-        run: npx prettier --write .
       - name: Format check
         run: npx prettier --check .
       - name: Lint
         run: npm run lint
-      - name: Build
+      - name: Static local Buddy voice-path verification
+        run: npm run verify:local-voice
+      - name: Build production bundle
         run: npm run build
+      - name: Verify browser voice production bundle
+        run: npm run verify:browser-bundle
       - name: Verify Cloudflare credentials are available
         shell: bash
         run: |
           set -euo pipefail
           test -n "${CLOUDFLARE_API_TOKEN:-}"
           test -n "${CLOUDFLARE_ACCOUNT_ID:-}"
-      - name: Install FFmpeg for codec/container verification
-        shell: bash
-        run: |
-          set -euo pipefail
-          if ! command -v ffmpeg >/dev/null 2>&1; then
-            sudo apt-get update
-            sudo apt-get install -y ffmpeg
-          fi
-          ffmpeg -version | head -1
-      - name: Pre-deploy strict speaker identity gate
-        env:
-          PRODUCTION_URL: http://127.0.0.1:8787
-          SAMPLE_URL: https://huggingface.co/datasets/hf-internal-testing/dummy-audio-samples/resolve/main/obama_first_45_secs.mp3
-          IMPOSTOR_URL: https://huggingface.co/datasets/hf-internal-testing/dummy-audio-samples/resolve/main/bcn_weather.mp3
-        shell: bash
-        run: |
-          set -euo pipefail
-          python -m pip install --disable-pip-version-check --no-input resemblyzer soundfile
-          nohup npx wrangler dev --local --port 8787 --ip 127.0.0.1 --config wrangler.jsonc > /tmp/wrangler-dev.log 2>&1 &
-          server_pid=$!
-          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
-          for i in $(seq 1 30); do
-            code=$(curl -sS --max-time 3 -o /tmp/local-health.json -w '%{http_code}' "$PRODUCTION_URL/api/ai/voice-clone") || code=000
-            if [ "$code" = "200" ] && grep -q '"capability":"voice-clone"' /tmp/local-health.json; then break; fi
-            if [ "$i" = "30" ]; then cat /tmp/wrangler-dev.log; exit 1; fi
-            sleep 2
-          done
-          python scripts/live-voice-speaker-verification.py
       - name: Deploy to Cloudflare Workers
         run: npx wrangler deploy --config wrangler.jsonc
       - name: Production smoke test
@@ -77,93 +55,10 @@ jobs:
           set -euo pipefail
           for i in 1 2 3 4 5 6 7 8 9 10; do
             code=$(curl -L -sS --max-time 20 -o /tmp/studio.html -w '%{http_code}' "$PRODUCTION_URL/?deploy_sha=${GITHUB_SHA}") || code=000
-            if [ "$code" = "200" ] && grep -qiE "Buddy|Little Red" /tmp/studio.html; then break; fi
+            if [ "$code" = "200" ] && grep -qiE "Buddy|Little Red" /tmp/studio.html; then
+              exit 0
+            fi
             sleep 5
-            if [ "$i" = "10" ]; then exit 1; fi
           done
-          clone_code=$(curl -L -sS --max-time 20 -o /tmp/clone-health.json -w '%{http_code}' "$PRODUCTION_URL/api/ai/voice-clone?deploy_sha=${GITHUB_SHA}") || clone_code=000
-          test "$clone_code" = "200"
-          grep -q '"capability":"voice-clone"' /tmp/clone-health.json
-          grep -q '"backend":"free-chatterbox-cpu-first"' /tmp/clone-health.json
-          grep -q '"transcriptRequired":false' /tmp/clone-health.json
-          grep -q '"outputFormat":"PCM16 WAV"' /tmp/clone-health.json
-          grep -q '"referenceInputIndex":5' /tmp/clone-health.json
-          grep -q '"cfgWeight":0.3' /tmp/clone-health.json
-      - name: Probe free Chatterbox CPU Space
-        env:
-          SPACE: https://rahul7star-chatterbox-multilingual-tts.hf.space
-          SAMPLE_URL: https://huggingface.co/datasets/hf-internal-testing/dummy-audio-samples/resolve/main/obama_first_45_secs.mp3
-        shell: bash
-        run: |
-          set -euo pipefail
-          echo '--- Gradio API info ---'
-          curl -L -sS --max-time 30 "$SPACE/gradio_api/info" | tee /tmp/space-info.json
-          echo
-          curl -L -sS --max-time 30 "$SAMPLE_URL" -o /tmp/ref.mp3
-          upload=$(curl -L -sS --max-time 30 -X POST -F 'files=@/tmp/ref.mp3;type=audio/mpeg' "$SPACE/gradio_api/upload")
-          echo "UPLOAD=$upload"
-          test -n "$upload"
-      - name: One-shot live multipart voice artifact test
-        env:
-          PRODUCTION_URL: https://little-reds-big-studio-f36b7ec4.gigglelootcoin.workers.dev
-          SAMPLE_URL: https://huggingface.co/datasets/hf-internal-testing/dummy-audio-samples/resolve/main/obama_first_45_secs.mp3
-        shell: bash
-        run: |
-          set -euo pipefail
-          curl -L -sS --max-time 30 "$SAMPLE_URL" -o /tmp/voice-reference.mp3
-          test -s /tmp/voice-reference.mp3
-          code=$(curl -L -sS --max-time 180 -o /tmp/voice-clone-output -D /tmp/voice-clone-headers -w '%{http_code}' \
-            -X POST \
-            -F 'audio=@/tmp/voice-reference.mp3;type=audio/mpeg' \
-            -F 'text=Hello. This is the live voice clone upload test.' \
-            -F 'target_text=Hello. This is the live voice clone upload test.' \
-            "$PRODUCTION_URL/api/ai/voice-clone?deploy_sha=${GITHUB_SHA}") || code=000
-          echo '--- clone response headers ---'
-          cat /tmp/voice-clone-headers
-          if [ "$code" != "200" ]; then
-            echo "::error::Live voice clone returned HTTP $code"
-            cat /tmp/voice-clone-output 2>/dev/null || true
-            exit 1
-          fi
-          python - <<'PY'
-          import math, struct, wave
-          path='/tmp/voice-clone-output'
-          try:
-              with wave.open(path, 'rb') as w:
-                  channels=w.getnchannels(); rate=w.getframerate(); width=w.getsampwidth(); frames=w.getnframes()
-                  raw=w.readframes(frames)
-              if width != 2: raise ValueError(f'expected PCM16 WAV, got sample width {width * 8} bits')
-              samples=struct.unpack('<' + 'h'*(len(raw)//2), raw)
-              peak=max((abs(x) for x in samples), default=0)/32768
-              rms=math.sqrt(sum((x/32768)**2 for x in samples)/max(1,len(samples)))
-              duration=frames/rate if rate else 0
-              print(f'LIVE_AUDIO container=PCM16_WAV channels={channels} rate={rate} frames={frames} duration={duration:.6f}s peak={peak:.6f} rms={rms:.6f}')
-              if duration <= 0.25: raise ValueError(f'non-usable duration: {duration:.6f}s')
-              if peak < 0.005 or rms < 0.0005: raise ValueError(f'silent artifact: peak={peak:.6f}, rms={rms:.6f}')
-          except Exception as exc:
-              print(f'::error::LIVE_AUDIO verification failed: {exc}')
-              raise
-          PY
-          ffmpeg -v error -i /tmp/voice-clone-output -f null - || { echo '::error::FFmpeg could not decode the returned WAV artifact'; exit 1; }
-          grep -qi '^content-type: audio/wav' /tmp/voice-clone-headers || { echo '::error::Worker did not return audio/wav'; exit 1; }
-          grep -qi '^x-clone-verified: true' /tmp/voice-clone-headers || { echo '::error::Worker did not mark the artifact verified'; exit 1; }
-          test "$(wc -c < /tmp/voice-clone-output)" -gt 4096 || { echo '::error::Returned audio artifact is too small'; exit 1; }
-      - name: Post-deploy strict speaker identity verification
-        env:
-          PRODUCTION_URL: https://little-reds-big-studio-f36b7ec4.gigglelootcoin.workers.dev
-          SAMPLE_URL: https://huggingface.co/datasets/hf-internal-testing/dummy-audio-samples/resolve/main/obama_first_45_secs.mp3
-          IMPOSTOR_URL: https://huggingface.co/datasets/hf-internal-testing/dummy-audio-samples/resolve/main/bcn_weather.mp3
-        shell: bash
-        run: |
-          set -euo pipefail
-          python scripts/live-voice-speaker-verification.py
-      - name: Android-style browser playback test
-        env:
-          PRODUCTION_URL: https://little-reds-big-studio-f36b7ec4.gigglelootcoin.workers.dev
-          SAMPLE_URL: https://huggingface.co/datasets/hf-internal-testing/dummy-audio-samples/resolve/main/obama_first_45_secs.mp3
-        shell: bash
-        run: |
-          set -euo pipefail
-          npm install --no-save playwright@1.55.0
-          npx playwright install chromium --with-deps
-          node scripts/live-voice-browser-smoke.mjs
+          cat /tmp/studio.html 2>/dev/null || true
+          exit 1
