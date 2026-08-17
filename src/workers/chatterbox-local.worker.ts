@@ -95,7 +95,9 @@ async function generate(text: string, exaggeration: number) {
     data.byteOffset,
     data.byteOffset + data.byteLength,
   ) as ArrayBuffer;
-  self.postMessage({ type: "audio", sampleRate: SAMPLE_RATE, waveform: buffer }, [buffer]);
+  // Do not transfer the buffer here: WorkerGlobalScope typings in the current
+  // TS lib target do not expose the browser-style transfer-list overload.
+  self.postMessage({ type: "audio", sampleRate: SAMPLE_RATE, waveform: buffer });
 }
 
 self.addEventListener("message", async (event: MessageEvent) => {
