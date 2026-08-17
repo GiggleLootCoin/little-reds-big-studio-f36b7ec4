@@ -1,13 +1,16 @@
-import { ChatterboxModel, ChatterboxProcessor, Tensor } from "@huggingface/transformers";
+import { ChatterboxModel, ChatterboxProcessor, RawAudio } from "@huggingface/transformers";
 
-const MODEL_ID = "ttslab/chatterbox-turbo-webgpu";
+// Official Transformers.js Chatterbox voice-cloning model. Model files are
+// downloaded directly to the browser; inference remains local/WebGPU.
+const MODEL_ID = "onnx-community/chatterbox-ONNX";
+const SAMPLE_RATE = 24000;
 
 type LocalChatterboxModel = {
-  encode_speech: (audio: Tensor) => Promise<Record<string, unknown>>;
+  encode_speech: (audio: unknown) => Promise<Record<string, unknown>>;
   generate: (inputs: Record<string, unknown>) => Promise<{ data: Float32Array }>;
 };
 type LocalProcessor = {
-  _call: (text: string) => Promise<Record<string, unknown>>;
+  _call: (text: string, audio?: unknown) => Promise<Record<string, unknown>>;
 };
 
 let model: LocalChatterboxModel | null = null;
@@ -30,33 +33,46 @@ async function loadModel() {
       "This Android browser does not expose WebGPU. The API-keyless local Chatterbox voice engine cannot run on this device.",
     );
   }
-  self.postMessage({ type: "progress", message: "Preparing the lightweight WebGPU voice engine…" });
+  self.postMessage({ type: "progress", message: "Preparing the local Chatterbox voice-cloning engine… first use downloads the model files." });
   try {
     processor = (await ChatterboxProcessor.from_pretrained(MODEL_ID)) as unknown as LocalProcessor;
     model = (await ChatterboxModel.from_pretrained(MODEL_ID, {
       device: "webgpu",
       dtype: {
         embed_tokens: "fp32",
-        speech_encoder: "q4f16",
-        language_model: "q4f16",
-        conditional_decoder: "q4f16",
+        speech_encoder: "fp32",
+        language_model: "q4",
+        conditional_decoder: "fp32",
       },
       progress_callback: (progress: unknown) => self.postMessage({ type: "progress", progress }),
     })) as unknown as LocalChatterboxModel;
-    self.postMessage({ type: "loaded", device: "webgpu" });
+    self.postMessage({ type: "loaded", device: "webgpu", model: MODEL_ID });
   } catch (error) {
     model = null;
     processor = null;
+    speakerData = null;
     const message = error instanceof Error ? error.message : String(error);
-    throw new Error(`The free local Chatterbox Turbo engine could not start: ${message}`);
+    throw new Error(`The free local Chatterbox voice-cloning engine could not start: ${message}`);
   }
 }
 
 async function encode(audio: Float32Array) {
-  if (!model) await loadModel();
-  if (!model) throw new Error("The local Chatterbox model could not be loaded.");
-  const tensor = new Tensor("float32", audio, [1, audio.length]);
-  speakerData = await model.encode_speech(tensor);
+  if (!model || !processor) await loadModel();
+  if (!model || !processor) throw new Error("The local Chatterbox model could not be loaded.");
+
+  // Use the same processor path as the official Transformers.js cloning
+  // example: reference audio is converted into the model's input_values
+  // before encode_speech, rather than treating the raw PCM tensor as an
+  // already-processed speaker input.
+  const reference = new RawAudio(audio, SAMPLE_RATE);
+  const inputs = await processor._call("", reference);
+  if (!inputs.input_values) {
+    throw new Error("Chatterbox could not extract speaker features from your reference recording.");
+  }
+  speakerData = await model.encode_speech(inputs.input_values);
+  if (!speakerData || Object.keys(speakerData).length === 0) {
+    throw new Error("Chatterbox returned no speaker-conditioning data for your reference recording.");
+  }
 }
 
 async function generate(text: string, exaggeration: number) {
@@ -65,8 +81,9 @@ async function generate(text: string, exaggeration: number) {
   }
   const inputs = await processor._call(text);
   const waveform = await model.generate({
-    ...inputs,
     ...speakerData,
+    input_ids: inputs.input_ids,
+    attention_mask: inputs.attention_mask,
     exaggeration,
     max_new_tokens: 2048,
     repetition_penalty: 1.2,
@@ -78,7 +95,9 @@ async function generate(text: string, exaggeration: number) {
     data.byteOffset,
     data.byteOffset + data.byteLength,
   ) as ArrayBuffer;
-  self.postMessage({ type: "audio", sampleRate: 24000, waveform: buffer });
+  // Do not transfer the buffer here: WorkerGlobalScope typings in the current
+  // TS lib target do not expose the browser-style transfer-list overload.
+  self.postMessage({ type: "audio", sampleRate: SAMPLE_RATE, waveform: buffer });
 }
 
 self.addEventListener("message", async (event: MessageEvent) => {
