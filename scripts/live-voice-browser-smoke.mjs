@@ -66,8 +66,7 @@ try {
     probe.preload = "metadata";
     await new Promise((resolve, reject) => {
       probe.onloadedmetadata = resolve;
-      probe.onerror = () =>
-        reject(new Error("HTMLAudioElement could not decode normalized clone"));
+      probe.onerror = () => reject(new Error("HTMLAudioElement could not decode normalized clone"));
       probe.load();
     });
     return {
