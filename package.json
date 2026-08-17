@@ -7,6 +7,7 @@
     "dev": "vite dev",
     "build": "vite build && node scripts/write-worker-wrapper.mjs",
     "build:dev": "vite build --mode development && node scripts/write-worker-wrapper.mjs",
+    "verify:local-voice": "node scripts/verify-local-voice-path.mjs",
     "verify:browser-bundle": "node scripts/verify-browser-voice-bundle.mjs",
     "preview": "vite preview",
     "deploy": "npm run build && wrangler deploy",
