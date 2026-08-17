@@ -141,7 +141,7 @@ export async function createLocalChatterboxClone(
   onStatus?: (status: string) => void,
 ): Promise<LocalCloneResult> {
   if (!reference.size) throw new Error("The voice recording is empty.");
-  onStatus?.("Loading the free local Chatterbox Turbo engine… first use downloads about 540 MB.");
+  onStatus?.("Loading the free local Chatterbox voice-cloning engine… first use downloads the model files.");
   await load();
   const key = await fingerprint(reference);
   onStatus?.(
@@ -174,7 +174,7 @@ export async function createLocalChatterboxClone(
   if (blob.size < 4096) throw new Error("The local engine returned an empty audio result.");
   return {
     url: URL.createObjectURL(blob),
-    provider: "Chatterbox Turbo local — WebGPU",
+    provider: "Chatterbox local — WebGPU",
     duration: waveform.length / sampleRate,
   };
 }
