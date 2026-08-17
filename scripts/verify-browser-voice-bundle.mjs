@@ -13,9 +13,13 @@ const forbidden = [
 ];
 
 const files = await readdir(root);
-const workerFiles = files.filter((file) => file.startsWith("chatterbox-local.worker-") && file.endsWith(".js"));
+const workerFiles = files.filter(
+  (file) => file.startsWith("chatterbox-local.worker-") && file.endsWith(".js"),
+);
 if (workerFiles.length !== 1) {
-  throw new Error(`Expected exactly one production Chatterbox worker asset, found ${workerFiles.length}.`);
+  throw new Error(
+    `Expected exactly one production Chatterbox worker asset, found ${workerFiles.length}.`,
+  );
 }
 
 const workerPath = join(root, workerFiles[0]);
@@ -30,4 +34,6 @@ for (const needle of forbidden) {
 }
 
 console.log(`Production Chatterbox worker verified: ${workerFiles[0]}`);
-console.log("Local WebGPU model marker is present; Node/native dependencies and public voice-Space fallback markers are absent from the actual voice worker asset.");
+console.log(
+  "Local WebGPU model marker is present; Node/native dependencies and public voice-Space fallback markers are absent from the actual voice worker asset.",
+);

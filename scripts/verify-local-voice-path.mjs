@@ -22,11 +22,19 @@ for (const [label, source, needle] of required) {
   if (!source.includes(needle)) throw new Error(`Voice-path verification failed: ${label}`);
 }
 
-const forbidden = [".hf.space", "rahul7star", "spacekaren", "/api/ai/voice-clone", "OPENROUTERAI_API_KEY"];
+const forbidden = [
+  ".hf.space",
+  "rahul7star",
+  "spacekaren",
+  "/api/ai/voice-clone",
+  "OPENROUTERAI_API_KEY",
+];
 for (const [name, source] of Object.entries(files)) {
   for (const needle of forbidden) {
     if (source.includes(needle)) {
-      throw new Error(`Voice-path verification failed: forbidden remote/API-key dependency found in ${name}: ${needle}`);
+      throw new Error(
+        `Voice-path verification failed: forbidden remote/API-key dependency found in ${name}: ${needle}`,
+      );
     }
   }
 }
@@ -37,4 +45,6 @@ if (!voiceBlock.includes("fallbackIds: []")) {
   throw new Error("Voice capability registry must not advertise a voice fallback.");
 }
 
-console.log("Local Buddy voice path verified statically: reference recording -> Chatterbox speaker conditioning -> WebGPU generation, with no public Space or user API key fallback.");
+console.log(
+  "Local Buddy voice path verified statically: reference recording -> Chatterbox speaker conditioning -> WebGPU generation, with no public Space or user API key fallback.",
+);

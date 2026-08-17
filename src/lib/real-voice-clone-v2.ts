@@ -35,7 +35,8 @@ export async function createBestFreeVoiceClone(
   try {
     onStatus?.("Checking the locally generated clone for real, playable audio…");
     const artifact = await fetch(local.url).then((response) => {
-      if (!response.ok) throw new Error(`Local Chatterbox audio could not be read (${response.status}).`);
+      if (!response.ok)
+        throw new Error(`Local Chatterbox audio could not be read (${response.status}).`);
       return response.blob();
     });
     const normalized = await normalizeAndVerifyBrowserAudio(artifact);
@@ -52,7 +53,8 @@ export async function createBestFreeVoiceClone(
     return {
       url: normalized.url,
       provider,
-      verification: "browser-local Chatterbox reference conditioning + audio decode + non-silent artifact verification",
+      verification:
+        "browser-local Chatterbox reference conditioning + audio decode + non-silent artifact verification",
       duration: normalized.stats.duration,
       peak: normalized.stats.peak,
       rms: normalized.stats.rms,

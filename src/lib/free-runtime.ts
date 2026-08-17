@@ -58,7 +58,8 @@ export const FREE_CAPABILITIES: FreeCapability[] = [
     requiresApiKey: false,
     capabilities: ["voice-clone", "tts"],
     fallbackIds: [],
-    notes: "Uses the user's actual reference recording for conditioning on-device. No remote voice fallback is allowed.",
+    notes:
+      "Uses the user's actual reference recording for conditioning on-device. No remote voice fallback is allowed.",
   },
   {
     id: "voice-rvc",
@@ -67,7 +68,8 @@ export const FREE_CAPABILITIES: FreeCapability[] = [
     requiresApiKey: false,
     capabilities: ["voice-conversion", "vocal-swap"],
     fallbackIds: [],
-    notes: "Only expose a route after a real authorized model/reference input produces a validated artifact.",
+    notes:
+      "Only expose a route after a real authorized model/reference input produces a validated artifact.",
   },
   {
     id: "browser-audio",
