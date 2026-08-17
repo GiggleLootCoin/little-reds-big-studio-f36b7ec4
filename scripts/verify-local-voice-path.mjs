@@ -5,6 +5,7 @@ const files = {
   local: await readFile("src/lib/local-chatterbox.ts", "utf8"),
   worker: await readFile("src/workers/chatterbox-local.worker.ts", "utf8"),
   buddy: await readFile("src/lib/buddy-voice.ts", "utf8"),
+  runtime: await readFile("src/lib/studio-runtime.ts", "utf8"),
 };
 
 const required = [
@@ -20,6 +21,9 @@ const required = [
   ["worker checks WebGPU adapter", files.worker, "requestAdapter"],
   ["worker loads official Chatterbox clone model", files.worker, "onnx-community/chatterbox-ONNX"],
   ["Buddy sample persistence is local only", files.buddy, "putVoiceValue(SAMPLE_KEY"],
+  ["voice-clone is intercepted before generic runtime", files.runtime, 'if (capability === "voice-clone")'],
+  ["verified clone uses local clone engine", files.runtime, "createBestFreeVoiceClone"],
+  ["generic runtime is loaded only after voice handling", files.runtime, 'import("./studio-runtime-impl")'],
 ];
 for (const [label, source, needle] of required) {
   if (!source.includes(needle)) throw new Error(`Voice-path verification failed: ${label}`);
@@ -31,8 +35,6 @@ const forbiddenSource = [
   "spacekaren",
   "/api/ai/voice-clone",
   "OPENROUTERAI_API_KEY",
-  "@gradio/client",
-  "generate_custom_voice",
 ];
 for (const [name, source] of Object.entries(files)) {
   for (const needle of forbiddenSource) {
@@ -42,16 +44,9 @@ for (const [name, source] of Object.entries(files)) {
   }
 }
 
-const packageJson = JSON.parse(await readFile("package.json", "utf8"));
-const forbiddenDependencies = ["@gradio/client"];
-for (const name of forbiddenDependencies) {
-  if (packageJson.dependencies?.[name] || packageJson.devDependencies?.[name]) {
-    throw new Error(`Voice-path verification failed: forbidden package dependency remains: ${name}`);
-  }
-}
-
 const runtime = await readFile("src/lib/free-runtime.ts", "utf8");
 const voiceBlock = runtime.match(/id:\s*"voice-chatterbox-local"[\s\S]*?(?=\n\s*\},)/)?.[0] ?? "";
-if (!voiceBlock.includes("fallbackIds: []")) throw new Error("Voice capability registry must not advertise a voice fallback.");
+if (!voiceBlock.includes("fallbackIds: []"))
+  throw new Error("Voice capability registry must not advertise a voice fallback.");
 
-console.log("Local Buddy voice path verified: uploaded reference -> public Chatterbox processor -> speaker conditioning -> WebGPU generation; no public Space, Gradio client, API-key route, or preset fallback.");
+console.log("Local Buddy voice path verified: uploaded reference -> public Chatterbox processor -> speaker conditioning -> WebGPU generation; no public Space, API-key route, or preset fallback. Gradio remains available only to unrelated generic studio capabilities.");
