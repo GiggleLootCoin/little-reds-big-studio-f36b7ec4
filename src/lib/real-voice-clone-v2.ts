@@ -43,7 +43,13 @@ export async function createBestFreeVoiceClone(
     if (normalized.stats.duration <= 0 || normalized.stats.peak <= 0 || normalized.stats.rms <= 0)
       throw new Error("Local Chatterbox returned silent or unusable audio.");
 
-    const provider = "Chatterbox Turbo local — WebGPU";
+    // The original worker URL belongs to the worker result and must be revoked
+    // before returning. The verifier creates a separate object URL for the
+    // normalized WAV, so return that URL rather than revoking the URL we hand
+    // to the caller.
+    URL.revokeObjectURL(local.url);
+
+    const provider = "Chatterbox local — WebGPU";
     await saveBuddyClonePreview(normalized.blob, provider);
     const browserWindow = window as Window & { __buddyLastCloneUrl?: string };
     browserWindow.__buddyLastCloneUrl = normalized.url;
@@ -59,7 +65,10 @@ export async function createBestFreeVoiceClone(
       peak: normalized.stats.peak,
       rms: normalized.stats.rms,
     };
-  } finally {
+  } catch (error) {
+    // Only revoke the worker URL here. A successful normalization creates a
+    // separate normalized.url that remains owned by the caller.
     URL.revokeObjectURL(local.url);
+    throw error;
   }
 }
