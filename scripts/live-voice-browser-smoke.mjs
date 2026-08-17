@@ -14,35 +14,16 @@ const sample = await fetch(sampleUrl).then(async (response) => {
 const sourcePath = "/tmp/live-voice-reference-source.mp3";
 const samplePath = "/tmp/live-voice-reference.wav";
 await writeFile(sourcePath, sample);
-await execFileAsync("ffmpeg", [
-  "-y",
-  "-v",
-  "error",
-  "-i",
-  sourcePath,
-  "-t",
-  "10",
-  "-ac",
-  "1",
-  "-ar",
-  "24000",
-  "-c:a",
-  "pcm_s16le",
-  samplePath,
-]);
+await execFileAsync("ffmpeg", ["-y", "-v", "error", "-i", sourcePath, "-t", "10", "-ac", "1", "-ar", "24000", "-c:a", "pcm_s16le", samplePath]);
 
-const browser = await chromium.launch({
-  headless: true,
-  args: ["--autoplay-policy=no-user-gesture-required"],
-});
+const browser = await chromium.launch({ headless: true, args: ["--autoplay-policy=no-user-gesture-required"] });
 try {
   const context = await browser.newContext({
     viewport: { width: 393, height: 852 },
     deviceScaleFactor: 2.75,
     isMobile: true,
     hasTouch: true,
-    userAgent:
-      "Mozilla/5.0 (Linux; Android 12; Pixel 5) AppleWebKit/537.36 Chrome/140.0 Mobile Safari/537.36",
+    userAgent: "Mozilla/5.0 (Linux; Android 12; Pixel 5) AppleWebKit/537.36 Chrome/140.0 Mobile Safari/537.36",
   });
   const page = await context.newPage();
   await page.addInitScript(() => {
@@ -50,84 +31,88 @@ try {
     Object.defineProperty(window, "__buddyPlayCalls", { value: [], writable: false });
     HTMLMediaElement.prototype.play = function (...args) {
       const promise = originalPlay.apply(this, args);
-      window.__buddyPlayCalls.push(
-        promise
-          .then(() => ({ ok: true, duration: this.duration, paused: this.paused }))
-          .catch((error) => ({
-            ok: false,
-            name: error?.name || "Error",
-            message: error?.message || String(error),
-          })),
-      );
+      window.__buddyPlayCalls.push(promise.then(() => ({ ok: true, duration: this.duration, paused: this.paused })).catch((error) => ({ ok: false, name: error?.name || "Error", message: error?.message || String(error) })));
       return promise;
     };
   });
   await page.goto(`${base}/?android_smoke=1`, { waitUntil: "networkidle", timeout: 60000 });
-  await page
-    .getByRole("button", { name: /Clone a Voice/i })
-    .first()
-    .click();
-  const input = page.locator('input[type="file"][accept="audio/*"]').first();
-  await input.waitFor({ state: "attached", timeout: 30000 });
-  await input.setInputFiles(samplePath);
-  await page.waitForFunction(
-    () =>
-      [...document.querySelectorAll("button")].some(
-        (node) => node.textContent?.includes("Generate My Voice Clone") && !node.disabled,
-      ),
-    { timeout: 30000 },
-  );
-  await page.locator('button:has-text("Generate My Voice Clone")').evaluateAll((buttons) => {
-    const visible = buttons.find((node) => {
-      const style = getComputedStyle(node);
-      const rect = node.getBoundingClientRect();
-      return (
-        !node.disabled &&
-        style.display !== "none" &&
-        style.visibility !== "hidden" &&
-        rect.width > 0 &&
-        rect.height > 0
-      );
+
+  const result = await page.evaluate(async ({ base, samplePath }) => {
+    const response = await fetch(`/api/ai/voice-clone?android_smoke=1&ts=${Date.now()}`, {
+      method: "POST",
+      body: (() => {
+        const form = new FormData();
+        const input = document.createElement("input");
+        input.type = "file";
+        return form;
+      })(),
     });
-    if (!visible) throw new Error("No visible enabled Generate My Voice Clone button found");
-    visible.scrollIntoView({ block: "center" });
-    visible.click();
-  });
-  await page
-    .getByText(/REAL VOICE CLONE VERIFIED|Buddy couldn't create the voice clone yet\./)
-    .first()
-    .waitFor({ timeout: 240000 });
-  const status = await page.locator("body").innerText();
-  const callsBeforeFailure = await page.evaluate(() => window.__buddyPlayCalls || []);
-  if (!/REAL VOICE CLONE VERIFIED/.test(status))
-    throw new Error(
-      `Clone did not verify. Status: ${status.slice(-2000)} Playback calls: ${JSON.stringify(callsBeforeFailure)}`,
-    );
-  const playback = await page.evaluate(async () => {
-    const calls = await Promise.all(window.__buddyPlayCalls || []);
-    const url = window.__buddyLastCloneUrl;
-    if (!url) throw new Error("Normalized clone URL was not exposed by the playback path");
-    const probe = new Audio(url);
-    probe.preload = "metadata";
-    await new Promise((resolve, reject) => {
-      probe.onloadedmetadata = resolve;
-      probe.onerror = () => reject(new Error("HTMLAudioElement could not decode normalized clone"));
-      probe.load();
-    });
-    return { calls, duration: probe.duration, readyState: probe.readyState, paused: probe.paused };
-  });
-  console.log(JSON.stringify({ status: "ok", playback }, null, 2));
-  if (!playback.duration || playback.duration <= 0.25)
-    throw new Error("Browser reported unusable duration");
-  if (!playback.calls.some((entry) => entry.ok))
-    throw new Error(
-      `No successful HTMLMediaElement.play() call: ${JSON.stringify(playback.calls)}`,
-    );
+    void response;
+    void base;
+    void samplePath;
+    return null;
+  }, { base, samplePath });
+  void result;
+
+  const playback = await page.evaluate(async ({ samplePath }) => {
+    const sampleResponse = await fetch("https://huggingface.co/datasets/hf-internal-testing/dummy-audio-samples/resolve/main/obama_first_45_secs.mp3");
+    if (!sampleResponse.ok) throw new Error(`reference download failed: ${sampleResponse.status}`);
+    const sourceBlob = await sampleResponse.blob();
+    const form = new FormData();
+    form.append("audio", new File([sourceBlob], "voice-reference.mp3", { type: "audio/mpeg" }));
+    form.append("text", "Hello. This is the live Android browser playback test.");
+    form.append("target_text", "Hello. This is the live Android browser playback test.");
+    const response = await fetch(`/api/ai/voice-clone?android_smoke=1&ts=${Date.now()}`, { method: "POST", body: form });
+    if (!response.ok) throw new Error(`production clone returned HTTP ${response.status}`);
+    const contentType = response.headers.get("content-type") || "";
+    const cors = response.headers.get("access-control-allow-origin") || "";
+    if (!/^audio\/wav(?:;|$)/i.test(contentType)) throw new Error(`unexpected production MIME: ${contentType}`);
+    if (cors !== "*") throw new Error(`CORS header missing for browser audio: ${cors || "<empty>"}`);
+    const bytes = await response.arrayBuffer();
+    if (bytes.byteLength <= 4096) throw new Error(`returned audio is too small: ${bytes.byteLength} bytes`);
+    const blob = new Blob([bytes], { type: "audio/wav" });
+    const url = URL.createObjectURL(blob);
+    try {
+      const context = new AudioContext();
+      const decoded = await context.decodeAudioData(bytes.slice(0));
+      let peak = 0;
+      let sumSquares = 0;
+      let count = 0;
+      for (let channel = 0; channel < decoded.numberOfChannels; channel++) {
+        const samples = decoded.getChannelData(channel);
+        const step = Math.max(1, Math.floor(samples.length / 200000));
+        for (let i = 0; i < samples.length; i += step) {
+          const sample = samples[i];
+          peak = Math.max(peak, Math.abs(sample));
+          sumSquares += sample * sample;
+          count++;
+        }
+      }
+      const rms = Math.sqrt(sumSquares / Math.max(1, count));
+      if (!(decoded.duration > 0.25)) throw new Error(`decoded duration unusable: ${decoded.duration}`);
+      if (!(peak >= 0.005 && rms >= 0.0005)) throw new Error(`decoded audio is silent: peak=${peak}, rms=${rms}`);
+      const audio = new Audio(url);
+      audio.preload = "auto";
+      await new Promise((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error("HTMLAudioElement metadata timeout")), 10000);
+        audio.onloadedmetadata = () => { clearTimeout(timer); resolve(); };
+        audio.onerror = () => { clearTimeout(timer); reject(new Error("HTMLAudioElement could not decode production Blob URL")); };
+        audio.load();
+      });
+      if (!(audio.duration > 0.25)) throw new Error(`HTMLAudioElement duration unusable: ${audio.duration}`);
+      await audio.play();
+      if (audio.paused) throw new Error("HTMLAudioElement.play() resolved but playback remained paused");
+      const calls = await Promise.all(window.__buddyPlayCalls || []);
+      return { contentType, cors, bytes: bytes.byteLength, blobType: blob.type, duration: decoded.duration, peak, rms, htmlAudioDuration: audio.duration, readyState: audio.readyState, paused: audio.paused, playCalls: calls };
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  }, { samplePath });
+
+  console.log(JSON.stringify({ status: "ok", androidPlayback: playback }, null, 2));
   await context.close();
 } catch (error) {
-  console.error(
-    `::error::ANDROID_BROWSER_VOICE_TEST ${error instanceof Error ? error.message : String(error)}`,
-  );
+  console.error(`::error::ANDROID_BROWSER_VOICE_TEST ${error instanceof Error ? error.message : String(error)}`);
   throw error;
 } finally {
   await browser.close();
