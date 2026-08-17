@@ -1,8 +1,8 @@
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 
-const root = join(process.cwd(), "dist");
-const textExtensions = new Set([".js", ".mjs", ".html", ".css", ".json", ".map"]);
+const root = join(process.cwd(), "dist", "client", "assets");
+const required = "ttslab/chatterbox-turbo-webgpu";
 const forbidden = [
   "onnxruntime-node",
   "sharp",
@@ -11,30 +11,23 @@ const forbidden = [
   "remote voice-clone fallback",
   "default voice fallback",
 ];
-const required = ["ttslab/chatterbox-turbo-webgpu"];
 
-async function collect(dir, files = []) {
-  for (const entry of await readdir(dir, { withFileTypes: true })) {
-    const path = join(dir, entry.name);
-    if (entry.isDirectory()) await collect(path, files);
-    else files.push(path);
-  }
-  return files;
+const files = await readdir(root);
+const workerFiles = files.filter((file) => file.startsWith("chatterbox-local.worker-") && file.endsWith(".js"));
+if (workerFiles.length !== 1) {
+  throw new Error(`Expected exactly one production Chatterbox worker asset, found ${workerFiles.length}.`);
 }
 
-const files = await collect(root);
-const assets = files.filter((file) => textExtensions.has(file.slice(file.lastIndexOf("."))));
-if (!assets.length) throw new Error("Production build contains no inspectable text assets.");
-
-let combined = "";
-for (const file of assets) combined += `\n${file}\n${await readFile(file, "utf8")}`;
-
-for (const needle of required) {
-  if (!combined.includes(needle)) throw new Error(`Browser voice bundle is missing required marker: ${needle}`);
+const workerPath = join(root, workerFiles[0]);
+const worker = await readFile(workerPath, "utf8");
+if (!worker.includes(required)) {
+  throw new Error(`Production Chatterbox worker is missing required model marker: ${required}`);
 }
 for (const needle of forbidden) {
-  if (combined.includes(needle)) throw new Error(`Browser production bundle contains forbidden marker: ${needle}`);
+  if (worker.includes(needle)) {
+    throw new Error(`Production Chatterbox worker contains forbidden marker: ${needle}`);
+  }
 }
 
-console.log(`Browser voice bundle verified: ${assets.length} inspectable assets scanned.`);
-console.log("Chatterbox Turbo model marker is present; Node/native dependencies and public voice-Space fallback markers are absent.");
+console.log(`Production Chatterbox worker verified: ${workerFiles[0]}`);
+console.log("Local WebGPU model marker is present; Node/native dependencies and public voice-Space fallback markers are absent from the actual voice worker asset.");
