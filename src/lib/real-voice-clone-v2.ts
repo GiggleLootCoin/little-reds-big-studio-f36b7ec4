@@ -1,5 +1,6 @@
 import { normalizeAndVerifyBrowserAudio } from "./audio-artifact";
 import { saveBuddyClonePreview } from "./buddy-voice";
+import { createLocalChatterboxClone } from "./local-chatterbox";
 
 export type CloneResult = {
   url: string;
@@ -10,118 +11,53 @@ export type CloneResult = {
   rms: number;
 };
 
-const ENDPOINT = "/api/ai/voice-clone";
-
-function extensionForMime(mime: string): string {
-  const value = mime.toLowerCase().split(";")[0];
-  const map: Record<string, string> = {
-    "audio/wav": "wav",
-    "audio/wave": "wav",
-    "audio/x-wav": "wav",
-    "audio/mpeg": "mp3",
-    "audio/mp3": "mp3",
-    "audio/mp4": "m4a",
-    "audio/x-m4a": "m4a",
-    "audio/aac": "aac",
-    "audio/ogg": "ogg",
-    "audio/opus": "opus",
-    "audio/webm": "webm",
-    "audio/flac": "flac",
-    "audio/amr": "amr",
-    "audio/3gpp": "3gp",
-  };
-  return map[value] || "bin";
-}
-
-function providerFromHeaders(response: Response): string {
-  return (
-    response.headers.get("x-clone-provider") ||
-    response.headers.get("x-buddy-clone-backend") ||
-    "Hugging Face Chatterbox"
-  );
-}
-
-async function cloneWithProductionGateway(
+/**
+ * API-keyless voice cloning path.
+ *
+ * The reference recording is passed directly to the local Chatterbox encoder
+ * running in the browser. There is deliberately no remote/public Space
+ * fallback here: if local Chatterbox cannot run, the clone fails honestly.
+ */
+export async function createBestFreeVoiceClone(
   sample: Blob,
-  refText: string,
+  _refText: string,
   text: string,
-  language: string,
   onStatus?: (s: string) => void,
 ): Promise<CloneResult> {
   if (!sample.size) throw new Error("The voice sample is empty.");
-
-  const mime = sample.type || "audio/wav";
-  const filename = `voice-reference.${extensionForMime(mime)}`;
-  const file = new File([sample], filename, { type: mime });
-  const form = new FormData();
-  form.append("audio", file, filename);
-  form.append("text", text.trim());
-  form.append("target_text", text.trim());
-  form.append("refText", refText.trim());
-  form.append("referenceTranscript", refText.trim());
-  form.append("language", language || "English");
-
-  onStatus?.("Uploading your actual voice sample to Buddy's Chatterbox clone gateway…");
-  const response = await fetch(ENDPOINT, {
-    method: "POST",
-    body: form,
-    cache: "no-store",
-    credentials: "same-origin",
-  });
-
-  if (!response.ok) {
-    let detail = `Voice clone request failed (${response.status}).`;
-    try {
-      const payload = (await response.json()) as { error?: string };
-      if (payload.error) detail += ` ${payload.error}`;
-    } catch {
-      const textBody = await response.text().catch(() => "");
-      if (textBody) detail += ` ${textBody.slice(0, 500)}`;
-    }
-    throw new Error(detail);
-  }
-
-  const contentType = response.headers.get("content-type") || "";
-  if (!contentType.toLowerCase().startsWith("audio/")) {
-    throw new Error(`Voice clone returned ${contentType || "unknown content"} instead of audio.`);
-  }
-
-  const artifact = await response.blob();
-  if (artifact.size < 4096) {
-    throw new Error("Voice clone returned an empty or unusably small audio artifact.");
-  }
+  if (!text.trim()) throw new Error("Voice clone target text is empty.");
 
   onStatus?.(
-    "Decoding the returned clone and checking duration, samples and Android playback compatibility…",
+    "Preparing your actual reference recording for local Chatterbox — no preset speaker or remote Space is being used…",
   );
-  const normalized = await normalizeAndVerifyBrowserAudio(artifact);
-  const provider = providerFromHeaders(response);
-  const serverVerified = response.headers.get("x-clone-verified") === "true";
-  if (!serverVerified) {
-    throw new Error("The server returned audio without a verified non-silent artifact signature.");
-  }
-  const browserWindow = window as Window & { __buddyLastCloneUrl?: string };
-  browserWindow.__buddyLastCloneUrl = normalized.url;
-  await saveBuddyClonePreview(normalized.blob, provider);
-  onStatus?.(
-    `Clone audio verified: ${normalized.stats.duration.toFixed(2)}s, peak ${normalized.stats.peak.toFixed(3)}, RMS ${normalized.stats.rms.toFixed(4)}. Android audio element decoded it successfully.`,
-  );
-  return {
-    url: normalized.url,
-    provider,
-    verification:
-      "server + browser decode + non-silent sample verification + PCM16 WAV normalization",
-    duration: normalized.stats.duration,
-    peak: normalized.stats.peak,
-    rms: normalized.stats.rms,
-  };
-}
 
-export async function createBestFreeVoiceClone(
-  sample: Blob,
-  refText: string,
-  text: string,
-  onStatus?: (s: string) => void,
-): Promise<CloneResult> {
-  return cloneWithProductionGateway(sample, refText, text, "English", onStatus);
+  const local = await createLocalChatterboxClone(sample, text, 0.5, onStatus);
+  try {
+    onStatus?.("Checking the locally generated clone for real, playable audio…");
+    const artifact = await fetch(local.url).then((response) => {
+      if (!response.ok) throw new Error(`Local Chatterbox audio could not be read (${response.status}).`);
+      return response.blob();
+    });
+    const normalized = await normalizeAndVerifyBrowserAudio(artifact);
+    if (normalized.stats.duration <= 0 || normalized.stats.peak <= 0 || normalized.stats.rms <= 0)
+      throw new Error("Local Chatterbox returned silent or unusable audio.");
+
+    const provider = "Chatterbox Turbo local — WebGPU";
+    await saveBuddyClonePreview(normalized.blob, provider);
+    const browserWindow = window as Window & { __buddyLastCloneUrl?: string };
+    browserWindow.__buddyLastCloneUrl = normalized.url;
+    onStatus?.(
+      `Clone audio verified: ${normalized.stats.duration.toFixed(2)}s, peak ${normalized.stats.peak.toFixed(3)}, RMS ${normalized.stats.rms.toFixed(4)}.`,
+    );
+    return {
+      url: normalized.url,
+      provider,
+      verification: "browser-local Chatterbox reference conditioning + audio decode + non-silent artifact verification",
+      duration: normalized.stats.duration,
+      peak: normalized.stats.peak,
+      rms: normalized.stats.rms,
+    };
+  } finally {
+    URL.revokeObjectURL(local.url);
+  }
 }
