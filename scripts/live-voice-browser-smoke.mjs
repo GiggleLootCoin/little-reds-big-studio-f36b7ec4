@@ -7,22 +7,20 @@ const execFileAsync = promisify(execFile);
 const base = process.env.PRODUCTION_URL;
 const sampleUrl = process.env.SAMPLE_URL;
 if (!base || !sampleUrl) throw new Error("PRODUCTION_URL and SAMPLE_URL are required");
-const sample = await fetch(sampleUrl).then(async (response) => {
-  if (!response.ok) throw new Error(`sample download failed: ${response.status}`);
-  return Buffer.from(await response.arrayBuffer());
-});
 const sourcePath = "/tmp/live-voice-reference-source.mp3";
 const samplePath = "/tmp/live-voice-reference.wav";
-await writeFile(sourcePath, sample);
+const source = await fetch(sampleUrl).then(async (r) => {
+  if (!r.ok) throw new Error(`reference download failed: ${r.status}`);
+  return Buffer.from(await r.arrayBuffer());
+});
+await writeFile(sourcePath, source);
 await execFileAsync("ffmpeg", ["-y", "-v", "error", "-i", sourcePath, "-t", "10", "-ac", "1", "-ar", "24000", "-c:a", "pcm_s16le", samplePath]);
+const sampleBytes = await import("node:fs/promises").then(({ readFile }) => readFile(samplePath));
 
 const browser = await chromium.launch({ headless: true, args: ["--autoplay-policy=no-user-gesture-required"] });
 try {
   const context = await browser.newContext({
-    viewport: { width: 393, height: 852 },
-    deviceScaleFactor: 2.75,
-    isMobile: true,
-    hasTouch: true,
+    viewport: { width: 393, height: 852 }, deviceScaleFactor: 2.75, isMobile: true, hasTouch: true,
     userAgent: "Mozilla/5.0 (Linux; Android 12; Pixel 5) AppleWebKit/537.36 Chrome/140.0 Mobile Safari/537.36",
   });
   const page = await context.newPage();
@@ -36,30 +34,10 @@ try {
     };
   });
   await page.goto(`${base}/?android_smoke=1`, { waitUntil: "networkidle", timeout: 60000 });
-
-  const result = await page.evaluate(async ({ base, samplePath }) => {
-    const response = await fetch(`/api/ai/voice-clone?android_smoke=1&ts=${Date.now()}`, {
-      method: "POST",
-      body: (() => {
-        const form = new FormData();
-        const input = document.createElement("input");
-        input.type = "file";
-        return form;
-      })(),
-    });
-    void response;
-    void base;
-    void samplePath;
-    return null;
-  }, { base, samplePath });
-  void result;
-
-  const playback = await page.evaluate(async ({ samplePath }) => {
-    const sampleResponse = await fetch("https://huggingface.co/datasets/hf-internal-testing/dummy-audio-samples/resolve/main/obama_first_45_secs.mp3");
-    if (!sampleResponse.ok) throw new Error(`reference download failed: ${sampleResponse.status}`);
-    const sourceBlob = await sampleResponse.blob();
+  const playback = await page.evaluate(async ({ sampleBytes }) => {
+    const reference = Uint8Array.from(sampleBytes);
     const form = new FormData();
-    form.append("audio", new File([sourceBlob], "voice-reference.mp3", { type: "audio/mpeg" }));
+    form.append("audio", new File([reference], "voice-reference.wav", { type: "audio/wav" }));
     form.append("text", "Hello. This is the live Android browser playback test.");
     form.append("target_text", "Hello. This is the live Android browser playback test.");
     const response = await fetch(`/api/ai/voice-clone?android_smoke=1&ts=${Date.now()}`, { method: "POST", body: form });
@@ -75,24 +53,18 @@ try {
     try {
       const context = new AudioContext();
       const decoded = await context.decodeAudioData(bytes.slice(0));
-      let peak = 0;
-      let sumSquares = 0;
-      let count = 0;
+      let peak = 0, sumSquares = 0, count = 0;
       for (let channel = 0; channel < decoded.numberOfChannels; channel++) {
         const samples = decoded.getChannelData(channel);
         const step = Math.max(1, Math.floor(samples.length / 200000));
         for (let i = 0; i < samples.length; i += step) {
-          const sample = samples[i];
-          peak = Math.max(peak, Math.abs(sample));
-          sumSquares += sample * sample;
-          count++;
+          const sample = samples[i]; peak = Math.max(peak, Math.abs(sample)); sumSquares += sample * sample; count++;
         }
       }
       const rms = Math.sqrt(sumSquares / Math.max(1, count));
       if (!(decoded.duration > 0.25)) throw new Error(`decoded duration unusable: ${decoded.duration}`);
       if (!(peak >= 0.005 && rms >= 0.0005)) throw new Error(`decoded audio is silent: peak=${peak}, rms=${rms}`);
-      const audio = new Audio(url);
-      audio.preload = "auto";
+      const audio = new Audio(url); audio.preload = "auto";
       await new Promise((resolve, reject) => {
         const timer = setTimeout(() => reject(new Error("HTMLAudioElement metadata timeout")), 10000);
         audio.onloadedmetadata = () => { clearTimeout(timer); resolve(); };
@@ -104,16 +76,11 @@ try {
       if (audio.paused) throw new Error("HTMLAudioElement.play() resolved but playback remained paused");
       const calls = await Promise.all(window.__buddyPlayCalls || []);
       return { contentType, cors, bytes: bytes.byteLength, blobType: blob.type, duration: decoded.duration, peak, rms, htmlAudioDuration: audio.duration, readyState: audio.readyState, paused: audio.paused, playCalls: calls };
-    } finally {
-      URL.revokeObjectURL(url);
-    }
-  }, { samplePath });
-
+    } finally { URL.revokeObjectURL(url); }
+  }, { sampleBytes: [...sampleBytes] });
   console.log(JSON.stringify({ status: "ok", androidPlayback: playback }, null, 2));
   await context.close();
 } catch (error) {
   console.error(`::error::ANDROID_BROWSER_VOICE_TEST ${error instanceof Error ? error.message : String(error)}`);
   throw error;
-} finally {
-  await browser.close();
-}
+} finally { await browser.close(); }
