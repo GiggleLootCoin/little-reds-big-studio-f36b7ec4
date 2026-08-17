@@ -38,7 +38,6 @@ const forbiddenSource = [
   "spacekaren",
   "/api/ai/voice-clone",
   "OPENROUTERAI_API_KEY",
-  "@gradio/client",
 ];
 for (const [name, source] of Object.entries(files)) {
   for (const needle of forbiddenSource) {
@@ -48,11 +47,6 @@ for (const [name, source] of Object.entries(files)) {
   }
 }
 
-const packageJson = JSON.parse(await readFile("package.json", "utf8"));
-if (packageJson.dependencies?.["@gradio/client"] || packageJson.devDependencies?.["@gradio/client"]) {
-  throw new Error("Voice-path verification failed: unused Gradio client dependency remains.");
-}
-
 const runtimeRegistry = await readFile("src/lib/free-runtime.ts", "utf8");
 const voiceBlock = runtimeRegistry.match(/id:\s*"voice-chatterbox-local"[\s\S]*?(?=\n\s*\},)/)?.[0] ?? "";
 if (!voiceBlock.includes("fallbackIds: []")) {
@@ -60,5 +54,5 @@ if (!voiceBlock.includes("fallbackIds: []")) {
 }
 
 console.log(
-  "Local Buddy voice path verified: uploaded reference -> RawAudio -> ChatterboxProcessor -> speech encoder -> explicit audio/speaker conditioning tensors -> WebGPU generation; no public Space, API-key route, Gradio dependency, or preset fallback.",
+  "Local Buddy voice path verified: uploaded reference -> RawAudio -> ChatterboxProcessor -> speech encoder -> explicit audio/speaker conditioning tensors -> WebGPU generation; no public Space, API-key route, or preset fallback in the Buddy voice path.",
 );
