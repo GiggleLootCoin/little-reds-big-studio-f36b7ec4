@@ -1,6 +1,9 @@
 import { chromium } from "playwright";
 import { writeFile } from "node:fs/promises";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 
+const execFileAsync = promisify(execFile);
 const base = process.env.PRODUCTION_URL;
 const sampleUrl = process.env.SAMPLE_URL;
 if (!base || !sampleUrl) throw new Error("PRODUCTION_URL and SAMPLE_URL are required");
@@ -8,21 +11,21 @@ const sample = await fetch(sampleUrl).then(async (response) => {
   if (!response.ok) throw new Error(`sample download failed: ${response.status}`);
   return Buffer.from(await response.arrayBuffer());
 });
-const samplePath = "/tmp/live-voice-reference.mp3";
-await writeFile(samplePath, sample);
+const sourcePath = "/tmp/live-voice-reference-source.mp3";
+const samplePath = "/tmp/live-voice-reference.wav";
+await writeFile(sourcePath, sample);
+await execFileAsync("ffmpeg", [
+  "-y", "-v", "error", "-i", sourcePath, "-t", "10", "-ac", "1", "-ar", "24000", "-c:a", "pcm_s16le", samplePath,
+]);
 
-const browser = await chromium.launch({
-  headless: true,
-  args: ["--autoplay-policy=no-user-gesture-required"],
-});
+const browser = await chromium.launch({ headless: true, args: ["--autoplay-policy=no-user-gesture-required"] });
 try {
   const context = await browser.newContext({
     viewport: { width: 393, height: 852 },
     deviceScaleFactor: 2.75,
     isMobile: true,
     hasTouch: true,
-    userAgent:
-      "Mozilla/5.0 (Linux; Android 12; Pixel 5) AppleWebKit/537.36 Chrome/140.0 Mobile Safari/537.36",
+    userAgent: "Mozilla/5.0 (Linux; Android 12; Pixel 5) AppleWebKit/537.36 Chrome/140.0 Mobile Safari/537.36",
   });
   const page = await context.newPage();
   await page.addInitScript(() => {
@@ -30,36 +33,23 @@ try {
     Object.defineProperty(window, "__buddyPlayCalls", { value: [], writable: false });
     HTMLMediaElement.prototype.play = function (...args) {
       const promise = originalPlay.apply(this, args);
-      window.__buddyPlayCalls.push(
-        promise
-          .then(() => ({ ok: true, duration: this.duration, paused: this.paused }))
-          .catch((error) => ({
-            ok: false,
-            name: error?.name || "Error",
-            message: error?.message || String(error),
-          })),
-      );
+      window.__buddyPlayCalls.push(promise.then(() => ({ ok: true, duration: this.duration, paused: this.paused })).catch((error) => ({ ok: false, name: error?.name || "Error", message: error?.message || String(error) })));
       return promise;
     };
   });
   await page.goto(`${base}/?android_smoke=1`, { waitUntil: "networkidle", timeout: 60000 });
-  const cloneModeButton = page.getByRole("button", { name: /Clone a Voice/i }).first();
-  await cloneModeButton.click();
+  await page.getByRole("button", { name: /Clone a Voice/i }).first().click();
   const input = page.locator('input[type="file"][accept="audio/*"]').first();
   await input.waitFor({ state: "attached", timeout: 30000 });
   await input.setInputFiles(samplePath);
-  await page.getByRole("button", { name: "Generate My Voice Clone" }).first().click();
-  await page
-    .getByText(/REAL VOICE CLONE VERIFIED|Buddy couldn't create the voice clone yet\./)
-    .first()
-    .waitFor({ timeout: 240000 });
+  const generate = page.getByRole("button", { name: "Generate My Voice Clone" }).first();
+  await generate.waitFor({ state: "visible", timeout: 30000 });
+  await page.waitForFunction(() => [...document.querySelectorAll("button")].some((node) => node.textContent?.includes("Generate My Voice Clone") && !node.disabled), { timeout: 30000 });
+  await generate.click();
+  await page.getByText(/REAL VOICE CLONE VERIFIED|Buddy couldn't create the voice clone yet\./).first().waitFor({ timeout: 240000 });
   const status = await page.locator("body").innerText();
   const callsBeforeFailure = await page.evaluate(() => window.__buddyPlayCalls || []);
-  if (!/REAL VOICE CLONE VERIFIED/.test(status)) {
-    throw new Error(
-      `Clone did not verify. Status: ${status.slice(-2000)} Playback calls: ${JSON.stringify(callsBeforeFailure)}`,
-    );
-  }
+  if (!/REAL VOICE CLONE VERIFIED/.test(status)) throw new Error(`Clone did not verify. Status: ${status.slice(-2000)} Playback calls: ${JSON.stringify(callsBeforeFailure)}`);
   const playback = await page.evaluate(async () => {
     const calls = await Promise.all(window.__buddyPlayCalls || []);
     const url = window.__buddyLastCloneUrl;
@@ -71,26 +61,14 @@ try {
       probe.onerror = () => reject(new Error("HTMLAudioElement could not decode normalized clone"));
       probe.load();
     });
-    return {
-      calls,
-      duration: probe.duration,
-      readyState: probe.readyState,
-      paused: probe.paused,
-    };
+    return { calls, duration: probe.duration, readyState: probe.readyState, paused: probe.paused };
   });
   console.log(JSON.stringify({ status: "ok", playback }, null, 2));
-  if (!playback.duration || playback.duration <= 0.25)
-    throw new Error("Browser reported unusable duration");
-  if (!playback.calls.some((entry) => entry.ok)) {
-    throw new Error(
-      `No successful HTMLMediaElement.play() call: ${JSON.stringify(playback.calls)}`,
-    );
-  }
+  if (!playback.duration || playback.duration <= 0.25) throw new Error("Browser reported unusable duration");
+  if (!playback.calls.some((entry) => entry.ok)) throw new Error(`No successful HTMLMediaElement.play() call: ${JSON.stringify(playback.calls)}`);
   await context.close();
 } catch (error) {
-  console.error(
-    `::error::ANDROID_BROWSER_VOICE_TEST ${error instanceof Error ? error.message : String(error)}`,
-  );
+  console.error(`::error::ANDROID_BROWSER_VOICE_TEST ${error instanceof Error ? error.message : String(error)}`);
   throw error;
 } finally {
   await browser.close();
