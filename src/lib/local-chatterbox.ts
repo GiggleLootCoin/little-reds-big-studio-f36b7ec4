@@ -53,8 +53,11 @@ async function load() {
           "This phone reports less than 3 GB of device memory. The local Chatterbox model needs more memory than this browser can safely provide.",
         );
       }
+      // Register the listener BEFORE posting the message. The worker can finish
+      // synchronously on a warm/cache hit, so posting first can lose the loaded event.
+      const loaded = waitFor("loaded");
       getWorker().postMessage({ type: "load" });
-      await waitFor("loaded");
+      await loaded;
     })().catch((error) => {
       loadPromise = null;
       throw error;
@@ -154,8 +157,11 @@ export async function createLocalChatterboxClone(
   if (encodedKey !== key) {
     const audio = await decodeAt24k(reference);
     encodePromise = (async () => {
+      // Register the listener before transferring the reference so the encoded
+      // acknowledgement cannot be lost on fast devices or cached model runs.
+      const encoded = waitFor("encoded");
       getWorker().postMessage({ type: "encode", audio: audio.buffer }, [audio.buffer]);
-      await waitFor("encoded");
+      await encoded;
     })().catch((error) => {
       encodePromise = null;
       encodedKey = "";
@@ -167,8 +173,9 @@ export async function createLocalChatterboxClone(
     await encodePromise;
   }
   onStatus?.("Generating speech locally on this phone from your reference voice…");
+  const audioResult = waitFor("audio");
   getWorker().postMessage({ type: "generate", text, exaggeration });
-  const result = await waitFor("audio");
+  const result = await audioResult;
   const waveform = new Float32Array(result.waveform as ArrayBuffer);
   if (waveform.length < 2400) throw new Error("The local engine returned unusable audio.");
   const sampleRate = Number(result.sampleRate) || MODEL_SAMPLE_RATE;
