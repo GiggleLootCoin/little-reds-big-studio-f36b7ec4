@@ -26,7 +26,10 @@ jobs:
           node-version: 24
           cache: npm
       - name: Install browser-only production dependencies
-        run: npm install --no-audit --no-fund --omit=optional
+        run: |
+          npm install --no-audit --no-fund --omit=optional --ignore-scripts
+          node node_modules/esbuild/install.js
+          node node_modules/workerd/install.js
       - name: Typecheck
         run: npx tsc --noEmit
       - name: Normalize formatting
