@@ -2,8 +2,6 @@ import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 
 const root = join(process.cwd(), "dist", "client", "assets");
-const required = "onnx-community/chatterbox-ONNX";
-const requiredMarkers = ["encode_speech", "ChatterboxProcessor"];
 const forbidden = [
   "onnxruntime-node",
   "sharp",
@@ -15,32 +13,59 @@ const forbidden = [
 ];
 
 const files = await readdir(root);
-const workerFiles = files.filter(
-  (file) => file.startsWith("chatterbox-local.worker-") && file.endsWith(".js"),
+const jsFiles = files.filter((file) => file.endsWith(".js"));
+if (jsFiles.length === 0) {
+  throw new Error("Production browser bundle contains no JavaScript assets.");
+}
+
+const assets = await Promise.all(
+  jsFiles.map(async (file) => [file, await readFile(join(root, file), "utf8")]),
 );
-if (workerFiles.length !== 1) {
+const browserBundle = assets.map(([, source]) => source).join("\n");
+
+const required = [
+  ["Qwen3-TTS Space", 'Qwen/Qwen3-TTS'],
+  ["Qwen model size", 'MODEL_SIZE="0.6B"'],
+  ["Qwen clone route", "/generate_voice_clone"],
+  ["reference upload", "handle_file(sample)"],
+  ["reference transcript", "refText"],
+  ["browser audio verification", "normalizeAndVerifyBrowserAudio"],
+];
+for (const [label, needle] of required) {
+  if (!browserBundle.includes(needle)) {
+    throw new Error(`Production Qwen voice bundle is missing required marker: ${label}`);
+  }
+}
+
+if (
+  !browserBundle.match(
+    /["']English["']\s*,\s*(?:false|!1)\s*,\s*MODEL_SIZE\b/,
+  )
+) {
   throw new Error(
-    `Expected exactly one production Chatterbox worker asset, found ${workerFiles.length}.`,
+    "Production Qwen voice bundle is missing the explicit false use_xvector_only argument followed by MODEL_SIZE.",
   );
 }
 
-const workerPath = join(root, workerFiles[0]);
-const worker = await readFile(workerPath, "utf8");
-if (!worker.includes(required)) {
-  throw new Error(`Production Chatterbox worker is missing required model marker: ${required}`);
-}
-for (const marker of requiredMarkers) {
-  if (!worker.includes(marker)) {
-    throw new Error(`Production Chatterbox worker is missing required cloning marker: ${marker}`);
-  }
-}
-for (const needle of forbidden) {
-  if (worker.includes(needle)) {
-    throw new Error(`Production Chatterbox worker contains forbidden marker: ${needle}`);
+const requiredRejections = [
+  "Qwen returned an empty audio file.",
+  "Qwen returned an empty waveform.",
+  "Qwen returned an empty audio artifact.",
+  "Qwen returned no playable cloned audio.",
+  "Qwen3-TTS returned silent or unusable audio.",
+];
+for (const marker of requiredRejections) {
+  if (!browserBundle.includes(marker)) {
+    throw new Error(`Production Qwen voice bundle is missing required rejection: ${marker}`);
   }
 }
 
-console.log(`Production Chatterbox worker verified: ${workerFiles[0]}`);
+for (const needle of forbidden) {
+  if (browserBundle.includes(needle)) {
+    throw new Error(`Production browser voice bundle contains forbidden marker: ${needle}`);
+  }
+}
+
 console.log(
-  "Official Transformers.js Chatterbox voice-cloning model and speaker-conditioning markers are present; Node/native dependencies and remote/preset voice fallback markers are absent from the actual voice worker asset.",
+  `Production Qwen voice bundle verified across ${jsFiles.length} browser JS assets: official Qwen3-TTS 0.6B reference conditioning, generate_voice_clone(), reference transcript/audio upload, explicit non-xvector-only conditioning, and non-empty/non-silent browser audio validation are present; prohibited remote/preset/API-key fallback markers are absent.`,
 );
