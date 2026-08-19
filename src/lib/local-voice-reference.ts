@@ -1,22 +1,38 @@
 const DB_NAME = "little-reds-big-studio";
 const STORE = "voice-profile";
 const SAMPLE_KEY = "buddy-voice-sample";
+const AUDIO_DECODE_TIMEOUT_MS = 15000;
+const STORAGE_TIMEOUT_MS = 10000;
 
-function openVoiceDb(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    if (typeof indexedDB === "undefined") {
-      reject(new Error("IndexedDB is unavailable on this browser."));
-      return;
-    }
-    const request = indexedDB.open(DB_NAME, 2);
-    request.onupgradeneeded = () => {
-      const db = request.result;
-      if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE);
-    };
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () =>
-      reject(request.error || new Error("Could not open local voice storage."));
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<T>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(message)), timeoutMs);
   });
+  return Promise.race([promise, timeout]).finally(() => {
+    if (timer) clearTimeout(timer);
+  });
+}
+
+async function openVoiceDb(): Promise<IDBDatabase> {
+  return withTimeout(
+    new Promise((resolve, reject) => {
+      if (typeof indexedDB === "undefined") {
+        reject(new Error("IndexedDB is unavailable on this browser."));
+        return;
+      }
+      const request = indexedDB.open(DB_NAME, 2);
+      request.onupgradeneeded = () => {
+        const db = request.result;
+        if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE);
+      };
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () =>
+        reject(request.error || new Error("Could not open local voice storage."));
+    }),
+    STORAGE_TIMEOUT_MS,
+    "[voice-storage] Opening local voice storage timed out.",
+  );
 }
 
 async function normalizeReferenceAudio(blob: Blob): Promise<Blob> {
@@ -30,7 +46,11 @@ async function normalizeReferenceAudio(blob: Blob): Promise<Blob> {
 
   const context = new AudioContext();
   try {
-    const buffer = await context.decodeAudioData(await blob.arrayBuffer());
+    const buffer = await withTimeout(
+      context.decodeAudioData(await blob.arrayBuffer()),
+      AUDIO_DECODE_TIMEOUT_MS,
+      "[audio-decode] Decoding the reference recording timed out.",
+    );
     const channels = Math.min(buffer.numberOfChannels, 2);
     const samples = new Float32Array(buffer.length);
     for (let channel = 0; channel < channels; channel += 1) {
@@ -71,11 +91,19 @@ export async function saveLocalBuddyVoiceReference(blob: Blob): Promise<void> {
   if (!blob.size) throw new Error("The voice recording is empty.");
   const normalized = await normalizeReferenceAudio(blob);
   const db = await openVoiceDb();
-  await new Promise<void>((resolve, reject) => {
-    const tx = db.transaction(STORE, "readwrite");
-    tx.objectStore(STORE).put(normalized, SAMPLE_KEY);
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error || new Error("Could not save the local voice reference."));
-  });
-  db.close();
+  try {
+    await withTimeout(
+      new Promise<void>((resolve, reject) => {
+        const tx = db.transaction(STORE, "readwrite");
+        tx.objectStore(STORE).put(normalized, SAMPLE_KEY);
+        tx.oncomplete = () => resolve();
+        tx.onerror = () =>
+          reject(tx.error || new Error("Could not save the local voice reference."));
+      }),
+      STORAGE_TIMEOUT_MS,
+      "[voice-storage] Saving the local voice reference timed out.",
+    );
+  } finally {
+    db.close();
+  }
 }
