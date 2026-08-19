@@ -49,10 +49,10 @@ test("clone output is rejected when generation is empty and never falls back", (
   assert.match(runtime, /import\("\.\/studio-runtime-impl"\)/);
 });
 
-test("the production clone path contains no public voice Space or API-key fallback", async () => {
+test("the production clone path contains no public voice Space or API-key fallback", () => {
   const sources = [local, worker, clone, runtime];
   const forbidden = [".hf.space", "rahul7star", "spacekaren", "/api/ai/voice-clone", "OPENROUTERAI_API_KEY"];
   for (const source of sources) {
-    for (const needle of forbidden) assert.doesNotMatch(source, new RegExp(needle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+    for (const needle of forbidden) assert.equal(source.includes(needle), false, `forbidden fallback: ${needle}`);
   }
 });
