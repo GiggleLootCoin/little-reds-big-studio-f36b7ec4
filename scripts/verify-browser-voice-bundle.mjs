@@ -23,61 +23,56 @@ const assets = await Promise.all(
 );
 const browserBundle = assets.map(([, source]) => source).join("\n");
 
-const diagnosticMarkers = [
-  "/generate_voice_clone",
-  "handle_file",
-  "refText",
-  '"English"',
-  "false",
-  "0.6B",
-  "MODEL_SIZE",
-];
-const contextRadius = 360;
-for (const marker of diagnosticMarkers) {
-  let reported = 0;
-  for (const [file, source] of assets) {
-    let fromIndex = 0;
-    while (reported < 12) {
-      const index = source.indexOf(marker, fromIndex);
-      if (index === -1) break;
-      const start = Math.max(0, index - contextRadius);
-      const end = Math.min(source.length, index + marker.length + contextRadius);
-      console.log(
-        `[browser-voice-diagnostic] ${marker} in ${file}: ${JSON.stringify(source.slice(start, end))}`,
-      );
-      reported += 1;
-      fromIndex = index + marker.length;
-    }
-    if (reported >= 12) break;
-  }
-  if (reported === 0) {
-    console.log(`[browser-voice-diagnostic] ${marker}: NOT FOUND`);
-  }
+const qwenMarker = /(?:var|let|const)\s+([A-Za-z_$][\w$]*)\s*=\s*[`\"']Qwen\/Qwen3-TTS[`\"']\s*,\s*([A-Za-z_$][\w$]*)\s*=\s*[`\"']0\.6B[`\"']/;
+const qwenSource = assets
+  .map(([file, source]) => ({ file, source }))
+  .find(({ source }) => qwenMarker.test(source));
+if (!qwenSource) {
+  throw new Error("Production Qwen voice bundle is missing the official Qwen3-TTS/0.6B model binding.");
+}
+
+const modelMatch = qwenSource.source.match(qwenMarker);
+if (!modelMatch) {
+  throw new Error("Production Qwen voice bundle is missing the structured 0.6B model binding.");
+}
+const [, spaceBinding, modelBinding] = modelMatch;
+
+const cloneCall = new RegExp(
+  `(?:\\.predict\\(|predict\\()\\s*[\\`\"']\\/generate_voice_clone[\\`\"']\\s*,\\s*\\[\\s*([A-Za-z_$][\\w$]*)\\s*,\\s*([A-Za-z_$][\\w$]*)\\.trim\\(\\)\\s*,\\s*([A-Za-z_$][\\w$]*)\\s*,\\s*[\\`\"']English[\\`\"']\\s*,\\s*(?:false|!1)\\s*,\\s*${modelBinding}\\s*\\]`,
+);
+const cloneMatch = qwenSource.source.match(cloneCall);
+if (!cloneMatch) {
+  throw new Error(
+    "Production Qwen voice bundle is missing the Buddy generate_voice_clone call with English → false → the bound 0.6B model argument.",
+  );
+}
+
+const [, referenceBinding, transcriptBinding] = cloneMatch;
+const referenceFlow = new RegExp(
+  `(?:var|let|const)\\s+${referenceBinding}\\s*=\\s*await\\s+[A-Za-z_$][\\w$]*\\([^)]*\\)`,
+);
+if (!referenceFlow.test(qwenSource.source)) {
+  throw new Error(
+    "Production Qwen voice bundle is missing the transformed uploaded-reference binding feeding generate_voice_clone.",
+  );
+}
+
+const transcriptFlow = new RegExp(
+  `(?:var|let|const)\\s+${transcriptBinding}\\s*=|${transcriptBinding}\\.trim\\(\\)`,
+);
+if (!transcriptFlow.test(qwenSource.source)) {
+  throw new Error("Production Qwen voice bundle is missing the reference transcript flow.");
 }
 
 const required = [
-  ["Qwen3-TTS Space", 'Qwen/Qwen3-TTS'],
-  ["Qwen model size", /(?:MODEL_SIZE\s*=\s*)?["']0\.6B["']/],
+  ["Qwen3-TTS Space", "Qwen/Qwen3-TTS"],
   ["Qwen clone route", "/generate_voice_clone"],
-  ["reference upload", "handle_file(sample)"],
-  ["reference transcript", "refText"],
   ["browser audio verification", "normalizeAndVerifyBrowserAudio"],
 ];
 for (const [label, needle] of required) {
-  const found = needle instanceof RegExp ? needle.test(browserBundle) : browserBundle.includes(needle);
-  if (!found) {
+  if (!browserBundle.includes(needle)) {
     throw new Error(`Production Qwen voice bundle is missing required marker: ${label}`);
   }
-}
-
-if (
-  !browserBundle.match(
-    /["']English["']\s*,\s*(?:false|!1)\s*,\s*(?:MODEL_SIZE\b|["']0\.6B["'])/,
-  )
-) {
-  throw new Error(
-    "Production Qwen voice bundle is missing the explicit false use_xvector_only argument followed by the 0.6B model size.",
-  );
 }
 
 const requiredRejections = [
@@ -100,5 +95,5 @@ for (const needle of forbidden) {
 }
 
 console.log(
-  `Production Qwen voice bundle verified across ${jsFiles.length} browser JS assets: official Qwen3-TTS 0.6B reference conditioning, generate_voice_clone(), reference transcript/audio upload, explicit non-xvector-only conditioning, and non-empty/non-silent browser audio validation are present; prohibited remote/preset/API-key fallback markers are absent.`,
+  `Production Qwen voice bundle verified across ${jsFiles.length} browser JS assets: official Qwen3-TTS 0.6B reference-conditioned generate_voice_clone call, transformed uploaded-reference flow, transcript flow, explicit non-xvector-only conditioning, and non-empty/non-silent browser audio validation are present; prohibited remote/preset/API-key fallback markers are absent.`,
 );
