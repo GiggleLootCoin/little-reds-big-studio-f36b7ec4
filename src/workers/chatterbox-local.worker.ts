@@ -34,20 +34,37 @@ let model: LocalChatterboxModel | null = null;
 let processor: LocalProcessor | null = null;
 let speakerConditioning: SpeakerConditioning | null = null;
 
-async function detectWebGpu(): Promise<boolean> {
+function errorMessage(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+  return message.replace(/https?:\/\/\S+/gi, "[redacted-url]").slice(0, 600);
+}
+
+async function detectWebGpu(): Promise<void> {
   const gpu = (navigator as Navigator & { gpu?: { requestAdapter: () => Promise<unknown> } }).gpu;
-  if (!gpu) return false;
+  if (!gpu) {
+    throw new Error(
+      "[webgpu-unavailable] This Android browser does not expose WebGPU. The API-keyless local Chatterbox voice engine cannot run on this device.",
+    );
+  }
   try {
-    return Boolean(await gpu.requestAdapter());
-  } catch {
-    return false;
+    const adapter = await gpu.requestAdapter();
+    if (!adapter) {
+      throw new Error(
+        "[webgpu-adapter] Chrome exposes WebGPU but no usable GPU adapter was returned for local Chatterbox.",
+      );
+    }
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith("[webgpu-adapter]")) throw error;
+    throw new Error(`[webgpu-adapter] WebGPU adapter request failed: ${errorMessage(error)}`);
   }
 }
 
 async function loadModel() {
-  if (!(await detectWebGpu())) {
+  await detectWebGpu();
+  const memory = (navigator as Navigator & { deviceMemory?: number }).deviceMemory;
+  if (typeof memory === "number" && memory > 0 && memory < 3) {
     throw new Error(
-      "This Android browser does not expose WebGPU. The API-keyless local Chatterbox voice engine cannot run on this device.",
+      `[device-memory] This browser reports about ${memory} GB of device memory. The local Chatterbox model is too large to run reliably at that memory level.`,
     );
   }
   workerPoster.postMessage({
@@ -73,8 +90,7 @@ async function loadModel() {
     model = null;
     processor = null;
     speakerConditioning = null;
-    const message = error instanceof Error ? error.message : String(error);
-    throw new Error(`The free local Chatterbox voice-cloning engine could not start: ${message}`);
+    throw new Error(`[model-load] The free local Chatterbox voice-cloning engine could not start: ${errorMessage(error)}`);
   }
 }
 
@@ -96,46 +112,55 @@ function assertConditioning(conditioning: SpeakerConditioning): SpeakerCondition
 
 async function encode(audio: Float32Array) {
   if (!model || !processor) await loadModel();
-  if (!model || !processor) throw new Error("The local Chatterbox model could not be loaded.");
+  if (!model || !processor) throw new Error("[model-load] The local Chatterbox model could not be loaded.");
   if (audio.length < SAMPLE_RATE * 3) {
-    throw new Error("The uploaded reference recording is too short after decoding.");
+    throw new Error("[encode-speech] The uploaded reference recording is too short after decoding.");
   }
 
   const reference = new Tensor("float32", audio, [1, audio.length]);
-  const encoded = assertConditioning(await model.encode_speech(reference));
-  speakerConditioning = encoded;
-  workerPoster.postMessage({
-    type: "encoded",
-    conditioning: {
-      audioFeatures: encoded.audio_features.dims,
-      audioTokens: encoded.audio_tokens.dims,
-      speakerEmbeddings: encoded.speaker_embeddings.dims,
-      speakerFeatures: encoded.speaker_features.dims,
-    },
-  });
+  try {
+    const encoded = assertConditioning(await model.encode_speech(reference));
+    speakerConditioning = encoded;
+    workerPoster.postMessage({
+      type: "encoded",
+      conditioning: {
+        audioFeatures: encoded.audio_features.dims,
+        audioTokens: encoded.audio_tokens.dims,
+        speakerEmbeddings: encoded.speaker_embeddings.dims,
+        speakerFeatures: encoded.speaker_features.dims,
+      },
+    });
+  } catch (error) {
+    throw new Error(`[encode-speech] Chatterbox encode_speech failed: ${errorMessage(error)}`);
+  }
 }
 
 async function generate(text: string, exaggeration: number) {
   if (!model || !processor || !speakerConditioning) {
-    throw new Error("Your uploaded reference voice has not been conditioned yet.");
+    throw new Error("[generate] Your uploaded reference voice has not been conditioned yet.");
   }
-  const inputs = await processor(text);
-  if (!inputs.input_ids || !inputs.attention_mask) {
-    throw new Error("Chatterbox could not tokenize the requested speech text.");
-  }
+  try {
+    const inputs = await processor(text);
+    if (!inputs.input_ids || !inputs.attention_mask) {
+      throw new Error("Chatterbox could not tokenize the requested speech text.");
+    }
 
-  const waveform = await model.generate({
-    ...inputs,
-    ...speakerConditioning,
-    exaggeration,
-    max_new_tokens: MAX_NEW_TOKENS,
-  });
-  if (!waveform.data || waveform.data.length === 0) {
-    throw new Error("Chatterbox generation returned empty audio.");
+    const waveform = await model.generate({
+      ...inputs,
+      ...speakerConditioning,
+      exaggeration,
+      max_new_tokens: MAX_NEW_TOKENS,
+    });
+    if (!waveform.data || waveform.data.length === 0) {
+      throw new Error("Chatterbox generation returned empty audio.");
+    }
+    const data = Float32Array.from(waveform.data);
+    const buffer = data.buffer;
+    workerPoster.postMessage({ type: "audio", sampleRate: SAMPLE_RATE, waveform: buffer }, [buffer]);
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith("[generate]")) throw error;
+    throw new Error(`[generate] Chatterbox speech generation failed: ${errorMessage(error)}`);
   }
-  const data = Float32Array.from(waveform.data);
-  const buffer = data.buffer;
-  workerPoster.postMessage({ type: "audio", sampleRate: SAMPLE_RATE, waveform: buffer }, [buffer]);
 }
 
 self.addEventListener("message", async (event: MessageEvent) => {
@@ -148,7 +173,7 @@ self.addEventListener("message", async (event: MessageEvent) => {
   try {
     if (message.type === "load") await loadModel();
     else if (message.type === "encode") {
-      if (!message.audio) throw new Error("No voice sample was supplied to the local engine.");
+      if (!message.audio) throw new Error("[encode-speech] No voice sample was supplied to the local engine.");
       await encode(new Float32Array(message.audio));
     } else if (message.type === "generate") {
       await generate(message.text || "Hello from Buddy.", message.exaggeration ?? 0.5);
@@ -156,7 +181,7 @@ self.addEventListener("message", async (event: MessageEvent) => {
   } catch (error) {
     workerPoster.postMessage({
       type: "error",
-      message: error instanceof Error ? error.message : "Local Chatterbox failed.",
+      message: error instanceof Error ? error.message : `[worker-initialization] ${errorMessage(error)}`,
     });
   }
 });

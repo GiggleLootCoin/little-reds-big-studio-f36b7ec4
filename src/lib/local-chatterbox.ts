@@ -14,13 +14,25 @@ type BrowserGpu = {
   }) => Promise<BrowserGpuAdapter | null>;
 };
 
+function errorMessage(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+  return message.replace(/https?:\/\/\S+/gi, "[redacted-url]").slice(0, 600);
+}
+
 function getWorker(): Worker {
   if (!worker) {
-    worker = new Worker(new URL("../workers/chatterbox-local.worker.ts", import.meta.url), {
-      type: "module",
-    });
+    try {
+      worker = new Worker(new URL("../workers/chatterbox-local.worker.ts", import.meta.url), {
+        type: "module",
+      });
+    } catch (error) {
+      throw new Error(`[worker-initialization] The local Chatterbox worker could not start: ${errorMessage(error)}`);
+    }
+    workerError = null;
     worker.addEventListener("error", (event) => {
-      workerError = new Error(event.message || "The local voice engine stopped unexpectedly.");
+      workerError = new Error(
+        `[worker-initialization] ${event.message || "The local voice engine worker stopped unexpectedly."}`,
+      );
     });
   }
   return worker;
@@ -30,7 +42,7 @@ async function assertBrowserWebGpu(onStatus?: (status: string) => void) {
   const gpu = (navigator as Navigator & { gpu?: BrowserGpu }).gpu;
   if (!gpu) {
     throw new Error(
-      "WebGPU is unavailable in this Android browser. Local Chatterbox cannot run here; no remote/preset voice will be substituted.",
+      "[webgpu-unavailable] WebGPU is unavailable in this Android browser. Local Chatterbox cannot run here; no remote/preset voice will be substituted.",
     );
   }
   let adapter: BrowserGpuAdapter | null = null;
@@ -39,18 +51,18 @@ async function assertBrowserWebGpu(onStatus?: (status: string) => void) {
     if (!adapter) {
       adapter = await gpu.requestAdapter({ featureLevel: "compatibility" });
     }
-  } catch {
-    adapter = null;
+  } catch (error) {
+    throw new Error(`[webgpu-adapter] WebGPU adapter request failed: ${errorMessage(error)}`);
   }
   if (!adapter) {
     throw new Error(
-      "Chrome exposes WebGPU but this phone has no usable GPU adapter for local Chatterbox. Update Chrome and enable hardware acceleration, then retry.",
+      "[webgpu-adapter] Chrome exposes WebGPU but this phone has no usable GPU adapter for local Chatterbox. Update Chrome and enable hardware acceleration, then retry.",
     );
   }
   const memory = (navigator as Navigator & { deviceMemory?: number }).deviceMemory;
   if (typeof memory === "number" && memory > 0 && memory < 3) {
     throw new Error(
-      `This browser reports about ${memory} GB of device memory. The local Chatterbox model is too large to run reliably at that memory level. No fallback voice will be used.`,
+      `[device-memory] This browser reports about ${memory} GB of device memory. The local Chatterbox model is too large to run reliably at that memory level. No fallback voice will be used.`,
     );
   }
   onStatus?.("WebGPU is available. Starting the local Chatterbox engine…");
@@ -85,7 +97,7 @@ function waitFor(
     };
     const onError = () => {
       cleanup();
-      reject(workerError || new Error("The local voice engine stopped unexpectedly."));
+      reject(workerError || new Error("[worker-initialization] The local voice engine stopped unexpectedly."));
     };
     const cleanup = () => {
       current.removeEventListener("message", onMessage);
@@ -100,12 +112,6 @@ async function load(onStatus?: (status: string) => void) {
   if (!loadPromise) {
     loadPromise = (async () => {
       await assertBrowserWebGpu(onStatus);
-      const memory = (navigator as Navigator & { deviceMemory?: number }).deviceMemory;
-      if (typeof memory === "number" && memory > 0 && memory < 3) {
-        throw new Error(
-          "This phone reports less than 3 GB of device memory. The local Chatterbox model needs more memory than this browser can safely provide.",
-        );
-      }
       // Register the listener BEFORE posting the message.
       const loaded = waitFor("loaded", onStatus);
       getWorker().postMessage({ type: "load" });
