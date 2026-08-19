@@ -1,4 +1,10 @@
 const MODEL_SAMPLE_RATE = 24000;
+const WEBGPU_TIMEOUT_MS = 10000;
+const AUDIO_DECODE_TIMEOUT_MS = 15000;
+const AUDIO_RENDER_TIMEOUT_MS = 30000;
+const WORKER_LOAD_TIMEOUT_MS = 300000;
+const WORKER_ENCODE_TIMEOUT_MS = 120000;
+const WORKER_GENERATE_TIMEOUT_MS = 180000;
 
 // Free local path: inference stays on the user's device; Hugging Face is used only for model-file delivery.
 let worker: Worker | null = null;
@@ -17,6 +23,16 @@ type BrowserGpu = {
 function errorMessage(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
   return message.replace(/https?:\/\/\S+/gi, "[redacted-url]").slice(0, 600);
+}
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<T>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(message)), timeoutMs);
+  });
+  return Promise.race([promise, timeout]).finally(() => {
+    if (timer) clearTimeout(timer);
+  });
 }
 
 function getWorker(): Worker {
@@ -49,9 +65,17 @@ async function assertBrowserWebGpu(onStatus?: (status: string) => void) {
   }
   let adapter: BrowserGpuAdapter | null = null;
   try {
-    adapter = await gpu.requestAdapter();
+    adapter = await withTimeout(
+      gpu.requestAdapter(),
+      WEBGPU_TIMEOUT_MS,
+      "[webgpu-adapter] WebGPU adapter request timed out.",
+    );
     if (!adapter) {
-      adapter = await gpu.requestAdapter({ featureLevel: "compatibility" });
+      adapter = await withTimeout(
+        gpu.requestAdapter({ featureLevel: "compatibility" }),
+        WEBGPU_TIMEOUT_MS,
+        "[webgpu-adapter] WebGPU compatibility adapter request timed out.",
+      );
     }
   } catch (error) {
     throw new Error(`[webgpu-adapter] WebGPU adapter request failed: ${errorMessage(error)}`);
@@ -75,7 +99,23 @@ function waitFor(
   onProgress?: (status: string) => void,
 ): Promise<MessageEvent["data"]> {
   const current = getWorker();
+  const timeoutMs =
+    type === "loaded"
+      ? WORKER_LOAD_TIMEOUT_MS
+      : type === "encoded"
+        ? WORKER_ENCODE_TIMEOUT_MS
+        : WORKER_GENERATE_TIMEOUT_MS;
   return new Promise((resolve, reject) => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const fail = (error: Error) => {
+      cleanup();
+      if (worker === current) {
+        current.terminate();
+        worker = null;
+        workerError = null;
+      }
+      reject(error);
+    };
     const onMessage = (event: MessageEvent) => {
       if (event.data?.type === type) {
         cleanup();
@@ -93,23 +133,36 @@ function waitFor(
           onProgress?.(event.data.message);
         }
       } else if (event.data?.type === "error") {
-        cleanup();
-        reject(new Error(String(event.data.message || "Local Chatterbox failed.")));
+        fail(new Error(String(event.data.message || "Local Chatterbox failed.")));
       }
     };
     const onError = () => {
-      cleanup();
-      reject(
+      fail(
         workerError ||
           new Error("[worker-initialization] The local voice engine stopped unexpectedly."),
       );
     };
+    const onMessageError = () => {
+      fail(new Error("[worker-initialization] The local voice engine could not receive a worker message."));
+    };
     const cleanup = () => {
+      if (timer) clearTimeout(timer);
       current.removeEventListener("message", onMessage);
       current.removeEventListener("error", onError);
+      current.removeEventListener("messageerror", onMessageError);
     };
     current.addEventListener("message", onMessage);
     current.addEventListener("error", onError);
+    current.addEventListener("messageerror", onMessageError);
+    timer = setTimeout(
+      () =>
+        fail(
+          new Error(
+            `[worker-timeout] Local Chatterbox did not return the expected ${type} response within ${Math.round(timeoutMs / 1000)} seconds.`,
+          ),
+        ),
+      timeoutMs,
+    );
   });
 }
 
@@ -117,7 +170,6 @@ async function load(onStatus?: (status: string) => void) {
   if (!loadPromise) {
     loadPromise = (async () => {
       await assertBrowserWebGpu(onStatus);
-      // Register the listener BEFORE posting the message.
       const loaded = waitFor("loaded", onStatus);
       getWorker().postMessage({ type: "load" });
       await loaded;
@@ -133,17 +185,21 @@ async function decodeAt24k(blob: Blob): Promise<Float32Array> {
   const AudioContextCtor =
     window.AudioContext ||
     (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-  if (!AudioContextCtor) throw new Error("This browser cannot run the local voice engine.");
+  if (!AudioContextCtor) throw new Error("[audio-decode] This browser cannot run the local voice engine.");
   const OfflineAudioContextCtor =
     window.OfflineAudioContext ||
     (window as typeof window & { webkitOfflineAudioContext?: typeof OfflineAudioContext })
       .webkitOfflineAudioContext;
   if (!OfflineAudioContextCtor) {
-    throw new Error("This browser cannot resample the reference recording for local Chatterbox.");
+    throw new Error("[audio-decode] This browser cannot resample the reference recording for local Chatterbox.");
   }
   const context = new AudioContextCtor();
   try {
-    const decoded = await context.decodeAudioData(await blob.arrayBuffer());
+    const decoded = await withTimeout(
+      context.decodeAudioData(await blob.arrayBuffer()),
+      AUDIO_DECODE_TIMEOUT_MS,
+      "[audio-decode] Decoding the reference recording timed out.",
+    );
     if (decoded.duration < 3 || decoded.duration > 30) {
       throw new Error("Use a clear voice recording between 3 and 30 seconds.");
     }
@@ -153,8 +209,15 @@ async function decodeAt24k(blob: Blob): Promise<Float32Array> {
     source.buffer = decoded;
     source.connect(offline.destination);
     source.start();
-    const rendered = await offline.startRendering();
+    const rendered = await withTimeout(
+      offline.startRendering(),
+      AUDIO_RENDER_TIMEOUT_MS,
+      "[audio-decode] Resampling the reference recording timed out.",
+    );
     return new Float32Array(rendered.getChannelData(0));
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith("[audio-decode]")) throw error;
+    throw new Error(`[audio-decode] The reference recording could not be decoded: ${errorMessage(error)}`);
   } finally {
     await context.close().catch(() => undefined);
   }
