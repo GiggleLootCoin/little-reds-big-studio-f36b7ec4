@@ -26,7 +26,9 @@ function getWorker(): Worker {
         type: "module",
       });
     } catch (error) {
-      throw new Error(`[worker-initialization] The local Chatterbox worker could not start: ${errorMessage(error)}`);
+      throw new Error(
+        `[worker-initialization] The local Chatterbox worker could not start: ${errorMessage(error)}`,
+      );
     }
     workerError = null;
     worker.addEventListener("error", (event) => {
@@ -97,7 +99,10 @@ function waitFor(
     };
     const onError = () => {
       cleanup();
-      reject(workerError || new Error("[worker-initialization] The local voice engine stopped unexpectedly."));
+      reject(
+        workerError ||
+          new Error("[worker-initialization] The local voice engine stopped unexpectedly."),
+      );
     };
     const cleanup = () => {
       current.removeEventListener("message", onMessage);

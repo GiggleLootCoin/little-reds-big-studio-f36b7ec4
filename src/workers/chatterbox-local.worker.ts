@@ -90,7 +90,9 @@ async function loadModel() {
     model = null;
     processor = null;
     speakerConditioning = null;
-    throw new Error(`[model-load] The free local Chatterbox voice-cloning engine could not start: ${errorMessage(error)}`);
+    throw new Error(
+      `[model-load] The free local Chatterbox voice-cloning engine could not start: ${errorMessage(error)}`,
+    );
   }
 }
 
@@ -112,9 +114,12 @@ function assertConditioning(conditioning: SpeakerConditioning): SpeakerCondition
 
 async function encode(audio: Float32Array) {
   if (!model || !processor) await loadModel();
-  if (!model || !processor) throw new Error("[model-load] The local Chatterbox model could not be loaded.");
+  if (!model || !processor)
+    throw new Error("[model-load] The local Chatterbox model could not be loaded.");
   if (audio.length < SAMPLE_RATE * 3) {
-    throw new Error("[encode-speech] The uploaded reference recording is too short after decoding.");
+    throw new Error(
+      "[encode-speech] The uploaded reference recording is too short after decoding.",
+    );
   }
 
   const reference = new Tensor("float32", audio, [1, audio.length]);
@@ -156,7 +161,9 @@ async function generate(text: string, exaggeration: number) {
     }
     const data = Float32Array.from(waveform.data);
     const buffer = data.buffer;
-    workerPoster.postMessage({ type: "audio", sampleRate: SAMPLE_RATE, waveform: buffer }, [buffer]);
+    workerPoster.postMessage({ type: "audio", sampleRate: SAMPLE_RATE, waveform: buffer }, [
+      buffer,
+    ]);
   } catch (error) {
     if (error instanceof Error && error.message.startsWith("[generate]")) throw error;
     throw new Error(`[generate] Chatterbox speech generation failed: ${errorMessage(error)}`);
@@ -173,7 +180,8 @@ self.addEventListener("message", async (event: MessageEvent) => {
   try {
     if (message.type === "load") await loadModel();
     else if (message.type === "encode") {
-      if (!message.audio) throw new Error("[encode-speech] No voice sample was supplied to the local engine.");
+      if (!message.audio)
+        throw new Error("[encode-speech] No voice sample was supplied to the local engine.");
       await encode(new Float32Array(message.audio));
     } else if (message.type === "generate") {
       await generate(message.text || "Hello from Buddy.", message.exaggeration ?? 0.5);
@@ -181,7 +189,8 @@ self.addEventListener("message", async (event: MessageEvent) => {
   } catch (error) {
     workerPoster.postMessage({
       type: "error",
-      message: error instanceof Error ? error.message : `[worker-initialization] ${errorMessage(error)}`,
+      message:
+        error instanceof Error ? error.message : `[worker-initialization] ${errorMessage(error)}`,
     });
   }
 });
