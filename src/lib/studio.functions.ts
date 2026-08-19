@@ -64,7 +64,7 @@ export const councilChat = createServerFn({ method: "POST" })
   .handler(async ({ data }) => ({
     reply: prepared(
       "Free Council Job",
-      `Act as a council of specialists: ${data.seats.join(", ") || "songwriter, producer, director, vocal coach and growth strategist"}. Synthesize one decisive answer to:\n${data.messages.map((m) => `${m.role}: ${m.content}`).join("\n")}`,
+      `Act as a council of specialists: ${data.seats.join(", ") || "songwriter, producer, director, vocal coach and growth strategist"}. Synthesize one decisive answer to:\n${data.messages.map((m: { role: "user" | "assistant"; content: string }) => `${m.role}: ${m.content}`).join("\n")}`,
       `text`,
     ),
   }));
