@@ -143,7 +143,11 @@ function waitFor(
       );
     };
     const onMessageError = () => {
-      fail(new Error("[worker-initialization] The local voice engine could not receive a worker message."));
+      fail(
+        new Error(
+          "[worker-initialization] The local voice engine could not receive a worker message.",
+        ),
+      );
     };
     const cleanup = () => {
       if (timer) clearTimeout(timer);
@@ -185,13 +189,16 @@ async function decodeAt24k(blob: Blob): Promise<Float32Array> {
   const AudioContextCtor =
     window.AudioContext ||
     (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-  if (!AudioContextCtor) throw new Error("[audio-decode] This browser cannot run the local voice engine.");
+  if (!AudioContextCtor)
+    throw new Error("[audio-decode] This browser cannot run the local voice engine.");
   const OfflineAudioContextCtor =
     window.OfflineAudioContext ||
     (window as typeof window & { webkitOfflineAudioContext?: typeof OfflineAudioContext })
       .webkitOfflineAudioContext;
   if (!OfflineAudioContextCtor) {
-    throw new Error("[audio-decode] This browser cannot resample the reference recording for local Chatterbox.");
+    throw new Error(
+      "[audio-decode] This browser cannot resample the reference recording for local Chatterbox.",
+    );
   }
   const context = new AudioContextCtor();
   try {
@@ -217,7 +224,9 @@ async function decodeAt24k(blob: Blob): Promise<Float32Array> {
     return new Float32Array(rendered.getChannelData(0));
   } catch (error) {
     if (error instanceof Error && error.message.startsWith("[audio-decode]")) throw error;
-    throw new Error(`[audio-decode] The reference recording could not be decoded: ${errorMessage(error)}`);
+    throw new Error(
+      `[audio-decode] The reference recording could not be decoded: ${errorMessage(error)}`,
+    );
   } finally {
     await context.close().catch(() => undefined);
   }
