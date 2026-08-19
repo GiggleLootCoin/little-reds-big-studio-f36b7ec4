@@ -38,7 +38,7 @@ if (!modelMatch) {
 const [, spaceBinding, modelBinding] = modelMatch;
 
 const cloneCall = new RegExp(
-  `(?:\\.predict\\(|predict\\()\\s*[\\`\"']\\/generate_voice_clone[\\`\"']\\s*,\\s*\\[\\s*([A-Za-z_$][\\w$]*)\\s*,\\s*([A-Za-z_$][\\w$]*)\\.trim\\(\\)\\s*,\\s*([A-Za-z_$][\\w$]*)\\s*,\\s*[\\`\"']English[\\`\"']\\s*,\\s*(?:false|!1)\\s*,\\s*${modelBinding}\\s*\\]`,
+  `(?:\\.predict\\(|predict\\()\\s*(?:\\x60|[\"'])\\/generate_voice_clone(?:\\x60|[\"'])\\s*,\\s*\\[\\s*([A-Za-z_$][\\w$]*)\\s*,\\s*([A-Za-z_$][\\w$]*)\\.trim\\(\\)\\s*,\\s*([A-Za-z_$][\\w$]*)\\s*,\\s*(?:\\x60|[\"'])English(?:\\x60|[\"'])\\s*,\\s*(?:false|!1)\\s*,\\s*${modelBinding}\\s*\\]`,
 );
 const cloneMatch = qwenSource.source.match(cloneCall);
 if (!cloneMatch) {
