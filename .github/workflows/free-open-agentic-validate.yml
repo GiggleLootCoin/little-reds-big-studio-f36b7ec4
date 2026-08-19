@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - fix/buddy-chatterbox-runtime-contract
       - upgrade/buddy-free-open-agentic
       - upgrade/buddy-complete
   workflow_dispatch:
