@@ -10,6 +10,7 @@ const localReference = await read("src/lib/local-voice-reference.ts");
 const local = await read("src/lib/local-chatterbox.ts");
 const worker = await read("src/workers/chatterbox-local.worker.ts");
 const clone = await read("src/lib/real-voice-clone-v2.ts");
+const qwen = await read("src/lib/qwen3-tts-clone.ts");
 const runtime = await read("src/lib/studio-runtime.ts");
 
 function between(source, start, end) {
@@ -40,68 +41,60 @@ test("uploaded reference storage has bounded IndexedDB and audio-decoding waits"
   assert.match(localReference, /voice-storage/);
 });
 
-test("uploaded reference reaches the worker as decoded 24 kHz audio", () => {
+test("legacy Chatterbox reference conditioning remains intact but is no longer the production clone engine", () => {
   assert.match(local, /decodeAt24k\(reference\)/);
-  assert.match(local, /type: "encode"/);
-  assert.match(local, /audio\.buffer/);
-  assert.match(worker, /new Tensor\("float32", audio, \[1, audio\.length\]\)/);
-});
-
-test("speaker conditioning returned by encode_speech is retained and consumed by generate", () => {
-  assert.match(
-    worker,
-    /const encoded = assertConditioning\(await model\.encode_speech\(reference\)\)/,
-  );
-  assert.match(worker, /speakerConditioning = encoded/);
-  const generation = between(
-    worker,
-    "const waveform = await model.generate({",
-    "});\n    if (!waveform.data",
-  );
-  assert.match(generation, /\.\.\.speakerConditioning/);
-  assert.match(generation, /max_new_tokens: MAX_NEW_TOKENS/);
-});
-
-test("the worker uses the supported Transformers.js Chatterbox loading contract", () => {
-  assert.match(worker, /AutoProcessor/);
-  assert.match(worker, /AutoProcessor\.from_pretrained\(MODEL_ID\)/);
+  assert.match(worker, /type: "encode"/);
+  assert.match(worker, /model\.encode_speech/);
+  assert.match(worker, /model\.generate/);
   assert.match(worker, /language_model: "q4f16"/);
   assert.match(worker, /conditional_decoder: "fp32"/);
-  assert.doesNotMatch(worker, /language_model: "q4"/);
 });
 
-test("worker waits have bounded load, encode, and generation lifetimes and handle message errors", () => {
-  assert.match(local, /WORKER_LOAD_TIMEOUT_MS/);
-  assert.match(local, /WORKER_ENCODE_TIMEOUT_MS/);
-  assert.match(local, /WORKER_GENERATE_TIMEOUT_MS/);
-  assert.match(local, /messageerror/);
-  assert.match(local, /\[worker-timeout\]/);
-  assert.match(local, /clearTimeout/);
-});
-
-test("clone output is rejected when generation is empty and never falls back", () => {
-  assert.match(worker, /Chatterbox generation returned empty audio/);
-  assert.match(clone, /createLocalChatterboxClone\(sample, text, 0\.5/);
-  assert.match(runtime, /if \(capability === "voice-clone"\)/);
+test("Buddy's production clone engine is Qwen3-TTS Base and does not import Chatterbox", () => {
+  assert.match(clone, /createQwen3TTSClone\(sample, refText, text/);
+  assert.doesNotMatch(clone, /createLocalChatterboxClone/);
+  assert.match(clone, /Qwen3-TTS Base/);
   assert.match(runtime, /createBestFreeVoiceClone/);
-  assert.match(runtime, /import\("\.\/studio-runtime-impl"\)/);
 });
 
-test("the production clone path contains no public voice Space or API-key fallback", () => {
-  const sources = [local, worker, clone, runtime];
-  const forbidden = [
-    ".hf.space",
-    "rahul7star",
-    "spacekaren",
-    "/api/ai/voice-clone",
-    "OPENROUTERAI_API_KEY",
-  ];
-  for (const source of sources)
-    for (const needle of forbidden)
-      assert.equal(source.includes(needle), false, `forbidden fallback: ${needle}`);
+test("Qwen3-TTS uses the official Qwen Space and the 0.6B Base model", () => {
+  assert.match(qwen, /const SPACE_ID = "Qwen\/Qwen3-TTS"/);
+  assert.match(qwen, /const MODEL_SIZE = "0\.6B"/);
+  assert.match(qwen, /Client\.connect/);
+  assert.match(qwen, /\/generate_voice_clone/);
+  assert.match(qwen, /Qwen3-TTS Base/);
 });
 
-test("worker diagnostics classify every Buddy voice failure boundary and reach waitFor", () => {
+test("Qwen receives the actual reference recording and exact reference transcript", () => {
+  assert.match(qwen, /handle_file\(sample\)/);
+  assert.match(qwen, /reference,\n\s*refText\.trim\(\)/);
+  assert.match(qwen, /false,\n\s*MODEL_SIZE/);
+  assert.match(clone, /refText\.trim\(\)/);
+});
+
+test("Qwen output must be real audio and is verified before clone success", () => {
+  assert.match(qwen, /Qwen returned an empty audio file/);
+  assert.match(qwen, /Qwen returned an empty waveform/);
+  assert.match(qwen, /normalizeAndVerifyBrowserAudio/);
+  assert.match(qwen, /Qwen3-TTS returned silent or unusable audio/);
+  assert.match(qwen, /Android audio-element verification/);
+  assert.match(clone, /Qwen3-TTS returned silent or unusable audio/);
+});
+
+test("Qwen failures cannot become preset-voice success", () => {
+  assert.doesNotMatch(clone, /speaker/);
+  assert.doesNotMatch(clone, /preset/);
+  assert.doesNotMatch(qwen, /generate_custom_voice/);
+  assert.match(qwen, /throw new Error/);
+});
+
+test("Qwen request and output waits are bounded", () => {
+  assert.match(qwen, /REQUEST_TIMEOUT_MS/);
+  assert.match(qwen, /\[qwen-timeout\]/);
+  assert.match(qwen, /clearTimeout/);
+});
+
+test("legacy Chatterbox worker diagnostics remain available for isolated legacy code", () => {
   for (const phase of [
     "webgpu-unavailable",
     "webgpu-adapter",
@@ -114,8 +107,10 @@ test("worker diagnostics classify every Buddy voice failure boundary and reach w
     assert.match(worker, new RegExp(`\\[${phase}\\]`));
   assert.match(local, /event\.data\.type === "error"/);
   assert.match(local, /String\(event\.data\.message/);
-  assert.match(local, /\[webgpu-unavailable\]/);
-  assert.match(local, /\[webgpu-adapter\]/);
-  assert.match(local, /\[device-memory\]/);
-  assert.match(local, /worker-initialization/);
+});
+
+test("the existing Buddy runtime still exposes a verified playable artifact", () => {
+  assert.match(runtime, /if \(!result\.url\) throw new Error/);
+  assert.match(runtime, /markBuddyCloneVerified/);
+  assert.match(runtime, /result\.provider/);
 });
