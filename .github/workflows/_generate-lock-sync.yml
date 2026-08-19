@@ -1,0 +1,27 @@
+name: Generate lockfile sync
+on:
+  push:
+    branches:
+      - fix/lock-sync
+permissions:
+  contents: write
+jobs:
+  lock:
+    if: ${{ !contains(github.event.head_commit.message, '[lock-sync-generated]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Regenerate package-lock.json
+        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+      - name: Commit regenerated lockfile
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add package-lock.json
+          git diff --cached --quiet && exit 0
+          git commit -m 'fix: synchronize package lockfile [lock-sync-generated]'
+          git push
