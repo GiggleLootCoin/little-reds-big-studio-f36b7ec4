@@ -1,7 +1,7 @@
 import { AutoProcessor, ChatterboxModel, Tensor } from "@huggingface/transformers";
 
 // Official Transformers.js Chatterbox voice-cloning model. Model files are
-downloaded directly to the browser; inference remains local/WebGPU.
+// downloaded directly to the browser; inference remains local/WebGPU.
 const MODEL_ID = "onnx-community/chatterbox-ONNX";
 const SAMPLE_RATE = 24000;
 const MAX_NEW_TOKENS = 256;
@@ -56,10 +56,7 @@ async function loadModel() {
       "Preparing the local Chatterbox voice-cloning engine… first use downloads the model files.",
   });
   try {
-    // AutoProcessor is the supported Transformers.js v4 processor entry point.
     processor = (await AutoProcessor.from_pretrained(MODEL_ID)) as unknown as LocalProcessor;
-    // Chatterbox's WebGPU language-model variant is q4f16. The speech encoder,
-    // embed tokens, and conditional decoder remain fp32.
     model = (await ChatterboxModel.from_pretrained(MODEL_ID, {
       device: "webgpu",
       dtype: {
@@ -103,9 +100,6 @@ async function encode(audio: Float32Array) {
     throw new Error("The uploaded reference recording is too short after decoding.");
   }
 
-  // The uploaded reference has already been decoded and resampled to 24 kHz by
-  // local-chatterbox.ts. ChatterboxModel.encode_speech expects a float32 Tensor
-  // shaped [batch, samples]; do not re-tokenize or substitute a preset speaker.
   const reference = new Tensor("float32", audio, [1, audio.length]);
   const encoded = assertConditioning(await model.encode_speech(reference));
   speakerConditioning = encoded;
@@ -129,10 +123,6 @@ async function generate(text: string, exaggeration: number) {
     throw new Error("Chatterbox could not tokenize the requested speech text.");
   }
 
-  // ChatterboxModel.generate consumes the exact result of encode_speech when
-  // these four conditioning tensors are supplied. Keeping the object spread is
-  // intentional: it matches the Transformers.js generation contract and ensures
-  // audio_tokens reach the conditional decoder through generate().
   const waveform = await model.generate({
     ...inputs,
     ...speakerConditioning,
