@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 // Keep the contract test in the PR after the lockfile regeneration validation.
+// Final CI trigger after dependency manifest synchronization.
 const read = (path) => readFile(path, "utf8");
 
 const local = await read("src/lib/local-chatterbox.ts");
