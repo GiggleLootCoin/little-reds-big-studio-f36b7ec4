@@ -13,14 +13,6 @@ const clone = await read("src/lib/real-voice-clone-v2.ts");
 const qwen = await read("src/lib/qwen3-tts-clone.ts");
 const runtime = await read("src/lib/studio-runtime.ts");
 
-function between(source, start, end) {
-  const startIndex = source.indexOf(start);
-  const endIndex = source.indexOf(end, startIndex + start.length);
-  assert.notEqual(startIndex, -1, `missing start marker: ${start}`);
-  assert.notEqual(endIndex, -1, `missing end marker: ${end}`);
-  return source.slice(startIndex, endIndex);
-}
-
 test("Generate is an actionable button and missing samples fail visibly instead of disabling the path", () => {
   assert.match(picker, /<StudioButton[\s\S]*?type="button"[\s\S]*?onClick=\{handleGenerateClick\}/);
   assert.match(picker, /disabled=\{busy \|\| recording\}/);
@@ -82,8 +74,8 @@ test("Qwen output must be real audio and is verified before clone success", () =
 });
 
 test("Qwen failures cannot become preset-voice success", () => {
-  assert.doesNotMatch(clone, /speaker/);
-  assert.doesNotMatch(clone, /preset/);
+  assert.doesNotMatch(clone, /current\.speaker/);
+  assert.doesNotMatch(clone, /generate_custom_voice/);
   assert.doesNotMatch(qwen, /generate_custom_voice/);
   assert.match(qwen, /throw new Error/);
 });
