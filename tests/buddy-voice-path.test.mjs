@@ -72,3 +72,23 @@ test("the production clone path contains no public voice Space or API-key fallba
       assert.equal(source.includes(needle), false, `forbidden fallback: ${needle}`);
   }
 });
+
+test("worker diagnostics classify every Buddy voice failure boundary and reach waitFor", () => {
+  for (const phase of [
+    "webgpu-unavailable",
+    "webgpu-adapter",
+    "device-memory",
+    "model-load",
+    "worker-initialization",
+    "encode-speech",
+    "generate",
+  ]) {
+    assert.match(worker, new RegExp(`\\[${phase}\\]`));
+  }
+  assert.match(local, /event\.data\.type === "error"/);
+  assert.match(local, /String\(event\.data\.message/);
+  assert.match(local, /\[webgpu-unavailable\]/);
+  assert.match(local, /\[webgpu-adapter\]/);
+  assert.match(local, /\[device-memory\]/);
+  assert.match(local, /worker-initialization/);
+});
