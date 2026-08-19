@@ -65,7 +65,8 @@ async function loadModel() {
         language_model: "q4f16",
         conditional_decoder: "fp32",
       },
-      progress_callback: (progress: unknown) => workerPoster.postMessage({ type: "progress", progress }),
+      progress_callback: (progress: unknown) =>
+        workerPoster.postMessage({ type: "progress", progress }),
     })) as unknown as LocalChatterboxModel;
     workerPoster.postMessage({ type: "loaded", device: "webgpu", model: MODEL_ID });
   } catch (error) {

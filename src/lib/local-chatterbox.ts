@@ -9,7 +9,9 @@ let workerError: Error | null = null;
 
 type BrowserGpuAdapter = object;
 type BrowserGpu = {
-  requestAdapter: (options?: { featureLevel?: "core" | "compatibility" }) => Promise<BrowserGpuAdapter | null>;
+  requestAdapter: (options?: {
+    featureLevel?: "core" | "compatibility";
+  }) => Promise<BrowserGpuAdapter | null>;
 };
 
 function getWorker(): Worker {
@@ -54,7 +56,10 @@ async function assertBrowserWebGpu(onStatus?: (status: string) => void) {
   onStatus?.("WebGPU is available. Starting the local Chatterbox engine…");
 }
 
-function waitFor(type: string, onProgress?: (status: string) => void): Promise<MessageEvent["data"]> {
+function waitFor(
+  type: string,
+  onProgress?: (status: string) => void,
+): Promise<MessageEvent["data"]> {
   const current = getWorker();
   return new Promise((resolve, reject) => {
     const onMessage = (event: MessageEvent) => {
@@ -220,7 +225,11 @@ export async function createLocalChatterboxClone(
   const sampleRate = Number(result.sampleRate) || MODEL_SAMPLE_RATE;
   const blob = wavBlob(waveform, sampleRate);
   if (blob.size < 4096) throw new Error("The local engine returned an empty audio result.");
-  return { url: URL.createObjectURL(blob), provider: "Chatterbox local — WebGPU", duration: waveform.length / sampleRate };
+  return {
+    url: URL.createObjectURL(blob),
+    provider: "Chatterbox local — WebGPU",
+    duration: waveform.length / sampleRate,
+  };
 }
 
 export function resetLocalChatterbox() {
