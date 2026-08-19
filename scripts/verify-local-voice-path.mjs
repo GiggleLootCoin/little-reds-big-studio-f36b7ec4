@@ -17,7 +17,7 @@ const required = [
   ["Qwen engine uses generate_voice_clone", files.qwen, "generate_voice_clone"],
   ["Qwen engine uses the official Qwen3-TTS Space", files.qwen, 'const SPACE_ID = "Qwen/Qwen3-TTS"'],
   ["Qwen engine uses the intended Base 0.6B model size", files.qwen, 'const MODEL_SIZE = "0.6B"'],
-  ["Qwen engine uses reference-conditioned cloning", files.qwen, 'use_xvector_only: false'],
+  ["Qwen engine uses reference-conditioned cloning", files.qwen, '"English",\n      false,\n      MODEL_SIZE,'],
   ["Qwen engine rejects empty generated audio", files.qwen, "Qwen voice clone returned empty audio"],
   ["Qwen engine validates generated audio", files.qwen, "validateGeneratedAudio"],
   ["Buddy sample persistence is local only", files.buddy, "putVoiceValue(SAMPLE_KEY"],
