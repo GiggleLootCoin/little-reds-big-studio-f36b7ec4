@@ -2,10 +2,11 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-// Keep the contract test in the PR after the lockfile regeneration validation.
-// Final CI trigger after dependency manifest synchronization.
 const read = (path) => readFile(path, "utf8");
 
+const picker = await read("src/components/studio/BuddyVoicePicker.tsx");
+const buddyVoice = await read("src/lib/buddy-voice.ts");
+const localReference = await read("src/lib/local-voice-reference.ts");
 const local = await read("src/lib/local-chatterbox.ts");
 const worker = await read("src/workers/chatterbox-local.worker.ts");
 const clone = await read("src/lib/real-voice-clone-v2.ts");
@@ -18,6 +19,27 @@ function between(source, start, end) {
   assert.notEqual(endIndex, -1, `missing end marker: ${end}`);
   return source.slice(startIndex, endIndex);
 }
+
+test("Generate is an actionable button and missing samples fail visibly instead of disabling the path", () => {
+  assert.match(picker, /<StudioButton[\s\S]*?type="button"[\s\S]*?onClick=\{handleGenerateClick\}/);
+  assert.match(picker, /disabled=\{busy \|\| recording\}/);
+  assert.doesNotMatch(picker, /disabled=\{busy \|\| recording \|\| !profile\.referenceName\}/);
+  assert.match(picker, /const handleGenerateClick = \(\) =>/);
+  assert.match(picker, /\[BuddyVoiceDiagnostic\] GENERATE_CLICKED/);
+  assert.match(picker, /\[BuddyVoiceDiagnostic\] TEST_ENTERED/);
+  assert.match(picker, /\[BuddyVoiceDiagnostic\] BUSY_STATUS_SET/);
+});
+
+test("uploaded reference storage has bounded IndexedDB and audio-decoding waits", () => {
+  assert.match(buddyVoice, /withTimeout/);
+  assert.match(buddyVoice, /IndexedDB/);
+  assert.match(buddyVoice, /decodeAudioData/);
+  assert.match(buddyVoice, /voice-storage/);
+  assert.match(buddyVoice, /audio-decode/);
+  assert.match(localReference, /withTimeout/);
+  assert.match(localReference, /audio-decode/);
+  assert.match(localReference, /voice-storage/);
+});
 
 test("uploaded reference reaches the worker as decoded 24 kHz audio", () => {
   assert.match(local, /decodeAt24k\(reference\)/);
@@ -36,7 +58,7 @@ test("speaker conditioning returned by encode_speech is retained and consumed by
   const generation = between(
     worker,
     "const waveform = await model.generate({",
-    "});\n  if (!waveform.data",
+    "});\n    if (!waveform.data",
   );
   assert.match(generation, /\.\.\.speakerConditioning/);
   assert.match(generation, /max_new_tokens: MAX_NEW_TOKENS/);
@@ -48,6 +70,15 @@ test("the worker uses the supported Transformers.js Chatterbox loading contract"
   assert.match(worker, /language_model: "q4f16"/);
   assert.match(worker, /conditional_decoder: "fp32"/);
   assert.doesNotMatch(worker, /language_model: "q4"/);
+});
+
+test("worker waits have bounded load, encode, and generation lifetimes and handle message errors", () => {
+  assert.match(local, /WORKER_LOAD_TIMEOUT_MS/);
+  assert.match(local, /WORKER_ENCODE_TIMEOUT_MS/);
+  assert.match(local, /WORKER_GENERATE_TIMEOUT_MS/);
+  assert.match(local, /messageerror/);
+  assert.match(local, /\[worker-timeout\]/);
+  assert.match(local, /clearTimeout/);
 });
 
 test("clone output is rejected when generation is empty and never falls back", () => {
