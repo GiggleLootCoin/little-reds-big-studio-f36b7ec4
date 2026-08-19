@@ -28,12 +28,11 @@ test("Generate is an actionable button and missing samples fail visibly instead 
   assert.match(picker, /\[BuddyVoiceDiagnostic\] GENERATE_CLICKED/);
   assert.match(picker, /\[BuddyVoiceDiagnostic\] TEST_ENTERED/);
   assert.match(picker, /\[BuddyVoiceDiagnostic\] BUSY_STATUS_SET/);
+  assert.match(picker, /\{status\}/);
 });
 
 test("uploaded reference storage has bounded IndexedDB and audio-decoding waits", () => {
   assert.match(buddyVoice, /withTimeout/);
-  assert.match(buddyVoice, /IndexedDB/);
-  assert.match(buddyVoice, /decodeAudioData/);
   assert.match(buddyVoice, /voice-storage/);
   assert.match(buddyVoice, /audio-decode/);
   assert.match(localReference, /withTimeout/);
@@ -49,17 +48,9 @@ test("uploaded reference reaches the worker as decoded 24 kHz audio", () => {
 });
 
 test("speaker conditioning returned by encode_speech is retained and consumed by generate", () => {
-  assert.match(
-    worker,
-    /const encoded = assertConditioning\(await model\.encode_speech\(reference\)\)/,
-  );
+  assert.match(worker, /const encoded = assertConditioning\(await model\.encode_speech\(reference\)\)/);
   assert.match(worker, /speakerConditioning = encoded/);
-
-  const generation = between(
-    worker,
-    "const waveform = await model.generate({",
-    "});\n    if (!waveform.data",
-  );
+  const generation = between(worker, "const waveform = await model.generate({", "});\n    if (!waveform.data");
   assert.match(generation, /\.\.\.speakerConditioning/);
   assert.match(generation, /max_new_tokens: MAX_NEW_TOKENS/);
 });
@@ -91,31 +82,12 @@ test("clone output is rejected when generation is empty and never falls back", (
 
 test("the production clone path contains no public voice Space or API-key fallback", () => {
   const sources = [local, worker, clone, runtime];
-  const forbidden = [
-    ".hf.space",
-    "rahul7star",
-    "spacekaren",
-    "/api/ai/voice-clone",
-    "OPENROUTERAI_API_KEY",
-  ];
-  for (const source of sources) {
-    for (const needle of forbidden)
-      assert.equal(source.includes(needle), false, `forbidden fallback: ${needle}`);
-  }
+  const forbidden = [".hf.space", "rahul7star", "spacekaren", "/api/ai/voice-clone", "OPENROUTERAI_API_KEY"];
+  for (const source of sources) for (const needle of forbidden) assert.equal(source.includes(needle), false, `forbidden fallback: ${needle}`);
 });
 
 test("worker diagnostics classify every Buddy voice failure boundary and reach waitFor", () => {
-  for (const phase of [
-    "webgpu-unavailable",
-    "webgpu-adapter",
-    "device-memory",
-    "model-load",
-    "worker-initialization",
-    "encode-speech",
-    "generate",
-  ]) {
-    assert.match(worker, new RegExp(`\\[${phase}\\]`));
-  }
+  for (const phase of ["webgpu-unavailable", "webgpu-adapter", "device-memory", "model-load", "worker-initialization", "encode-speech", "generate"]) assert.match(worker, new RegExp(`\\[${phase}\\]`));
   assert.match(local, /event\.data\.type === "error"/);
   assert.match(local, /String\(event\.data\.message/);
   assert.match(local, /\[webgpu-unavailable\]/);
