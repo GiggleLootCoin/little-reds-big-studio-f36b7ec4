@@ -1,7 +1,7 @@
 import { AutoProcessor, ChatterboxModel, Tensor } from "@huggingface/transformers";
 
 // Official Transformers.js Chatterbox voice-cloning model. Model files are
-// downloaded directly to the browser; inference remains local/WebGPU.
+downloaded directly to the browser; inference remains local/WebGPU.
 const MODEL_ID = "onnx-community/chatterbox-ONNX";
 const SAMPLE_RATE = 24000;
 const MAX_NEW_TOKENS = 256;
@@ -25,7 +25,11 @@ type LocalChatterboxModel = {
 type LocalProcessor = {
   (text: string): Promise<Record<string, unknown>>;
 };
+type WorkerPoster = {
+  postMessage: (message: unknown, transfer?: Transferable[]) => void;
+};
 
+const workerPoster = self as unknown as WorkerPoster;
 let model: LocalChatterboxModel | null = null;
 let processor: LocalProcessor | null = null;
 let speakerConditioning: SpeakerConditioning | null = null;
@@ -46,7 +50,7 @@ async function loadModel() {
       "This Android browser does not expose WebGPU. The API-keyless local Chatterbox voice engine cannot run on this device.",
     );
   }
-  self.postMessage({
+  workerPoster.postMessage({
     type: "progress",
     message:
       "Preparing the local Chatterbox voice-cloning engine… first use downloads the model files.",
@@ -64,9 +68,9 @@ async function loadModel() {
         language_model: "q4f16",
         conditional_decoder: "fp32",
       },
-      progress_callback: (progress: unknown) => self.postMessage({ type: "progress", progress }),
+      progress_callback: (progress: unknown) => workerPoster.postMessage({ type: "progress", progress }),
     })) as unknown as LocalChatterboxModel;
-    self.postMessage({ type: "loaded", device: "webgpu", model: MODEL_ID });
+    workerPoster.postMessage({ type: "loaded", device: "webgpu", model: MODEL_ID });
   } catch (error) {
     model = null;
     processor = null;
@@ -105,7 +109,7 @@ async function encode(audio: Float32Array) {
   const reference = new Tensor("float32", audio, [1, audio.length]);
   const encoded = assertConditioning(await model.encode_speech(reference));
   speakerConditioning = encoded;
-  self.postMessage({
+  workerPoster.postMessage({
     type: "encoded",
     conditioning: {
       audioFeatures: encoded.audio_features.dims,
@@ -138,12 +142,9 @@ async function generate(text: string, exaggeration: number) {
   if (!waveform.data || waveform.data.length === 0) {
     throw new Error("Chatterbox generation returned empty audio.");
   }
-  const data = waveform.data;
-  const buffer = data.buffer.slice(
-    data.byteOffset,
-    data.byteOffset + data.byteLength,
-  ) as ArrayBuffer;
-  self.postMessage({ type: "audio", sampleRate: SAMPLE_RATE, waveform: buffer }, [buffer]);
+  const data = Float32Array.from(waveform.data);
+  const buffer = data.buffer;
+  workerPoster.postMessage({ type: "audio", sampleRate: SAMPLE_RATE, waveform: buffer }, [buffer]);
 }
 
 self.addEventListener("message", async (event: MessageEvent) => {
@@ -162,7 +163,7 @@ self.addEventListener("message", async (event: MessageEvent) => {
       await generate(message.text || "Hello from Buddy.", message.exaggeration ?? 0.5);
     }
   } catch (error) {
-    self.postMessage({
+    workerPoster.postMessage({
       type: "error",
       message: error instanceof Error ? error.message : "Local Chatterbox failed.",
     });
