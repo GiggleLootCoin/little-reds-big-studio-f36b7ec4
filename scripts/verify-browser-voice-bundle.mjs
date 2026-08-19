@@ -25,25 +25,26 @@ const browserBundle = assets.map(([, source]) => source).join("\n");
 
 const required = [
   ["Qwen3-TTS Space", 'Qwen/Qwen3-TTS'],
-  ["Qwen model size", 'MODEL_SIZE="0.6B"'],
+  ["Qwen model size", /(?:MODEL_SIZE\s*=\s*)?["']0\.6B["']/],
   ["Qwen clone route", "/generate_voice_clone"],
   ["reference upload", "handle_file(sample)"],
   ["reference transcript", "refText"],
   ["browser audio verification", "normalizeAndVerifyBrowserAudio"],
 ];
 for (const [label, needle] of required) {
-  if (!browserBundle.includes(needle)) {
+  const found = needle instanceof RegExp ? needle.test(browserBundle) : browserBundle.includes(needle);
+  if (!found) {
     throw new Error(`Production Qwen voice bundle is missing required marker: ${label}`);
   }
 }
 
 if (
   !browserBundle.match(
-    /["']English["']\s*,\s*(?:false|!1)\s*,\s*MODEL_SIZE\b/,
+    /["']English["']\s*,\s*(?:false|!1)\s*,\s*(?:MODEL_SIZE\b|["']0\.6B["'])/,
   )
 ) {
   throw new Error(
-    "Production Qwen voice bundle is missing the explicit false use_xvector_only argument followed by MODEL_SIZE.",
+    "Production Qwen voice bundle is missing the explicit false use_xvector_only argument followed by the 0.6B model size.",
   );
 }
 
