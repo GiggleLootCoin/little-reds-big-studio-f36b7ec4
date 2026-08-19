@@ -23,6 +23,38 @@ const assets = await Promise.all(
 );
 const browserBundle = assets.map(([, source]) => source).join("\n");
 
+const diagnosticMarkers = [
+  "/generate_voice_clone",
+  "handle_file",
+  "refText",
+  '"English"',
+  "false",
+  "0.6B",
+  "MODEL_SIZE",
+];
+const contextRadius = 360;
+for (const marker of diagnosticMarkers) {
+  let reported = 0;
+  for (const [file, source] of assets) {
+    let fromIndex = 0;
+    while (reported < 12) {
+      const index = source.indexOf(marker, fromIndex);
+      if (index === -1) break;
+      const start = Math.max(0, index - contextRadius);
+      const end = Math.min(source.length, index + marker.length + contextRadius);
+      console.log(
+        `[browser-voice-diagnostic] ${marker} in ${file}: ${JSON.stringify(source.slice(start, end))}`,
+      );
+      reported += 1;
+      fromIndex = index + marker.length;
+    }
+    if (reported >= 12) break;
+  }
+  if (reported === 0) {
+    console.log(`[browser-voice-diagnostic] ${marker}: NOT FOUND`);
+  }
+}
+
 const required = [
   ["Qwen3-TTS Space", 'Qwen/Qwen3-TTS'],
   ["Qwen model size", /(?:MODEL_SIZE\s*=\s*)?["']0\.6B["']/],
