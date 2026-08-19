@@ -1,24 +1,35 @@
-import { ChatterboxModel, ChatterboxProcessor, RawAudio } from "@huggingface/transformers";
+import { AutoProcessor, ChatterboxModel, Tensor } from "@huggingface/transformers";
 
 // Official Transformers.js Chatterbox voice-cloning model. Model files are
 // downloaded directly to the browser; inference remains local/WebGPU.
 const MODEL_ID = "onnx-community/chatterbox-ONNX";
 const SAMPLE_RATE = 24000;
+const MAX_NEW_TOKENS = 256;
+
+type TensorLike = {
+  data?: ArrayLike<number>;
+  dims?: number[];
+  size?: number;
+};
 
 type SpeakerConditioning = {
-  audio_features: unknown;
-  audio_tokens: unknown;
-  speaker_embeddings: unknown;
-  speaker_features: unknown;
+  audio_features: TensorLike;
+  audio_tokens: TensorLike;
+  speaker_embeddings: TensorLike;
+  speaker_features: TensorLike;
 };
 type LocalChatterboxModel = {
-  encode_speech: (audio: unknown) => Promise<SpeakerConditioning>;
-  generate: (inputs: Record<string, unknown>) => Promise<{ data: Float32Array }>;
+  encode_speech: (audio: TensorLike) => Promise<SpeakerConditioning>;
+  generate: (inputs: Record<string, unknown>) => Promise<TensorLike>;
 };
 type LocalProcessor = {
-  (text: string, audio?: unknown): Promise<Record<string, unknown>>;
+  (text: string): Promise<Record<string, unknown>>;
+};
+type WorkerPoster = {
+  postMessage: (message: unknown, transfer?: Transferable[]) => void;
 };
 
+const workerPoster = self as unknown as WorkerPoster;
 let model: LocalChatterboxModel | null = null;
 let processor: LocalProcessor | null = null;
 let speakerConditioning: SpeakerConditioning | null = null;
@@ -39,24 +50,24 @@ async function loadModel() {
       "This Android browser does not expose WebGPU. The API-keyless local Chatterbox voice engine cannot run on this device.",
     );
   }
-  self.postMessage({
+  workerPoster.postMessage({
     type: "progress",
     message:
       "Preparing the local Chatterbox voice-cloning engine… first use downloads the model files.",
   });
   try {
-    processor = (await ChatterboxProcessor.from_pretrained(MODEL_ID)) as unknown as LocalProcessor;
+    processor = (await AutoProcessor.from_pretrained(MODEL_ID)) as unknown as LocalProcessor;
     model = (await ChatterboxModel.from_pretrained(MODEL_ID, {
       device: "webgpu",
       dtype: {
         embed_tokens: "fp32",
         speech_encoder: "fp32",
-        language_model: "q4",
+        language_model: "q4f16",
         conditional_decoder: "fp32",
       },
-      progress_callback: (progress: unknown) => self.postMessage({ type: "progress", progress }),
+      progress_callback: (progress: unknown) => workerPoster.postMessage({ type: "progress", progress }),
     })) as unknown as LocalChatterboxModel;
-    self.postMessage({ type: "loaded", device: "webgpu", model: MODEL_ID });
+    workerPoster.postMessage({ type: "loaded", device: "webgpu", model: MODEL_ID });
   } catch (error) {
     model = null;
     processor = null;
@@ -66,32 +77,41 @@ async function loadModel() {
   }
 }
 
+function assertConditioning(conditioning: SpeakerConditioning): SpeakerConditioning {
+  const required: Array<keyof SpeakerConditioning> = [
+    "audio_features",
+    "audio_tokens",
+    "speaker_embeddings",
+    "speaker_features",
+  ];
+  for (const key of required) {
+    const tensor = conditioning?.[key];
+    if (!tensor || !Array.isArray(tensor.dims) || tensor.dims.length === 0 || tensor.size === 0) {
+      throw new Error(`Chatterbox returned invalid speaker-conditioning tensor: ${key}.`);
+    }
+  }
+  return conditioning;
+}
+
 async function encode(audio: Float32Array) {
   if (!model || !processor) await loadModel();
   if (!model || !processor) throw new Error("The local Chatterbox model could not be loaded.");
+  if (audio.length < SAMPLE_RATE * 3) {
+    throw new Error("The uploaded reference recording is too short after decoding.");
+  }
 
-  // This is the official Transformers.js Chatterbox conditioning contract:
-  // RawAudio -> processor audio features -> speech encoder -> four conditioning tensors.
-  // Keep every returned tensor; the conditional decoder needs both speaker fields
-  // as well as the audio token/features returned by the speech encoder.
-  const reference = new RawAudio(audio, SAMPLE_RATE);
-  const inputs = await processor("", reference);
-  const audioValues = inputs.audio_values;
-  if (!audioValues) {
-    throw new Error("Chatterbox could not prepare the uploaded reference recording.");
-  }
-  const encoded = await model.encode_speech(audioValues);
-  if (
-    !encoded ||
-    !encoded.audio_features ||
-    !encoded.audio_tokens ||
-    !encoded.speaker_embeddings ||
-    !encoded.speaker_features
-  ) {
-    throw new Error("Chatterbox could not extract usable speaker-conditioning data from your reference recording.");
-  }
+  const reference = new Tensor("float32", audio, [1, audio.length]);
+  const encoded = assertConditioning(await model.encode_speech(reference));
   speakerConditioning = encoded;
-  self.postMessage({ type: "encoded" });
+  workerPoster.postMessage({
+    type: "encoded",
+    conditioning: {
+      audioFeatures: encoded.audio_features.dims,
+      audioTokens: encoded.audio_tokens.dims,
+      speakerEmbeddings: encoded.speaker_embeddings.dims,
+      speakerFeatures: encoded.speaker_features.dims,
+    },
+  });
 }
 
 async function generate(text: string, exaggeration: number) {
@@ -103,27 +123,18 @@ async function generate(text: string, exaggeration: number) {
     throw new Error("Chatterbox could not tokenize the requested speech text.");
   }
 
-  // Pass the exact four tensors explicitly. This prevents the reference speaker
-  // conditioning from being lost through an untyped object spread.
   const waveform = await model.generate({
-    input_ids: inputs.input_ids,
-    attention_mask: inputs.attention_mask,
-    audio_features: speakerConditioning.audio_features,
-    audio_tokens: speakerConditioning.audio_tokens,
-    speaker_embeddings: speakerConditioning.speaker_embeddings,
-    speaker_features: speakerConditioning.speaker_features,
+    ...inputs,
+    ...speakerConditioning,
     exaggeration,
-    max_new_tokens: 2048,
-    repetition_penalty: 1.2,
-    do_sample: true,
-    temperature: 0.2,
+    max_new_tokens: MAX_NEW_TOKENS,
   });
-  const data = waveform.data;
-  const buffer = data.buffer.slice(
-    data.byteOffset,
-    data.byteOffset + data.byteLength,
-  ) as ArrayBuffer;
-  self.postMessage({ type: "audio", sampleRate: SAMPLE_RATE, waveform: buffer });
+  if (!waveform.data || waveform.data.length === 0) {
+    throw new Error("Chatterbox generation returned empty audio.");
+  }
+  const data = Float32Array.from(waveform.data);
+  const buffer = data.buffer;
+  workerPoster.postMessage({ type: "audio", sampleRate: SAMPLE_RATE, waveform: buffer }, [buffer]);
 }
 
 self.addEventListener("message", async (event: MessageEvent) => {
@@ -142,7 +153,7 @@ self.addEventListener("message", async (event: MessageEvent) => {
       await generate(message.text || "Hello from Buddy.", message.exaggeration ?? 0.5);
     }
   } catch (error) {
-    self.postMessage({
+    workerPoster.postMessage({
       type: "error",
       message: error instanceof Error ? error.message : "Local Chatterbox failed.",
     });
