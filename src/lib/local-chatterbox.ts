@@ -7,6 +7,11 @@ let encodePromise: Promise<void> | null = null;
 let encodedKey = "";
 let workerError: Error | null = null;
 
+type BrowserGpuAdapter = object;
+type BrowserGpu = {
+  requestAdapter: (options?: { featureLevel?: "core" | "compatibility" }) => Promise<BrowserGpuAdapter | null>;
+};
+
 function getWorker(): Worker {
   if (!worker) {
     worker = new Worker(new URL("../workers/chatterbox-local.worker.ts", import.meta.url), {
@@ -20,13 +25,13 @@ function getWorker(): Worker {
 }
 
 async function assertBrowserWebGpu(onStatus?: (status: string) => void) {
-  const gpu = (navigator as Navigator & { gpu?: { requestAdapter: (options?: unknown) => Promise<any> } }).gpu;
+  const gpu = (navigator as Navigator & { gpu?: BrowserGpu }).gpu;
   if (!gpu) {
     throw new Error(
       "WebGPU is unavailable in this Android browser. Local Chatterbox cannot run here; no remote/preset voice will be substituted.",
     );
   }
-  let adapter: any = null;
+  let adapter: BrowserGpuAdapter | null = null;
   try {
     adapter = await gpu.requestAdapter();
     if (!adapter) {
