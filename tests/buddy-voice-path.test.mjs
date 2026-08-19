@@ -1,0 +1,58 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+
+const read = (path) => readFile(path, "utf8");
+
+const local = await read("src/lib/local-chatterbox.ts");
+const worker = await read("src/workers/chatterbox-local.worker.ts");
+const clone = await read("src/lib/real-voice-clone-v2.ts");
+const runtime = await read("src/lib/studio-runtime.ts");
+
+function between(source, start, end) {
+  const startIndex = source.indexOf(start);
+  const endIndex = source.indexOf(end, startIndex + start.length);
+  assert.notEqual(startIndex, -1, `missing start marker: ${start}`);
+  assert.notEqual(endIndex, -1, `missing end marker: ${end}`);
+  return source.slice(startIndex, endIndex);
+}
+
+test("uploaded reference reaches the worker as decoded 24 kHz audio", () => {
+  assert.match(local, /decodeAt24k\(reference\)/);
+  assert.match(local, /type: "encode"/);
+  assert.match(local, /audio\.buffer/);
+  assert.match(worker, /new Tensor\("float32", audio, \[1, audio\.length\]\)/);
+});
+
+test("speaker conditioning returned by encode_speech is retained and consumed by generate", () => {
+  assert.match(worker, /const encoded = assertConditioning\(await model\.encode_speech\(reference\)\)/);
+  assert.match(worker, /speakerConditioning = encoded/);
+
+  const generation = between(worker, "const waveform = await model.generate({", "});\n  if (!waveform.data");
+  assert.match(generation, /\.\.\.speakerConditioning/);
+  assert.match(generation, /max_new_tokens: MAX_NEW_TOKENS/);
+});
+
+test("the worker uses the supported Transformers.js Chatterbox loading contract", () => {
+  assert.match(worker, /AutoProcessor/);
+  assert.match(worker, /AutoProcessor\.from_pretrained\(MODEL_ID\)/);
+  assert.match(worker, /language_model: "q4f16"/);
+  assert.match(worker, /conditional_decoder: "fp32"/);
+  assert.doesNotMatch(worker, /language_model: "q4"/);
+});
+
+test("clone output is rejected when generation is empty and never falls back", () => {
+  assert.match(worker, /Chatterbox generation returned empty audio/);
+  assert.match(clone, /createLocalChatterboxClone\(sample, text, 0\.5/);
+  assert.match(runtime, /if \(capability === "voice-clone"\)/);
+  assert.match(runtime, /createBestFreeVoiceClone/);
+  assert.match(runtime, /import\("\.\/studio-runtime-impl"\)/);
+});
+
+test("the production clone path contains no public voice Space or API-key fallback", async () => {
+  const sources = [local, worker, clone, runtime];
+  const forbidden = [".hf.space", "rahul7star", "spacekaren", "/api/ai/voice-clone", "OPENROUTERAI_API_KEY"];
+  for (const source of sources) {
+    for (const needle of forbidden) assert.doesNotMatch(source, new RegExp(needle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  }
+});
