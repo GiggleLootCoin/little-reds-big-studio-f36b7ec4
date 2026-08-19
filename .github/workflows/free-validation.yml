@@ -22,7 +22,7 @@ jobs:
           node-version: 24
           cache: npm
       - name: Install dependencies from lockfile
-        run: npm ci --no-audit --no-fund
+        run: npm ci --no-audit --no-fund --legacy-peer-deps
       - name: Audio artifact regression tests
         run: node --experimental-strip-types --test tests/audio-artifact.test.ts
       - name: Type-check
