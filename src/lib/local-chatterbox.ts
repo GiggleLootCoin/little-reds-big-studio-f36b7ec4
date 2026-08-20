@@ -106,7 +106,6 @@ function waitFor(
         ? WORKER_ENCODE_TIMEOUT_MS
         : WORKER_GENERATE_TIMEOUT_MS;
   return new Promise((resolve, reject) => {
-    const timer: ReturnType<typeof setTimeout> | undefined = undefined;
     const fail = (error: Error) => {
       cleanup();
       if (worker === current) {
@@ -158,7 +157,7 @@ function waitFor(
     current.addEventListener("message", onMessage);
     current.addEventListener("error", onError);
     current.addEventListener("messageerror", onMessageError);
-    setTimeout(
+    const timer = setTimeout(
       () =>
         fail(
           new Error(
