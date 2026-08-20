@@ -5,7 +5,7 @@ type Env = {
 
 function decodeBase64(value: string): ArrayBuffer {
   const bytes = Uint8Array.from(atob(value), (c) => c.charCodeAt(0));
-  return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+  return bytes.buffer.slice(bytes.byteOffset, bytes.byteLength);
 }
 
 function languageName(value: unknown): string {
@@ -82,11 +82,26 @@ async function qwenClone(
     mime_type: audioType || undefined,
     meta: { _type: "gradio.FileData" },
   };
+  const conditioning = {
+    ref_audio: fileData,
+    ref_text: refText,
+    target_text: text,
+    language: languageName(language),
+    use_xvector_only: false,
+    model_size: "0.6B",
+  };
   const start = await fetch(`${space}/gradio_api/call/generate_voice_clone`, {
     method: "POST",
     headers: { ...authHeaders(env), "content-type": "application/json" },
     body: JSON.stringify({
-      data: [fileData, refText, text, languageName(language), false, "0.6B"],
+      data: [
+        conditioning.ref_audio,
+        conditioning.ref_text,
+        conditioning.target_text,
+        conditioning.language,
+        conditioning.use_xvector_only,
+        conditioning.model_size,
+      ],
     }),
   });
   if (!start.ok) {
