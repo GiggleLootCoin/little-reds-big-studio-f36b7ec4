@@ -12,17 +12,29 @@ const required = [
   ["clone accepts the actual reference Blob", files.clone, "sample: Blob"],
   ["clone rejects an empty reference recording", files.clone, "if (!sample.size)"],
   ["clone requires the reference transcript", files.clone, "if (!refText.trim())"],
-  ["clone encodes the actual reference recording", files.clone, "audioBase64: await blobBase64(sample)"],
+  [
+    "clone encodes the actual reference recording",
+    files.clone,
+    "audioBase64: await blobBase64(sample)",
+  ],
   ["clone sends the exact reference transcript", files.clone, "refText: refText.trim()"],
   ["clone calls the authorized Qwen gateway", files.clone, 'fetch("/api/voice-clone"'],
   ["clone reads the exact returned Blob", files.clone, "const generated = await response.blob()"],
   ["clone rejects empty generated audio", files.clone, "if (!generated.size)"],
-  ["clone applies the browser audio safety boundary", files.clone, "const normalized = await normalizeAndVerifyBrowserAudio(generated)"],
+  [
+    "clone applies the browser audio safety boundary",
+    files.clone,
+    "const normalized = await normalizeAndVerifyBrowserAudio(generated)",
+  ],
   ["clone validates generated duration", files.clone, "normalized.stats.duration <= 0"],
   ["clone validates generated peak", files.clone, "normalized.stats.peak <= 0"],
   ["clone validates generated RMS", files.clone, "normalized.stats.rms <= 0"],
   ["clone returns the normalized browser URL", files.clone, "url: normalized.url"],
-  ["gateway exposes the Qwen voice-clone handler", files.gateway, "export async function handleVoiceClone"],
+  [
+    "gateway exposes the Qwen voice-clone handler",
+    files.gateway,
+    "export async function handleVoiceClone",
+  ],
   ["gateway uploads the actual reference Blob", files.gateway, "qwenUpload(space, audio, env)"],
   ["gateway uses the Qwen voice-clone operation", files.gateway, "generate_voice_clone"],
   ["gateway uses full reference conditioning", files.gateway, "use_xvector_only: false"],
@@ -31,11 +43,27 @@ const required = [
   ["gateway sends the exact reference transcript", files.gateway, "ref_text: refText"],
   ["gateway sends the target text", files.gateway, "target_text: text"],
   ["gateway downloads generated audio", files.gateway, "const generated = await fetch(audioUrl"],
-  ["gateway removes any upstream verification claim", files.gateway, 'headers.delete("x-clone-verified")'],
-  ["gateway identifies the Qwen provider", files.gateway, 'headers.set("x-clone-provider", "Qwen3-TTS 0.6B Base")'],
+  [
+    "gateway removes any upstream verification claim",
+    files.gateway,
+    'headers.delete("x-clone-verified")',
+  ],
+  [
+    "gateway identifies the Qwen provider",
+    files.gateway,
+    'headers.set("x-clone-provider", "Qwen3-TTS 0.6B Base")',
+  ],
   ["runtime imports the production clone entry", files.runtime, "createBestFreeVoiceClone"],
-  ["runtime intercepts voice-clone before generic runtime", files.runtime, 'if (capability === "voice-clone")'],
-  ["runtime passes the actual reference Blob", files.runtime, "runVerifiedClone(sample, refText, targetText, language"],
+  [
+    "runtime intercepts voice-clone before generic runtime",
+    files.runtime,
+    'if (capability === "voice-clone")',
+  ],
+  [
+    "runtime passes the actual reference Blob",
+    files.runtime,
+    "runVerifiedClone(sample, refText, targetText, language",
+  ],
   ["runtime requires a reference Blob", files.runtime, "sample instanceof Blob"],
   ["runtime preserves the reference transcript", files.runtime, "input.referenceTranscript"],
 ];
@@ -50,7 +78,9 @@ const obsoleteClonePath = [
 ];
 for (const [name, source] of obsoleteClonePath) {
   if (source.includes("createLocalChatterboxClone")) {
-    throw new Error(`Voice-path verification failed: obsolete local Chatterbox production path found in ${name}.`);
+    throw new Error(
+      `Voice-path verification failed: obsolete local Chatterbox production path found in ${name}.`,
+    );
   }
 }
 

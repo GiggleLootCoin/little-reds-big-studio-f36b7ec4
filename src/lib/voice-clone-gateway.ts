@@ -109,8 +109,7 @@ async function qwenClone(
   const audio = output as { url?: string; path?: string };
   const audioUrl = audio.url;
   if (audioUrl) return audioUrl.startsWith("http") ? audioUrl : `${space}${audioUrl}`;
-  if (audio.path)
-    return `${space}/gradio_api/file=${String(audio.path).replace(/^\//, "")}`;
+  if (audio.path) return `${space}/gradio_api/file=${String(audio.path).replace(/^\//, "")}`;
   throw new Error("Qwen returned an audio object without a downloadable URL or path.");
 }
 

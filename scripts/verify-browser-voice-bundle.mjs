@@ -20,7 +20,9 @@ const entryPaths = [
   ...shell.matchAll(/(?:<script[^>]+src|<link[^>]+href)=["'](\/assets\/[^"']+\.js)["']/g),
 ].map((match) => match[1].slice("/assets/".length));
 if (!entryPaths.length) {
-  throw new Error("Could not identify a production browser JavaScript entry from dist/client/_shell.html.");
+  throw new Error(
+    "Could not identify a production browser JavaScript entry from dist/client/_shell.html.",
+  );
 }
 
 const resolveImport = (fromFile, specifier) => {
@@ -30,8 +32,7 @@ const resolveImport = (fromFile, specifier) => {
 };
 
 const importsOf = (source) =>
-  [...source.matchAll(/(?:from\s*|import\s*\()([`'\"])([^`'\"]+)\1/g)]
-    .map((match) => match[2]);
+  [...source.matchAll(/(?:from\s*|import\s*\()([`'\"])([^`'\"]+)\1/g)].map((match) => match[2]);
 
 const reachable = new Set();
 const queue = entryPaths.filter((file) => assets.has(file));
@@ -45,15 +46,18 @@ while (queue.length) {
   }
 }
 if (!reachable.size) {
-  throw new Error("Production browser JavaScript entry is present, but no emitted browser asset is reachable from it.");
+  throw new Error(
+    "Production browser JavaScript entry is present, but no emitted browser asset is reachable from it.",
+  );
 }
 
 const reachableAssets = [...reachable].map((file) => [file, assets.get(file)]);
-const cloneEntries = reachableAssets.filter(([, source]) =>
-  source.includes("/api/voice-clone") &&
-  source.includes("Sending your actual reference recording to Qwen3-TTS") &&
-  source.includes("__buddyLastCloneUrl") &&
-  source.includes("Clone audio verified:"),
+const cloneEntries = reachableAssets.filter(
+  ([, source]) =>
+    source.includes("/api/voice-clone") &&
+    source.includes("Sending your actual reference recording to Qwen3-TTS") &&
+    source.includes("__buddyLastCloneUrl") &&
+    source.includes("Clone audio verified:"),
 );
 if (cloneEntries.length !== 1) {
   throw new Error(
@@ -64,11 +68,19 @@ if (cloneEntries.length !== 1) {
 const [cloneAssetName, cloneSource] = cloneEntries[0];
 const endpointIndex = cloneSource.indexOf("fetch(`/api/voice-clone`");
 if (endpointIndex < 0) {
-  throw new Error(`Production browser clone entry in ${cloneAssetName} does not contain the /api/voice-clone fetch.`);
+  throw new Error(
+    `Production browser clone entry in ${cloneAssetName} does not contain the /api/voice-clone fetch.`,
+  );
 }
 
 const flow = cloneSource.slice(endpointIndex, endpointIndex + 7000);
-for (const marker of ["audioBase64", "refText", ".blob()", "__buddyLastCloneUrl", "verification:"]) {
+for (const marker of [
+  "audioBase64",
+  "refText",
+  ".blob()",
+  "__buddyLastCloneUrl",
+  "verification:",
+]) {
   if (!flow.includes(marker)) {
     throw new Error(
       `Production browser clone entry in ${cloneAssetName} is missing the compiled ${marker} step after /api/voice-clone.`,
