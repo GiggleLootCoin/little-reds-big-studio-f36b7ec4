@@ -1,0 +1,39 @@
+name: Diagnostic Qwen Browser Artifact
+
+on:
+  push:
+    branches:
+      - diagnostic/qwen-browser-artifact-a6fa965
+
+permissions:
+  contents: read
+
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact PR #33 build head
+        uses: actions/checkout@v5
+        with:
+          ref: a6fa965cd52cab8cd91913ba383353ba853131b0
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies from lockfile
+        run: npm ci --no-audit --no-fund --legacy-peer-deps
+
+      - name: Build exact PR #33 head
+        run: npm run build
+
+      - name: Upload compiled browser client only
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr33-a6fa965-dist-client
+          path: dist/client/
+          if-no-files-found: error
+          retention-days: 1
