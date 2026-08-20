@@ -64,10 +64,77 @@ if (!transcriptFlow.test(qwenSource.source)) {
   throw new Error("Production Qwen voice bundle is missing the reference transcript flow.");
 }
 
+const audioSafetySource = await readFile(
+  join(process.cwd(), "src", "lib", "audio-artifact.ts"),
+  "utf8",
+);
+const normalizeStart = audioSafetySource.indexOf(
+  "export async function normalizeAndVerifyBrowserAudio(",
+);
+if (normalizeStart < 0) {
+  throw new Error("Source browser audio verifier implementation is missing.");
+}
+const normalizeSource = audioSafetySource.slice(normalizeStart);
+
+const audioSafetyMarkers = [
+  "decodeAudioData",
+  "decoded.duration",
+  "decoded.numberOfChannels",
+  "decoded.getChannelData",
+  "0.25",
+  "0.005",
+  "0.0005",
+  "Generated clone has no usable duration.",
+  "Generated clone decoded successfully but is silent.",
+  "new Audio()",
+  "onloadedmetadata",
+  "Android audio element did not load the generated clone.",
+  "Android audio element reported no usable duration.",
+  "Android audio element could not decode the generated clone.",
+];
+for (const marker of audioSafetyMarkers) {
+  if (!normalizeSource.includes(marker)) {
+    throw new Error(`Source browser audio verifier is missing required safety construct: ${marker}`);
+  }
+}
+
+const audioSafetyAsset = qwenSource.source;
+const orderedBundleMarkers = [
+  "decodeAudioData",
+  "Generated clone has no usable duration.",
+  "Generated clone decoded successfully but is silent.",
+  "new Audio",
+  "onloadedmetadata",
+  "Android audio element did not load the generated clone.",
+  "Android audio element reported no usable duration.",
+  "Android audio element could not decode the generated clone.",
+];
+let previousIndex = -1;
+for (const marker of orderedBundleMarkers) {
+  const index = audioSafetyAsset.indexOf(marker);
+  if (index < 0) {
+    throw new Error(`Production Qwen voice bundle is missing browser audio-safety construct: ${marker}`);
+  }
+  if (index <= previousIndex) {
+    throw new Error(
+      "Production Qwen voice bundle does not preserve the required browser audio-safety operation order.",
+    );
+  }
+  previousIndex = index;
+}
+
+const thresholdPositions = ["0.25", "0.005", "0.0005"].map((marker) =>
+  audioSafetyAsset.indexOf(marker),
+);
+if (thresholdPositions.some((index) => index < 0)) {
+  throw new Error(
+    "Production Qwen voice bundle is missing one or more source-defined duration/peak/RMS safety thresholds.",
+  );
+}
+
 const required = [
   ["Qwen3-TTS Space", "Qwen/Qwen3-TTS"],
   ["Qwen clone route", "/generate_voice_clone"],
-  ["browser audio verification", "normalizeAndVerifyBrowserAudio"],
 ];
 for (const [label, needle] of required) {
   if (!browserBundle.includes(needle)) {
@@ -95,5 +162,5 @@ for (const needle of forbidden) {
 }
 
 console.log(
-  `Production Qwen voice bundle verified across ${jsFiles.length} browser JS assets: official Qwen3-TTS 0.6B reference-conditioned generate_voice_clone call, transformed uploaded-reference flow, transcript flow, explicit non-xvector-only conditioning, and non-empty/non-silent browser audio validation are present; prohibited remote/preset/API-key fallback markers are absent.`,
+  `Production Qwen voice bundle verified across ${jsFiles.length} browser JS assets: official Qwen3-TTS 0.6B reference-conditioned generate_voice_clone call, transformed uploaded-reference flow, transcript flow, source-defined browser decode/duration/peak/RMS safety path, Android audio-element validation, and non-empty/non-silent browser audio validation are present; prohibited remote/preset/API-key fallback markers are absent.`,
 );
