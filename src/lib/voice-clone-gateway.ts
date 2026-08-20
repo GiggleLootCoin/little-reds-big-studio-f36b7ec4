@@ -119,18 +119,30 @@ async function qwenClone(
     throw new Error(`Qwen clone job failed (${result.status}). ${detail.slice(0, 300)}`);
   }
   const stream = await result.text();
-  const completeEvent = stream
-    .split(/\r?\n\r?\n/)
-    .find((event) => /^event:\s*complete\s*$/m.test(event));
-  if (!completeEvent) throw new Error("Qwen returned no completed clone audio.");
-
-  const dataLines = completeEvent.split(/\r?\n/).filter((line) => line.startsWith("data:"));
+  let currentEvent = "";
+  let dataLines: string[] = [];
   let payload: unknown = null;
-  try {
-    payload = JSON.parse(dataLines.map((line) => line.slice(5).trim()).join("\n")) as unknown;
-  } catch {
-    throw new Error("Qwen returned an invalid completed clone result.");
+  for (const line of stream.split(/\r?\n/)) {
+    if (line === "") {
+      if (currentEvent === "complete") {
+        try {
+          payload = JSON.parse(dataLines.join("\n")) as unknown;
+        } catch {
+          throw new Error("Qwen returned an invalid completed clone result.");
+        }
+        break;
+      }
+      currentEvent = "";
+      dataLines = [];
+      continue;
+    }
+    if (line.startsWith("event:")) {
+      currentEvent = line.slice(6).trim();
+    } else if (line.startsWith("data:")) {
+      dataLines.push(line.slice(5).trim());
+    }
   }
+  if (payload === null) throw new Error("Qwen returned no completed clone audio.");
   if (!Array.isArray(payload) || !payload[0])
     throw new Error("Qwen completed without an audio artifact.");
 
