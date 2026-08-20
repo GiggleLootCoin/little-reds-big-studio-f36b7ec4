@@ -77,7 +77,7 @@ for (const marker of ["audioBase64", "refText", ".blob()", "__buddyLastCloneUrl"
 }
 
 const blobToVerifier = flow.match(
-  /(?:let|const)\s+([A-Za-z_$][\\w$]*)=await\s+[A-Za-z_$][\\w$]*\.blob\(\).*?(?:let|const)\s+([A-Za-z_$][\\w$]*)=await\s+([A-Za-z_$][\\w$]*)\(\1\)/s,
+  /(?:let|const)\s+([A-Za-z_$][\w$]*)=await\s+[A-Za-z_$][\w$]*\.blob\(\).*?(?:let|const)\s+([A-Za-z_$][\w$]*)=await\s+([A-Za-z_$][\w$]*)\(\1\)/s,
 );
 if (!blobToVerifier) {
   throw new Error(
