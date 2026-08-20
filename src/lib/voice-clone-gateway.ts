@@ -82,34 +82,53 @@ async function qwenClone(
     mime_type: audioType || undefined,
     meta: { _type: "gradio.FileData" },
   };
-  const response = await fetch(`${space}/run/generate_voice_clone`, {
+  const start = await fetch(`${space}/gradio_api/call/generate_voice_clone`, {
     method: "POST",
     headers: { ...authHeaders(env), "content-type": "application/json" },
     body: JSON.stringify({
-      ref_audio: fileData,
-      ref_text: refText,
-      target_text: text,
-      language: languageName(language),
-      use_xvector_only: false,
-      model_size: "0.6B",
+      data: [fileData, refText, text, languageName(language), false, "0.6B"],
     }),
   });
-  if (!response.ok) {
-    const detail = await response.text().catch(() => "");
-    throw new Error(`Qwen clone request failed (${response.status}). ${detail.slice(0, 300)}`);
+  if (!start.ok) {
+    const detail = await start.text().catch(() => "");
+    throw new Error(`Qwen clone job could not start (${start.status}). ${detail.slice(0, 300)}`);
   }
+  const started = (await start.json()) as { event_id?: string };
+  if (!started.event_id) throw new Error("Qwen did not return a clone job ID.");
 
-  const payload = (await response.json()) as unknown;
-  const output =
-    payload && typeof payload === "object"
-      ? ((payload as Record<string, unknown>).output ?? payload)
-      : payload;
-  if (!output || typeof output !== "object")
+  const result = await fetch(`${space}/gradio_api/call/generate_voice_clone/${started.event_id}`, {
+    headers: authHeaders(env),
+  });
+  if (!result.ok) {
+    const detail = await result.text().catch(() => "");
+    throw new Error(`Qwen clone job failed (${result.status}). ${detail.slice(0, 300)}`);
+  }
+  const stream = await result.text();
+  const completeLines = stream
+    .split(/\r?\n/)
+    .filter((line) => line.startsWith("data:") && line.trim() !== "data:");
+  if (!completeLines.length) throw new Error("Qwen returned no completed clone audio.");
+
+  let payload: unknown = null;
+  for (const line of completeLines.reverse()) {
+    try {
+      const parsed = JSON.parse(line.slice(5).trim()) as unknown;
+      if (Array.isArray(parsed)) {
+        payload = parsed;
+        break;
+      }
+    } catch {
+      /* keep looking for the completed event */
+    }
+  }
+  if (!Array.isArray(payload) || !payload[0])
     throw new Error("Qwen completed without an audio artifact.");
-  const audio = output as { url?: string; path?: string };
-  const audioUrl = audio.url;
+
+  const audio = payload[0] as { url?: string; path?: string } | string;
+  const audioUrl = typeof audio === "string" ? audio : audio.url;
   if (audioUrl) return audioUrl.startsWith("http") ? audioUrl : `${space}${audioUrl}`;
-  if (audio.path) return `${space}/gradio_api/file=${String(audio.path).replace(/^\//, "")}`;
+  if (typeof audio !== "string" && audio.path)
+    return `${space}/gradio_api/file=${String(audio.path).replace(/^\//, "")}`;
   throw new Error("Qwen returned an audio object without a downloadable URL or path.");
 }
 
