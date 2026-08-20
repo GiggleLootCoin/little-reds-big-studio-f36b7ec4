@@ -1,6 +1,6 @@
 import { normalizeAndVerifyBrowserAudio } from "./audio-artifact";
 import { saveBuddyClonePreview } from "./buddy-voice";
-import { createLocalChatterboxClone } from "./local-chatterbox";
+import { createQwen3TTSClone } from "./qwen3-tts-clone";
 
 export type CloneResult = {
   url: string;
@@ -12,63 +12,59 @@ export type CloneResult = {
 };
 
 /**
- * API-keyless voice cloning path.
+ * Real reference-voice cloning path for Buddy.
  *
- * The reference recording is passed directly to the local Chatterbox encoder
- * running in the browser. There is deliberately no remote/public Space
- * fallback here: if local Chatterbox cannot run, the clone fails honestly.
+ * Qwen3-TTS Base performs the cloning from the user's reference recording
+ * and exact transcript. Chatterbox remains in the repository as legacy code
+ * but is deliberately not part of this production clone path.
  */
 export async function createBestFreeVoiceClone(
   sample: Blob,
-  _refText: string,
+  refText: string,
   text: string,
   onStatus?: (s: string) => void,
 ): Promise<CloneResult> {
   if (!sample.size) throw new Error("The voice sample is empty.");
+  if (!refText.trim()) throw new Error("The exact reference transcript is required for a real clone.");
   if (!text.trim()) throw new Error("Voice clone target text is empty.");
 
   onStatus?.(
-    "Preparing your actual reference recording for local Chatterbox — no preset speaker or remote Space is being used…",
+    "Preparing your actual reference recording for Qwen3-TTS Base — no preset speaker is being used.",
   );
 
-  const local = await createLocalChatterboxClone(sample, text, 0.5, onStatus);
+  const result = await createQwen3TTSClone(sample, refText, text, onStatus);
+  if (!result.url) throw new Error("Qwen3-TTS returned no playable cloned audio.");
+
   try {
-    onStatus?.("Checking the locally generated clone for real, playable audio…");
-    const artifact = await fetch(local.url).then((response) => {
-      if (!response.ok)
-        throw new Error(`Local Chatterbox audio could not be read (${response.status}).`);
+    const artifact = await fetch(result.url).then((response) => {
+      if (!response.ok) throw new Error(`Qwen clone audio could not be read (${response.status}).`);
       return response.blob();
     });
     const normalized = await normalizeAndVerifyBrowserAudio(artifact);
-    if (normalized.stats.duration <= 0 || normalized.stats.peak <= 0 || normalized.stats.rms <= 0)
-      throw new Error("Local Chatterbox returned silent or unusable audio.");
+    if (
+      normalized.stats.duration <= 0 ||
+      normalized.stats.peak <= 0 ||
+      normalized.stats.rms <= 0
+    ) {
+      URL.revokeObjectURL(normalized.url);
+      throw new Error("Qwen3-TTS returned silent or unusable audio.");
+    }
 
-    // The original worker URL belongs to the worker result and must be revoked
-    // before returning. The verifier creates a separate object URL for the
-    // normalized WAV, so return that URL rather than revoking the URL we hand
-    // to the caller.
-    URL.revokeObjectURL(local.url);
-
-    const provider = "Chatterbox local — WebGPU";
-    await saveBuddyClonePreview(normalized.blob, provider);
-    const browserWindow = window as Window & { __buddyLastCloneUrl?: string };
-    browserWindow.__buddyLastCloneUrl = normalized.url;
+    URL.revokeObjectURL(result.url);
+    await saveBuddyClonePreview(normalized.blob, result.provider);
     onStatus?.(
       `Clone audio verified: ${normalized.stats.duration.toFixed(2)}s, peak ${normalized.stats.peak.toFixed(3)}, RMS ${normalized.stats.rms.toFixed(4)}.`,
     );
     return {
       url: normalized.url,
-      provider,
-      verification:
-        "browser-local Chatterbox reference conditioning + audio decode + non-silent artifact verification",
+      provider: result.provider,
+      verification: result.verification,
       duration: normalized.stats.duration,
       peak: normalized.stats.peak,
       rms: normalized.stats.rms,
     };
   } catch (error) {
-    // Only revoke the worker URL here. A successful normalization creates a
-    // separate normalized.url that remains owned by the caller.
-    URL.revokeObjectURL(local.url);
+    URL.revokeObjectURL(result.url);
     throw error;
   }
 }
