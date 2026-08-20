@@ -124,3 +124,9 @@ test("worker diagnostics classify every Buddy voice failure boundary and reach w
   assert.match(local, /\[device-memory\]/);
   assert.match(local, /worker-initialization/);
 });
+
+test("Qwen SSE completion is finalized when the complete frame ends at stream EOF", () => {
+  assert.match(gateway, /if \(currentEvent === "complete"\)[\s\S]*payload = JSON\.parse/);
+  assert.match(gateway, /(?:EOF|end of stream|after the loop|stream\.length)[\s\S]*/i);
+  assert.match(gateway, /payload === null/);
+});
