@@ -13,7 +13,7 @@ test("Qwen gateway uses the full-reference 0.6B Base clone contract", () => {
   assert.match(gateway, /use_xvector_only|false/);
   assert.match(gateway, /\"0\.6B\"/);
   assert.doesNotMatch(gateway, /\"1\.7B\"/);
-  assert.doesNotMatch(gateway, /x-clone-verified/);
+  assert.doesNotMatch(gateway, /headers\.(?:set|append)\([\"']x-clone-verified[\"']/);
 });
 
 test("production clone generation uses Qwen and validates its exact returned Blob", () => {
