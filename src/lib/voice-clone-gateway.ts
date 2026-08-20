@@ -119,22 +119,19 @@ async function qwenClone(
     throw new Error(`Qwen clone job failed (${result.status}). ${detail.slice(0, 300)}`);
   }
   const stream = await result.text();
-  const completeLines = stream
-    .split(/\r?\n/)
-    .filter((line) => line.startsWith("data:") && line.trim() !== "data:");
-  if (!completeLines.length) throw new Error("Qwen returned no completed clone audio.");
+  const completeEvent = stream
+    .split(/\r?\n\r?\n/)
+    .find((event) => /^event:\s*complete\s*$/m.test(event));
+  if (!completeEvent) throw new Error("Qwen returned no completed clone audio.");
 
+  const dataLines = completeEvent
+    .split(/\r?\n/)
+    .filter((line) => line.startsWith("data:"));
   let payload: unknown = null;
-  for (const line of completeLines.reverse()) {
-    try {
-      const parsed = JSON.parse(line.slice(5).trim()) as unknown;
-      if (Array.isArray(parsed)) {
-        payload = parsed;
-        break;
-      }
-    } catch {
-      /* keep looking for the completed event */
-    }
+  try {
+    payload = JSON.parse(dataLines.map((line) => line.slice(5).trim()).join("\n")) as unknown;
+  } catch {
+    throw new Error("Qwen returned an invalid completed clone result.");
   }
   if (!Array.isArray(payload) || !payload[0])
     throw new Error("Qwen completed without an audio artifact.");
