@@ -5,7 +5,7 @@ type Env = {
 
 function decodeBase64(value: string): ArrayBuffer {
   const bytes = Uint8Array.from(atob(value), (c) => c.charCodeAt(0));
-  return bytes.buffer.slice(bytes.byteOffset, bytes.byteLength);
+  return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
 }
 
 function languageName(value: unknown): string {
