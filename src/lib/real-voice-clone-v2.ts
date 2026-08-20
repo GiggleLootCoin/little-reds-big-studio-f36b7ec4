@@ -35,6 +35,7 @@ export async function createBestFreeVoiceClone(
   sample: Blob,
   refText: string,
   text: string,
+  language: string,
   onStatus?: (s: string) => void,
 ): Promise<CloneResult> {
   if (!sample.size) throw new Error("The voice sample is empty.");
@@ -50,7 +51,7 @@ export async function createBestFreeVoiceClone(
       audioType: sample.type || "audio/wav",
       refText: refText.trim(),
       text: text.trim(),
-      language: "English",
+      language: language || "English",
     }),
   });
   if (!response.ok) {
