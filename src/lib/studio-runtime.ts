@@ -40,9 +40,10 @@ async function runVerifiedClone(
   sample: Blob,
   refText: string,
   text: string,
+  language: string,
   onStatus?: (s: string) => void,
 ) {
-  const result = await createBestFreeVoiceClone(sample, refText, text, onStatus);
+  const result = await createBestFreeVoiceClone(sample, refText, text, language, onStatus);
   if (!result.url) throw new Error("The voice engine returned no playable audio.");
   await saveVoiceSample(sample, refText);
   await markBuddyCloneVerified(
@@ -70,10 +71,11 @@ export async function runStudioJob(
     const targetText =
       String(input.target_text ?? input.text ?? input.prompt ?? DEFAULT_CLONE_TEXT).trim() ||
       DEFAULT_CLONE_TEXT;
+    const language = String(input.language ?? cloneProfile().language ?? "English");
     onStatus?.(
       "Building your voice from the actual reference recording — no preset speaker is being used.",
     );
-    const result = await runVerifiedClone(sample, refText, targetText, onStatus);
+    const result = await runVerifiedClone(sample, refText, targetText, language, onStatus);
     onStatus?.("Your reference-conditioned voice produced playable audio.");
     return { capability, value: result, url: result.url, provider: result.provider };
   }
@@ -87,8 +89,9 @@ export async function runStudioJob(
       const refText = profile.referenceTranscript?.trim() || DEFAULT_CLONE_TEXT;
       const text = String(input.text ?? input.target_text ?? input.prompt ?? "").trim();
       if (!text) throw new Error("Voice text is empty.");
+      const language = String(input.language ?? profile.language ?? "English");
       onStatus?.("Generating Buddy speech from your saved reference voice…");
-      const result = await runVerifiedClone(sample, refText, text, onStatus);
+      const result = await runVerifiedClone(sample, refText, text, language, onStatus);
       return { capability: "tts", value: result, url: result.url, provider: result.provider };
     }
   }

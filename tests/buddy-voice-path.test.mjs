@@ -10,6 +10,7 @@ const localReference = await read("src/lib/local-voice-reference.ts");
 const local = await read("src/lib/local-chatterbox.ts");
 const worker = await read("src/workers/chatterbox-local.worker.ts");
 const clone = await read("src/lib/real-voice-clone-v2.ts");
+const gateway = await read("src/lib/voice-clone-gateway.ts");
 const runtime = await read("src/lib/studio-runtime.ts");
 
 function between(source, start, end) {
@@ -79,16 +80,20 @@ test("worker waits have bounded load, encode, and generation lifetimes and handl
   assert.match(local, /clearTimeout/);
 });
 
-test("clone output is rejected when generation is empty and never falls back", () => {
-  assert.match(worker, /Chatterbox generation returned empty audio/);
-  assert.match(clone, /createLocalChatterboxClone\(sample, text, 0\.5/);
-  assert.match(runtime, /if \(capability === "voice-clone"\)/);
-  assert.match(runtime, /createBestFreeVoiceClone/);
-  assert.match(runtime, /import\("\.\/studio-runtime-impl"\)/);
+test("production clone output is rejected when generation is empty and never reaches the player before browser verification", () => {
+  assert.match(clone, /fetch\("\/api\/voice-clone"/);
+  assert.match(clone, /const generated = await response\.blob\(\)/);
+  assert.match(clone, /normalizeAndVerifyBrowserAudio\(generated\)/);
+  assert.match(clone, /Qwen3-TTS 0\.6B Base/);
+  assert.doesNotMatch(clone, /createLocalChatterboxClone/);
+  assert.match(gateway, /use_xvector_only: false/);
+  assert.match(gateway, /model_size: "0\.6B"/);
+  assert.doesNotMatch(gateway, /x-clone-verified/);
+  assert.match(runtime, /runVerifiedClone/);
 });
 
 test("the production clone path contains no public voice Space or API-key fallback", () => {
-  const sources = [local, worker, clone, runtime];
+  const sources = [clone, runtime];
   const forbidden = [
     ".hf.space",
     "rahul7star",

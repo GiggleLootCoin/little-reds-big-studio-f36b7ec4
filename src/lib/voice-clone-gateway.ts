@@ -38,9 +38,20 @@ function authHeaders(env: Env): HeadersInit {
   return env.HF_TOKEN ? { Authorization: `Bearer ${env.HF_TOKEN}` } : {};
 }
 
+function audioExtension(type: string): string {
+  const normalized = type.toLowerCase();
+  if (normalized.includes("webm")) return "webm";
+  if (normalized.includes("mp4")) return "m4a";
+  if (normalized.includes("mpeg")) return "mp3";
+  if (normalized.includes("ogg")) return "ogg";
+  if (normalized.includes("wav")) return "wav";
+  return "audio";
+}
+
 async function qwenUpload(space: string, audio: Blob, env: Env): Promise<string> {
+  const extension = audioExtension(audio.type);
   const form = new FormData();
-  form.append("files", audio, "reference.wav");
+  form.append("files", audio, `reference.${extension}`);
   const response = await fetch(`${space}/gradio_api/upload`, {
     method: "POST",
     headers: authHeaders(env),
@@ -59,64 +70,58 @@ async function qwenUpload(space: string, audio: Blob, env: Env): Promise<string>
 async function qwenClone(
   space: string,
   path: string,
+  audioType: string,
   refText: string,
   text: string,
   language: string,
   env: Env,
 ): Promise<string> {
-  const fileData = { path, orig_name: "reference.wav", meta: { _type: "gradio.FileData" } };
-  const start = await fetch(`${space}/gradio_api/call/generate_voice_clone`, {
+  const fileData = {
+    path,
+    orig_name: `reference.${audioExtension(audioType)}`,
+    mime_type: audioType || undefined,
+    meta: { _type: "gradio.FileData" },
+  };
+  const response = await fetch(`${space}/run/generate_voice_clone`, {
     method: "POST",
     headers: { ...authHeaders(env), "content-type": "application/json" },
     body: JSON.stringify({
-      data: [fileData, refText, text, languageName(language), false, "1.7B"],
+      ref_audio: fileData,
+      ref_text: refText,
+      target_text: text,
+      language: languageName(language),
+      use_xvector_only: false,
+      model_size: "0.6B",
     }),
   });
-  if (!start.ok) {
-    const detail = await start.text().catch(() => "");
-    throw new Error(`Qwen clone job could not start (${start.status}). ${detail.slice(0, 300)}`);
+  if (!response.ok) {
+    const detail = await response.text().catch(() => "");
+    throw new Error(`Qwen clone request failed (${response.status}). ${detail.slice(0, 300)}`);
   }
-  const started = (await start.json()) as { event_id?: string };
-  if (!started.event_id) throw new Error("Qwen did not return a clone job ID.");
 
-  const result = await fetch(`${space}/gradio_api/call/generate_voice_clone/${started.event_id}`, {
-    headers: authHeaders(env),
-  });
-  if (!result.ok) {
-    const detail = await result.text().catch(() => "");
-    throw new Error(`Qwen clone job failed (${result.status}). ${detail.slice(0, 300)}`);
-  }
-  const stream = await result.text();
-  const completeLines = stream
-    .split(/\r?\n/)
-    .filter((line) => line.startsWith("data:") && line.trim() !== "data:");
-  if (!completeLines.length) throw new Error("Qwen returned no completed clone audio.");
-
-  let payload: unknown = null;
-  for (const line of completeLines.reverse()) {
-    try {
-      const parsed = JSON.parse(line.slice(5).trim()) as unknown;
-      if (Array.isArray(parsed)) {
-        payload = parsed;
-        break;
-      }
-    } catch {
-      /* keep looking for the completed event */
-    }
-  }
-  if (!Array.isArray(payload) || !payload[0])
+  const payload = (await response.json()) as unknown;
+  const output =
+    payload && typeof payload === "object"
+      ? ((payload as Record<string, unknown>).output ?? payload)
+      : payload;
+  if (!output || typeof output !== "object")
     throw new Error("Qwen completed without an audio artifact.");
-
-  const audio = payload[0] as { url?: string; path?: string } | string;
-  const audioUrl = typeof audio === "string" ? audio : audio.url;
-  if (!audioUrl) throw new Error("Qwen returned an audio object without a downloadable URL.");
-  return audioUrl.startsWith("http")
-    ? audioUrl
-    : `${space}/gradio_api/file=${audioUrl.replace(/^\//, "")}`;
+  const audio = output as { url?: string; path?: string };
+  const audioUrl = audio.url;
+  if (audioUrl) return audioUrl.startsWith("http") ? audioUrl : `${space}${audioUrl}`;
+  if (audio.path)
+    return `${space}/gradio_api/file=${String(audio.path).replace(/^\//, "")}`;
+  throw new Error("Qwen returned an audio object without a downloadable URL or path.");
 }
 
 export async function handleVoiceClone(request: Request, env: Env): Promise<Response> {
-  let body: { audioBase64?: string; refText?: string; text?: string; language?: string };
+  let body: {
+    audioBase64?: string;
+    audioType?: string;
+    refText?: string;
+    text?: string;
+    language?: string;
+  };
   try {
     body = (await request.json()) as typeof body;
   } catch {
@@ -134,12 +139,14 @@ export async function handleVoiceClone(request: Request, env: Env): Promise<Resp
     /\/$/,
     "",
   );
-  const audio = new Blob([decodeBase64(body.audioBase64)], { type: "audio/wav" });
+  const audioType = String(body.audioType || "audio/wav");
+  const audio = new Blob([decodeBase64(body.audioBase64)], { type: audioType });
   try {
     const path = await qwenUpload(space, audio, env);
     const audioUrl = await qwenClone(
       space,
       path,
+      audioType,
       body.refText.trim(),
       body.text.trim(),
       String(body.language || "English"),
@@ -150,8 +157,8 @@ export async function handleVoiceClone(request: Request, env: Env): Promise<Resp
       throw new Error(`Qwen generated audio could not be downloaded (${generated.status}).`);
     const headers = new Headers(generated.headers);
     headers.set("cache-control", "no-store");
-    headers.set("x-clone-provider", "Qwen3-TTS 1.7B Base");
-    headers.set("x-clone-verified", "true");
+    headers.set("x-clone-provider", "Qwen3-TTS 0.6B Base");
+    headers.delete("x-clone-verified");
     return new Response(generated.body, { status: 200, headers });
   } catch (error) {
     return errorResponse(
