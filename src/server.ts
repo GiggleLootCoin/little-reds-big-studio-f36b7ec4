@@ -1,9 +1,15 @@
 import "./lib/error-capture";
 import { consumeLastCapturedError } from "./lib/error-capture";
 import { renderErrorPage } from "./lib/error-page";
+import { handleVoiceClone } from "./lib/voice-clone-gateway";
 
 type WorkersAI = { run: (model: string, input: unknown, options?: unknown) => Promise<unknown> };
-type ServerEnv = { AI?: WorkersAI; OPENROUTERAI_API_KEY?: string };
+type ServerEnv = {
+  AI?: WorkersAI;
+  OPENROUTERAI_API_KEY?: string;
+  HF_TOKEN?: string;
+  QWEN_TTS_SPACE_URL?: string;
+};
 type ServerEntry = {
   fetch: (request: Request, env: unknown, ctx: unknown) => Promise<Response> | Response;
 };
@@ -17,6 +23,7 @@ async function getServerEntry(): Promise<ServerEntry> {
 }
 const HF_PROXY_PREFIX = "/api/hf-space/";
 const AI_PREFIX = "/api/ai/";
+const VOICE_CLONE_PATH = "/api/voice-clone";
 const HF_SPACE_RE = /^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/;
 function decodeSpaceToken(token: string) {
   try {
@@ -558,7 +565,13 @@ function isH3SwallowedErrorBody(body: string): boolean {
 export default {
   async fetch(request: Request, env: unknown, ctx: unknown) {
     try {
-      const cloudflare = await cloudflareAI(request, env as ServerEnv);
+      const serverEnv = env as ServerEnv;
+      const url = new URL(request.url);
+      if (url.pathname === VOICE_CLONE_PATH) {
+        if (request.method !== "POST") return jsonError("POST required.", 405);
+        return await handleVoiceClone(request, serverEnv);
+      }
+      const cloudflare = await cloudflareAI(request, serverEnv);
       if (cloudflare) return cloudflare;
       const proxied = await proxyHfSpace(request);
       if (proxied) return proxied;
