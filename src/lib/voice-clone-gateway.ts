@@ -124,9 +124,7 @@ async function qwenClone(
     .find((event) => /^event:\s*complete\s*$/m.test(event));
   if (!completeEvent) throw new Error("Qwen returned no completed clone audio.");
 
-  const dataLines = completeEvent
-    .split(/\r?\n/)
-    .filter((line) => line.startsWith("data:"));
+  const dataLines = completeEvent.split(/\r?\n/).filter((line) => line.startsWith("data:"));
   let payload: unknown = null;
   try {
     payload = JSON.parse(dataLines.map((line) => line.slice(5).trim()).join("\n")) as unknown;
