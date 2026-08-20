@@ -2,45 +2,59 @@ import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 
 const root = join(process.cwd(), "dist", "client", "assets");
-const required = "onnx-community/chatterbox-ONNX";
-const requiredMarkers = ["encode_speech", "ChatterboxProcessor"];
-const forbidden = [
-  "onnxruntime-node",
-  "sharp",
-  "rahul7star-chatterbox-multilingual-tts.hf.space",
-  "spacekaren/chatterbox",
-  "remote voice-clone fallback",
-  "default voice fallback",
-  "/api/ai/voice-clone",
+const files = await readdir(root);
+const jsFiles = files.filter((file) => file.endsWith(".js"));
+if (!jsFiles.length) {
+  throw new Error("No production browser JavaScript assets were found.");
+}
+
+const assets = await Promise.all(
+  jsFiles.map(async (file) => [file, await readFile(join(root, file), "utf8")]),
+);
+
+const qwenPathMarkers = [
+  "/api/voice-clone",
+  "Qwen3-TTS 0.6B Base",
+  "audioBase64",
+  "refText",
+  "response.blob()",
+  "normalizeAndVerifyBrowserAudio",
 ];
 
-const files = await readdir(root);
-const workerFiles = files.filter(
-  (file) => file.startsWith("chatterbox-local.worker-") && file.endsWith(".js"),
+const qwenPathAssets = assets.filter(([, source]) =>
+  qwenPathMarkers.every((marker) => source.includes(marker)),
 );
-if (workerFiles.length !== 1) {
+if (qwenPathAssets.length !== 1) {
   throw new Error(
-    `Expected exactly one production Chatterbox worker asset, found ${workerFiles.length}.`,
+    `Expected exactly one production browser asset containing the complete Qwen voice-clone path, found ${qwenPathAssets.length}.`,
   );
 }
 
-const workerPath = join(root, workerFiles[0]);
-const worker = await readFile(workerPath, "utf8");
-if (!worker.includes(required)) {
-  throw new Error(`Production Chatterbox worker is missing required model marker: ${required}`);
+const [qwenAssetName, qwenAsset] = qwenPathAssets[0];
+if (qwenAsset.includes("createLocalChatterboxClone")) {
+  throw new Error(
+    "Production browser voice-clone asset still contains the obsolete createLocalChatterboxClone path.",
+  );
 }
-for (const marker of requiredMarkers) {
-  if (!worker.includes(marker)) {
-    throw new Error(`Production Chatterbox worker is missing required cloning marker: ${marker}`);
-  }
+
+const obsoleteChatterboxWorker = files.filter(
+  (file) => file.startsWith("chatterbox-local.worker-") && file.endsWith(".js"),
+);
+if (obsoleteChatterboxWorker.length) {
+  throw new Error(
+    `Production browser bundle contains obsolete Chatterbox voice worker asset(s): ${obsoleteChatterboxWorker.join(", ")}`,
+  );
 }
-for (const needle of forbidden) {
-  if (worker.includes(needle)) {
-    throw new Error(`Production Chatterbox worker contains forbidden marker: ${needle}`);
+
+for (const [file, source] of assets) {
+  if (source.includes("createLocalChatterboxClone")) {
+    throw new Error(
+      `Production browser bundle contains obsolete createLocalChatterboxClone path in ${file}.`,
+    );
   }
 }
 
-console.log(`Production Chatterbox worker verified: ${workerFiles[0]}`);
+console.log(`Production Qwen voice path verified in browser asset: ${qwenAssetName}`);
 console.log(
-  "Official Transformers.js Chatterbox voice-cloning model and speaker-conditioning markers are present; Node/native dependencies and remote/preset voice fallback markers are absent from the actual voice worker asset.",
+  "Actual reference audio/transcript → /api/voice-clone → Qwen3-TTS 0.6B → returned Blob → normalizeAndVerifyBrowserAudio() is present in one production browser asset; obsolete local Chatterbox voice-clone worker/path is absent.",
 );
