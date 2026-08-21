@@ -112,7 +112,7 @@ async function qwenClone(
   if (!started.event_id) throw new Error("Qwen did not return a clone job ID.");
 
   const result = await fetch(`${space}/gradio_api/call/generate_voice_clone/${started.event_id}`, {
-    headers: authHeaders(env),
+    headers: { ...authHeaders(env), Accept: "text/event-stream" },
   });
   if (!result.ok) {
     const detail = await result.text().catch(() => "");
@@ -122,10 +122,23 @@ async function qwenClone(
   let currentEvent = "";
   let dataLines: string[] = [];
   let payload: unknown = null;
-  const parseCompleteFrame = () => {
-    if (currentEvent !== "complete" || !dataLines.length) return false;
+  let terminalError: string | null = null;
+
+  const parseFrame = () => {
+    if (!dataLines.length) return false;
+    const data = dataLines.join("\n");
+    if (currentEvent === "error" || currentEvent === "cancelled") {
+      try {
+        const parsed = JSON.parse(data) as unknown;
+        terminalError = typeof parsed === "string" ? parsed : JSON.stringify(parsed);
+      } catch {
+        terminalError = data;
+      }
+      return true;
+    }
+    if (currentEvent !== "complete") return false;
     try {
-      payload = JSON.parse(dataLines.join("\n")) as unknown;
+      payload = JSON.parse(data) as unknown;
     } catch {
       throw new Error("Qwen returned an invalid completed clone result.");
     }
@@ -134,7 +147,7 @@ async function qwenClone(
 
   for (const line of stream.split(/\r\n|\n|\r/)) {
     if (line.trim() === "") {
-      if (parseCompleteFrame()) break;
+      if (parseFrame()) break;
       currentEvent = "";
       dataLines = [];
       continue;
@@ -146,9 +159,11 @@ async function qwenClone(
     }
   }
 
-  // Some SSE producers close the response immediately after the final data line
-  // without emitting the optional blank line that normally dispatches the frame.
-  if (payload === null) parseCompleteFrame();
+  if (payload === null && !terminalError) parseFrame();
+  if (terminalError)
+    throw new Error(
+      `Qwen clone job ${currentEvent === "cancelled" ? "cancelled" : "errored"}: ${terminalError.slice(0, 500)}`,
+    );
   if (payload === null) throw new Error("Qwen returned no completed clone audio.");
   if (!Array.isArray(payload) || !payload[0])
     throw new Error("Qwen completed without an audio artifact.");
