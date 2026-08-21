@@ -122,16 +122,19 @@ async function qwenClone(
   let currentEvent = "";
   let dataLines: string[] = [];
   let payload: unknown = null;
-  for (const line of stream.split(/\r?\n/)) {
-    if (line === "") {
-      if (currentEvent === "complete") {
-        try {
-          payload = JSON.parse(dataLines.join("\n")) as unknown;
-        } catch {
-          throw new Error("Qwen returned an invalid completed clone result.");
-        }
-        break;
-      }
+  const parseCompleteFrame = () => {
+    if (currentEvent !== "complete" || !dataLines.length) return false;
+    try {
+      payload = JSON.parse(dataLines.join("\n")) as unknown;
+    } catch {
+      throw new Error("Qwen returned an invalid completed clone result.");
+    }
+    return true;
+  };
+
+  for (const line of stream.split(/\r\n|\n|\r/)) {
+    if (line.trim() === "") {
+      if (parseCompleteFrame()) break;
       currentEvent = "";
       dataLines = [];
       continue;
@@ -142,6 +145,10 @@ async function qwenClone(
       dataLines.push(line.slice(5).trim());
     }
   }
+
+  // Some SSE producers close the response immediately after the final data line
+  // without emitting the optional blank line that normally dispatches the frame.
+  if (payload === null) parseCompleteFrame();
   if (payload === null) throw new Error("Qwen returned no completed clone audio.");
   if (!Array.isArray(payload) || !payload[0])
     throw new Error("Qwen completed without an audio artifact.");
