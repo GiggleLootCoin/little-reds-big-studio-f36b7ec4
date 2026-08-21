@@ -11,18 +11,9 @@ function decodeBase64(value: string): ArrayBuffer {
 function languageName(value: unknown): string {
   const raw = String(value || "English").trim();
   const map: Record<string, string> = {
-    en: "English",
-    es: "Spanish",
-    fr: "French",
-    de: "German",
-    it: "Italian",
-    pt: "Portuguese",
-    ru: "Russian",
-    zh: "Chinese",
-    ja: "Japanese",
-    ko: "Korean",
-    hi: "Hindi",
-    ar: "Arabic",
+    en: "English", es: "Spanish", fr: "French", de: "German", it: "Italian",
+    pt: "Portuguese", ru: "Russian", zh: "Chinese", ja: "Japanese", ko: "Korean",
+    hi: "Hindi", ar: "Arabic",
   };
   return map[raw.toLowerCase()] || raw;
 }
@@ -53,9 +44,7 @@ async function qwenUpload(space: string, audio: Blob, env: Env): Promise<string>
   const form = new FormData();
   form.append("files", audio, `reference.${extension}`);
   const response = await fetch(`${space}/gradio_api/upload`, {
-    method: "POST",
-    headers: authHeaders(env),
-    body: form,
+    method: "POST", headers: authHeaders(env), body: form,
   });
   if (!response.ok) {
     const detail = await response.text().catch(() => "");
@@ -67,14 +56,68 @@ async function qwenUpload(space: string, audio: Blob, env: Env): Promise<string>
   return files[0];
 }
 
+export type QwenSSEParseResult =
+  | { kind: "audio"; payload: unknown[] }
+  | { kind: "error"; message: string }
+  | { kind: "none" };
+
+export function parseQwenSSE(stream: string): QwenSSEParseResult {
+  let currentEvent = "";
+  let dataLines: string[] = [];
+  let result: QwenSSEParseResult = { kind: "none" };
+
+  const parseFrame = (): boolean => {
+    if (!dataLines.length) return false;
+    const data = dataLines.join("\n");
+    if (currentEvent === "error" || currentEvent === "cancelled") {
+      try {
+        const parsed = JSON.parse(data) as unknown;
+        result = {
+          kind: "error",
+          message: typeof parsed === "string" ? parsed : JSON.stringify(parsed),
+        };
+      } catch {
+        result = { kind: "error", message: data };
+      }
+      return true;
+    }
+    if (currentEvent !== "complete") return false;
+    let payload: unknown;
+    try {
+      payload = JSON.parse(data) as unknown;
+    } catch {
+      throw new Error("Qwen returned an invalid completed clone result.");
+    }
+    if (Array.isArray(payload)) {
+      const status = payload[1];
+      if (!payload[0] && typeof status === "string" && /^Error:\s*/i.test(status.trim())) {
+        result = { kind: "error", message: status.trim() };
+        return true;
+      }
+      result = { kind: "audio", payload };
+      return true;
+    }
+    result = { kind: "none" };
+    return true;
+  };
+
+  for (const line of stream.split(/\r\n|\n|\r/)) {
+    if (line.trim() === "") {
+      if (parseFrame()) break;
+      currentEvent = "";
+      dataLines = [];
+      continue;
+    }
+    if (line.startsWith("event:")) currentEvent = line.slice(6).trim();
+    else if (line.startsWith("data:")) dataLines.push(line.slice(5).trim());
+  }
+  if (result.kind === "none") parseFrame();
+  return result;
+}
+
 async function qwenClone(
-  space: string,
-  path: string,
-  audioType: string,
-  refText: string,
-  text: string,
-  language: string,
-  env: Env,
+  space: string, path: string, audioType: string, refText: string, text: string,
+  language: string, env: Env,
 ): Promise<string> {
   const fileData = {
     path,
@@ -83,25 +126,15 @@ async function qwenClone(
     meta: { _type: "gradio.FileData" },
   };
   const conditioning = {
-    ref_audio: fileData,
-    ref_text: refText,
-    target_text: text,
-    language: languageName(language),
-    use_xvector_only: false,
-    model_size: "0.6B",
+    ref_audio: fileData, ref_text: refText, target_text: text,
+    language: languageName(language), use_xvector_only: false, model_size: "0.6B",
   };
   const start = await fetch(`${space}/gradio_api/call/generate_voice_clone`, {
     method: "POST",
     headers: { ...authHeaders(env), "content-type": "application/json" },
     body: JSON.stringify({
-      data: [
-        conditioning.ref_audio,
-        conditioning.ref_text,
-        conditioning.target_text,
-        conditioning.language,
-        conditioning.use_xvector_only,
-        conditioning.model_size,
-      ],
+      data: [conditioning.ref_audio, conditioning.ref_text, conditioning.target_text,
+        conditioning.language, conditioning.use_xvector_only, conditioning.model_size],
     }),
   });
   if (!start.ok) {
@@ -118,57 +151,12 @@ async function qwenClone(
     const detail = await result.text().catch(() => "");
     throw new Error(`Qwen clone job failed (${result.status}). ${detail.slice(0, 300)}`);
   }
-  const stream = await result.text();
-  let currentEvent = "";
-  let dataLines: string[] = [];
-  let payload: unknown = null;
-  let terminalError: string | null = null;
-
-  const parseFrame = () => {
-    if (!dataLines.length) return false;
-    const data = dataLines.join("\n");
-    if (currentEvent === "error" || currentEvent === "cancelled") {
-      try {
-        const parsed = JSON.parse(data) as unknown;
-        terminalError = typeof parsed === "string" ? parsed : JSON.stringify(parsed);
-      } catch {
-        terminalError = data;
-      }
-      return true;
-    }
-    if (currentEvent !== "complete") return false;
-    try {
-      payload = JSON.parse(data) as unknown;
-    } catch {
-      throw new Error("Qwen returned an invalid completed clone result.");
-    }
-    return true;
-  };
-
-  for (const line of stream.split(/\r\n|\n|\r/)) {
-    if (line.trim() === "") {
-      if (parseFrame()) break;
-      currentEvent = "";
-      dataLines = [];
-      continue;
-    }
-    if (line.startsWith("event:")) {
-      currentEvent = line.slice(6).trim();
-    } else if (line.startsWith("data:")) {
-      dataLines.push(line.slice(5).trim());
-    }
-  }
-
-  if (payload === null && !terminalError) parseFrame();
-  if (terminalError) {
-    const terminalMessage = String(terminalError).slice(0, 500);
-    throw new Error(
-      `Qwen clone job ${currentEvent === "cancelled" ? "cancelled" : "errored"}: ${terminalMessage}`,
-    );
-  }
-  if (payload === null) throw new Error("Qwen returned no completed clone audio.");
-  if (!Array.isArray(payload) || !payload[0])
-    throw new Error("Qwen completed without an audio artifact.");
+  const parsed = parseQwenSSE(await result.text());
+  if (parsed.kind === "error")
+    throw new Error(`Qwen clone job errored: ${parsed.message.slice(0, 500)}`);
+  if (parsed.kind !== "audio") throw new Error("Qwen returned no completed clone audio.");
+  const payload = parsed.payload;
+  if (!payload[0]) throw new Error("Qwen completed without an audio artifact.");
 
   const audio = payload[0] as { url?: string; path?: string } | string;
   const audioUrl = typeof audio === "string" ? audio : audio.url;
@@ -179,43 +167,21 @@ async function qwenClone(
 }
 
 export async function handleVoiceClone(request: Request, env: Env): Promise<Response> {
-  let body: {
-    audioBase64?: string;
-    audioType?: string;
-    refText?: string;
-    text?: string;
-    language?: string;
-  };
-  try {
-    body = (await request.json()) as typeof body;
-  } catch {
-    return errorResponse("The clone request was not valid JSON.", 400);
-  }
+  let body: { audioBase64?: string; audioType?: string; refText?: string; text?: string; language?: string };
+  try { body = (await request.json()) as typeof body; }
+  catch { return errorResponse("The clone request was not valid JSON.", 400); }
   if (!body.audioBase64) return errorResponse("A reference voice recording is required.", 400);
   if (!body.refText?.trim())
-    return errorResponse(
-      "The exact transcript of the reference recording is required for high-quality cloning.",
-      400,
-    );
+    return errorResponse("The exact transcript of the reference recording is required for high-quality cloning.", 400);
   if (!body.text?.trim()) return errorResponse("Target text is required.", 400);
 
-  const space = String(env.QWEN_TTS_SPACE_URL || "https://qwen-qwen3-tts.hf.space").replace(
-    /\/$/,
-    "",
-  );
+  const space = String(env.QWEN_TTS_SPACE_URL || "https://qwen-qwen3-tts.hf.space").replace(/\/$/, "");
   const audioType = String(body.audioType || "audio/wav");
   const audio = new Blob([decodeBase64(body.audioBase64)], { type: audioType });
   try {
     const path = await qwenUpload(space, audio, env);
-    const audioUrl = await qwenClone(
-      space,
-      path,
-      audioType,
-      body.refText.trim(),
-      body.text.trim(),
-      String(body.language || "English"),
-      env,
-    );
+    const audioUrl = await qwenClone(space, path, audioType, body.refText.trim(), body.text.trim(),
+      String(body.language || "English"), env);
     const generated = await fetch(audioUrl, { headers: authHeaders(env) });
     if (!generated.ok || !generated.body)
       throw new Error(`Qwen generated audio could not be downloaded (${generated.status}).`);
@@ -225,9 +191,6 @@ export async function handleVoiceClone(request: Request, env: Env): Promise<Resp
     headers.delete("x-clone-verified");
     return new Response(generated.body, { status: 200, headers });
   } catch (error) {
-    return errorResponse(
-      error instanceof Error ? error.message : "Qwen voice cloning failed.",
-      502,
-    );
+    return errorResponse(error instanceof Error ? error.message : "Qwen voice cloning failed.", 502);
   }
 }
