@@ -160,10 +160,12 @@ async function qwenClone(
   }
 
   if (payload === null && !terminalError) parseFrame();
-  if (terminalError)
+  if (terminalError) {
+    const terminalMessage = String(terminalError).slice(0, 500);
     throw new Error(
-      `Qwen clone job ${currentEvent === "cancelled" ? "cancelled" : "errored"}: ${terminalError.slice(0, 500)}`,
+      `Qwen clone job ${currentEvent === "cancelled" ? "cancelled" : "errored"}: ${terminalMessage}`,
     );
+  }
   if (payload === null) throw new Error("Qwen returned no completed clone audio.");
   if (!Array.isArray(payload) || !payload[0])
     throw new Error("Qwen completed without an audio artifact.");
