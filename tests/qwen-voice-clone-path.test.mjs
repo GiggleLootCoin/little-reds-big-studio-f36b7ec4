@@ -8,11 +8,11 @@ const gateway = await read("src/lib/voice-clone-gateway.ts");
 const clone = await read("src/lib/real-voice-clone-v2.ts");
 const server = await read("src/server.ts");
 
-test("Qwen gateway uses the full-reference 0.6B Base clone contract", () => {
+test("Qwen gateway uses the full-reference 1.7B Base clone contract", () => {
   assert.match(gateway, /generate_voice_clone/);
   assert.match(gateway, /use_xvector_only|false/);
-  assert.match(gateway, /\"0\.6B\"/);
-  assert.doesNotMatch(gateway, /\"1\.7B\"/);
+  assert.match(gateway, /\"1\.7B\"/);
+  assert.doesNotMatch(gateway, /\"0\.6B\"/);
   assert.doesNotMatch(gateway, /headers\.(?:set|append)\([\"']x-clone-verified[\"']/);
 });
 
