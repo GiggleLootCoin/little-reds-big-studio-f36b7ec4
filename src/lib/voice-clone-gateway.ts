@@ -145,7 +145,7 @@ async function qwenClone(
     target_text: text,
     language: languageName(language),
     use_xvector_only: false,
-    model_size: "0.6B",
+    model_size: "1.7B",
   };
   const start = await fetch(`${space}/gradio_api/call/generate_voice_clone`, {
     method: "POST",
@@ -233,7 +233,7 @@ export async function handleVoiceClone(request: Request, env: Env): Promise<Resp
       throw new Error(`Qwen generated audio could not be downloaded (${generated.status}).`);
     const headers = new Headers(generated.headers);
     headers.set("cache-control", "no-store");
-    headers.set("x-clone-provider", "Qwen3-TTS 0.6B Base");
+    headers.set("x-clone-provider", "Qwen3-TTS 1.7B Base");
     headers.delete("x-clone-verified");
     return new Response(generated.body, { status: 200, headers });
   } catch (error) {
