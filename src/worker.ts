@@ -208,8 +208,7 @@ export default {
         if (!hasImage) return reliableChat(request, env);
       } catch {}
     }
-    if (path === "/api/ai/music" && request.method === "POST")
-      return reliableMusic(request, env);
+    if (path === "/api/ai/music" && request.method === "POST") return reliableMusic(request, env);
     return studioServer.fetch(request, env, ctx);
   },
 };
