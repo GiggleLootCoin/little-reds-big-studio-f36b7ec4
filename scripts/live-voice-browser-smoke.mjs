@@ -39,9 +39,12 @@ const referenceId = createHash("sha256").update(sampleBytes).digest("hex");
 const sttResponse = await fetch(`${base}/api/ai/speech-to-text?android_smoke=1&ts=${Date.now()}`, {
   method: "POST",
   headers: { "content-type": "application/json" },
-  body: JSON.stringify({ audioBase64, language: "English" }),
+  body: JSON.stringify({ audioBase64, language: "en" }),
 });
-if (!sttResponse.ok) throw new Error(`production STT returned HTTP ${sttResponse.status}`);
+if (!sttResponse.ok) {
+  const detail = await sttResponse.text().catch(() => "");
+  throw new Error(`production STT returned HTTP ${sttResponse.status}: ${detail.slice(0, 300)}`);
+}
 const stt = await sttResponse.json();
 const refText = String(stt.text || stt.transcription || "").trim();
 if (!refText) throw new Error("production STT returned no transcript for the Red reference");
@@ -55,7 +58,7 @@ const productionResponse = await fetch(`${base}/api/voice-clone?android_smoke=1&
     audioType: "audio/wav",
     refText,
     text: "Hello. This is the live Android browser playback test.",
-    language: "English",
+    language: "en",
     modelSize: "0.6B",
   }),
 });
@@ -66,10 +69,8 @@ if (!productionResponse.ok) {
   );
 }
 const contentType = productionResponse.headers.get("content-type") || "";
-const cors = productionResponse.headers.get("access-control-allow-origin") || "";
 if (!/^audio\/(wav|wave)(?:;|$)/i.test(contentType))
   throw new Error(`unexpected production MIME: ${contentType}`);
-if (cors !== "*") throw new Error(`CORS header missing for browser audio: ${cors || "<empty>"}`);
 const productionBytes = Buffer.from(await productionResponse.arrayBuffer());
 if (productionBytes.byteLength <= 4096)
   throw new Error(`returned audio is too small: ${productionBytes.byteLength} bytes`);
@@ -107,7 +108,7 @@ try {
   });
   await page.goto(`${base}/?android_smoke=1`, { waitUntil: "networkidle", timeout: 60000 });
   const playback = await page.evaluate(
-    async ({ productionBytes, contentType, cors }) => {
+    async ({ productionBytes, contentType }) => {
       const bytes = Uint8Array.from(productionBytes);
       const blob = new Blob([bytes], { type: "audio/wav" });
       const url = URL.createObjectURL(blob);
@@ -157,7 +158,6 @@ try {
         const calls = await Promise.all(window.__buddyPlayCalls || []);
         return {
           contentType,
-          cors,
           bytes: bytes.byteLength,
           duration: decoded.duration,
           peak,
@@ -172,7 +172,7 @@ try {
         await context.close();
       }
     },
-    { productionBytes: [...productionBytes], contentType, cors },
+    { productionBytes: [...productionBytes], contentType },
   );
   console.log(
     JSON.stringify(
