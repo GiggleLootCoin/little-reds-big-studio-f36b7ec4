@@ -65,7 +65,9 @@ test("the production clone path contains no public voice Space or API-key fallba
     "/api/ai/voice-clone",
     "OPENROUTERAI_API_KEY",
   ];
-  for (const source of sources) for (const needle of forbidden) assert.doesNotMatch(source, new RegExp(needle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  for (const source of sources)
+    for (const needle of forbidden)
+      assert.doesNotMatch(source, new RegExp(needle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
 });
 
 test("worker diagnostics classify every Buddy voice failure boundary and reach waitFor", () => {
