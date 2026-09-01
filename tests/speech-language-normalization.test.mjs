@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { normalizeSpeechLanguage } from "../src/worker.ts";
+import { normalizeSpeechLanguage } from "../src/lib/speech-language.mjs";
 
 test("normalizes friendly English language names for Workers AI Whisper", () => {
   assert.equal(normalizeSpeechLanguage("English"), "en");
