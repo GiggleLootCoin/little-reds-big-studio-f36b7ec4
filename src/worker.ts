@@ -10,7 +10,10 @@ type Env = {
 };
 
 function jsonError(message: string, status = 500) {
-  return Response.json({ ok: false, error: message }, { status, headers: { "cache-control": "no-store" } });
+  return Response.json(
+    { ok: false, error: message },
+    { status, headers: { "cache-control": "no-store" } },
+  );
 }
 function chatText(result: any): string {
   if (typeof result === "string") return result.trim();
@@ -24,7 +27,11 @@ function chatText(result: any): string {
 async function reliableSpeechToText(request: Request, env: Env): Promise<Response> {
   if (!env.AI) return jsonError("Cloudflare Workers AI binding is not configured.", 503);
   let body: { audioBase64?: string; language?: string };
-  try { body = await request.json(); } catch { return jsonError("Invalid speech request.", 400); }
+  try {
+    body = await request.json();
+  } catch {
+    return jsonError("Invalid speech request.", 400);
+  }
   const audio = String(body.audioBase64 || "").trim();
   if (!audio) return jsonError("Audio is required for speech recognition.", 400);
   const language = body.language && body.language !== "Auto" ? body.language : undefined;
@@ -39,7 +46,9 @@ async function reliableSpeechToText(request: Request, env: Env): Promise<Respons
     const text = chatText(result);
     if (text) return Response.json({ text, transcription: text });
     firstError = new Error("Whisper Turbo returned no transcription text.");
-  } catch (error) { firstError = error; }
+  } catch (error) {
+    firstError = error;
+  }
   try {
     const result = await env.AI.run("@cf/openai/whisper", audio);
     const text = chatText(result);
@@ -47,26 +56,42 @@ async function reliableSpeechToText(request: Request, env: Env): Promise<Respons
     throw new Error("Whisper returned no transcription text.");
   } catch (secondError) {
     console.error("Reliable STT failed", firstError, secondError);
-    return jsonError("Speech recognition could not produce a result. Please try speaking for a little longer.", 503);
+    return jsonError(
+      "Speech recognition could not produce a result. Please try speaking for a little longer.",
+      503,
+    );
   }
 }
 async function reliableChat(request: Request, env: Env): Promise<Response> {
   if (!env.AI) return jsonError("Cloudflare Workers AI binding is not configured.", 503);
   let body: { messages?: unknown[]; prompt?: string; text?: string };
-  try { body = await request.json(); } catch { return jsonError("Invalid chat request.", 400); }
-  const messages = Array.isArray(body.messages) && body.messages.length
-    ? body.messages
-    : [{ role: "user", content: String(body.prompt || body.text || "").trim() }];
+  try {
+    body = await request.json();
+  } catch {
+    return jsonError("Invalid chat request.", 400);
+  }
+  const messages =
+    Array.isArray(body.messages) && body.messages.length
+      ? body.messages
+      : [{ role: "user", content: String(body.prompt || body.text || "").trim() }];
   if (!messages.length) return jsonError("A message is required.", 400);
   try {
-    const result = await env.AI.run("@cf/qwen/qwen3-30b-a3b-fp8", { messages, max_tokens: 1024, temperature: 0.6 });
+    const result = await env.AI.run("@cf/qwen/qwen3-30b-a3b-fp8", {
+      messages,
+      max_tokens: 1024,
+      temperature: 0.6,
+    });
     const text = chatText(result);
     if (text) return Response.json({ response: text, text, result });
     throw new Error("Qwen3 returned no usable response.");
   } catch (qwenError) {
     console.warn("Direct Qwen chat failed; trying GPT-OSS", qwenError);
     try {
-      const result = await env.AI.run("@cf/openai/gpt-oss-20b", { messages, max_tokens: 1024, temperature: 0.6 });
+      const result = await env.AI.run("@cf/openai/gpt-oss-20b", {
+        messages,
+        max_tokens: 1024,
+        temperature: 0.6,
+      });
       const text = chatText(result);
       if (text) return Response.json({ response: text, text, result });
       throw new Error("GPT-OSS returned no usable response.");
@@ -82,20 +107,29 @@ export default {
     const url = new URL(request.url);
     const path = url.pathname.replace(/\/$/, "") || "/";
     if (path === "/api/ai/voice-clone" && request.method === "GET") return voiceCloneHealth(env);
-    if (path === "/api/ai/voice-clone" && request.method === "POST") return handleProductionVoiceClone(request, env);
+    if (path === "/api/ai/voice-clone" && request.method === "POST")
+      return handleProductionVoiceClone(request, env);
     if (path === "/api/ai" && request.method === "POST") {
       try {
         const body = (await request.clone().json()) as { capability?: string };
-        const capability = String(body.capability || "").toLowerCase().replace(/_/g, "-");
-        if (["voice-clone", "voiceclone", "clone"].includes(capability)) return handleProductionVoiceClone(request, env);
+        const capability = String(body.capability || "")
+          .toLowerCase()
+          .replace(/_/g, "-");
+        if (["voice-clone", "voiceclone", "clone"].includes(capability))
+          return handleProductionVoiceClone(request, env);
       } catch {}
     }
-    if (path === "/api/ai/speech-to-text" && request.method === "POST") return reliableSpeechToText(request, env);
+    if (path === "/api/ai/speech-to-text" && request.method === "POST")
+      return reliableSpeechToText(request, env);
     if (path === "/api/ai/chat" && request.method === "POST") {
       try {
         const body = (await request.clone().json()) as { messages?: unknown[] };
         const messages = Array.isArray(body.messages) ? body.messages : [];
-        const hasImage = messages.some((message: any) => Array.isArray(message?.content) && message.content.some((part: any) => part?.type === "image_url"));
+        const hasImage = messages.some(
+          (message: any) =>
+            Array.isArray(message?.content) &&
+            message.content.some((part: any) => part?.type === "image_url"),
+        );
         if (!hasImage) return reliableChat(request, env);
       } catch {}
     }

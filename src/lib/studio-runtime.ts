@@ -159,8 +159,7 @@ export async function runStudioJob(
     }
   }
 
-  const preparedInput =
-    capability === "speech-to-text" ? await prepareSpeechToText(input) : input;
+  const preparedInput = capability === "speech-to-text" ? await prepareSpeechToText(input) : input;
   const mod = await import("./studio-runtime-impl");
   return mod.runStudioJob(capability, preparedInput, onStatus);
 }
