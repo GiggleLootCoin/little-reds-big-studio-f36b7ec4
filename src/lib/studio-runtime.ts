@@ -150,18 +150,23 @@ export async function runStudioJob(
 
   if (capability === "tts") {
     const profile = cloneProfile();
-    if (profile.mode === "clone" && profile.cloneVerified) {
-      const sample = await getBuddyVoiceSample();
-      if (!sample)
-        throw new Error("The saved custom voice sample is missing. Please create the clone again.");
+    const text = String(input.text ?? input.target_text ?? input.prompt ?? "").trim();
+    if (!text) throw new Error("Voice text is empty.");
+    const language = String(input.language ?? profile.language ?? "English");
+    const modelSize = input.model_size === "1.7B" ? "1.7B" : "0.6B";
+
+    // Buddy's built-in voice is Red's saved voice sample. A user does not need
+    // to run a separate clone action before Buddy can use that voice.
+    const savedSample = await getBuddyVoiceSample();
+    if (savedSample) {
       const refText = profile.referenceTranscript?.trim() || DEFAULT_CLONE_TEXT;
-      const text = String(input.text ?? input.target_text ?? input.prompt ?? "").trim();
-      if (!text) throw new Error("Voice text is empty.");
-      const language = String(input.language ?? profile.language ?? "English");
-      const modelSize = input.model_size === "1.7B" ? "1.7B" : "0.6B";
-      onStatus?.("Generating Buddy speech from your saved reference voice…");
-      const result = await runVerifiedClone(sample, refText, text, language, onStatus, modelSize);
+      onStatus?.("Speaking in Buddy's built-in Red voice…");
+      const result = await runVerifiedClone(savedSample, refText, text, language, onStatus, modelSize);
       return { capability: "tts", value: result, url: result.url, provider: result.provider };
+    }
+
+    if (profile.mode === "clone" && profile.cloneVerified) {
+      throw new Error("Buddy's saved voice sample is missing. Please restore the saved voice sample.");
     }
   }
 
