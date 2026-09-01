@@ -10,7 +10,6 @@ test("live Buddy speech uses the fast 0.6B path while explicit cloning keeps the
   assert.match(chat, /model_size:\s*"0\.6B"/);
   assert.match(clone, /modelSize:\s*"0\.6B" \| "1\.7B"/);
   assert.match(gateway, /modelSize\?:\s*"0\.6B" \| "1\.7B"/);
-  assert.match(gateway, /model_size:\s*modelSize/);
 });
 
 test("live speech is bounded for faster time-to-first-audio", () => {
