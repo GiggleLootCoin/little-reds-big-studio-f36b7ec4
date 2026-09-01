@@ -17,7 +17,10 @@ export function parseQwenCompletionPayload(payload: unknown): unknown {
   return undefined;
 }
 
-export function parseQwenStreamWithObjectSupport(stream: string): { audio?: unknown; error?: string } {
+export function parseQwenStreamWithObjectSupport(stream: string): {
+  audio?: unknown;
+  error?: string;
+} {
   const base = parseProductionQwenSSE(stream);
   if (base.audio !== undefined || base.error) return base;
   let event = "";
