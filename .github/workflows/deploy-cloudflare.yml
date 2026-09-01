@@ -67,6 +67,8 @@ jobs:
           done
           cat /tmp/studio.html 2>/dev/null || true
           exit 1
+      - name: Install ffmpeg for production voice smoke
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
       - name: Install Playwright for production voice smoke
         run: |
           npm install --no-save --no-audit --no-fund --ignore-scripts playwright
