@@ -30,14 +30,27 @@ function explicitDurationRequest(brief: string) {
   return unit.startsWith("min") ? Math.round(amount * 60) : Math.round(amount);
 }
 
+async function blobToDataUrl(value: unknown): Promise<string | null> {
+  if (!(value instanceof Blob) || !value.size) return null;
+  return await new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : null);
+    reader.onerror = () => resolve(null);
+    reader.readAsDataURL(value);
+  });
+}
+
 export function FreeCreatePanel() {
   const [brief, setBrief] = useState("");
   const [lyrics, setLyrics] = useState("");
-  const [busy, setBusy] = useState<StudioCapability | null>(null);
+  const [busy, setBusy] = useState<StudioCapability | "track-package" | null>(null);
   const [status, setStatus] = useState(
     "Buddy will choose a compatible free route and verify the returned result.",
   );
   const [artifact, setArtifact] = useState<StudioArtifact | null>(null);
+  const [trackMusic, setTrackMusic] = useState<StudioArtifact | null>(null);
+  const [trackArtwork, setTrackArtwork] = useState<StudioArtifact | null>(null);
+  const [trackVideo, setTrackVideo] = useState<StudioArtifact | null>(null);
   const [sourceAudio, setSourceAudio] = useState<File | null>(null);
   const [referenceVoice, setReferenceVoice] = useState<File | null>(null);
   useEffect(() => {
@@ -74,6 +87,65 @@ export function FreeCreatePanel() {
     } catch (error) {
       setStatus(
         error instanceof Error ? error.message : "No verified route could complete this job.",
+      );
+    } finally {
+      setBusy(null);
+    }
+  };
+  const generateTrackPackage = async () => {
+    if (busy) return;
+    save();
+    setBusy("track-package");
+    setArtifact(null);
+    setTrackMusic(null);
+    setTrackArtwork(null);
+    setTrackVideo(null);
+    try {
+      setStatus("1/3 — Generating the actual music track…");
+      const music = await runStudioJob(
+        "music",
+        {
+          prompt: songPrompt,
+          lyrics,
+          ...(requestedDuration ? { duration: requestedDuration } : {}),
+        },
+        setStatus,
+      );
+      setTrackMusic(music);
+
+      setStatus("2/3 — Generating cover artwork for this exact track…");
+      const artwork = await runStudioJob(
+        "image",
+        {
+          prompt:
+            `${brief.trim() || "Original song"}. Create the official cover artwork for this exact music track. Match the genre, mood, story, setting, and visual identity. No generic stock-photo look.`,
+        },
+        setStatus,
+      );
+      setTrackArtwork(artwork);
+
+      setStatus("3/3 — Animating that artwork into the track's music video…");
+      const imageDataUrl = await blobToDataUrl(artwork.value);
+      const video = await runStudioJob(
+        "video",
+        {
+          prompt:
+            `${brief.trim() || "Original song"}. Create a cinematic music video for this exact track. Keep the visual identity, characters, setting, color language, and mood consistent with the cover artwork.`,
+          ...(imageDataUrl ? { image: imageDataUrl } : {}),
+          ...(requestedDuration
+            ? { duration: Math.min(12, Math.max(4, requestedDuration)) }
+            : { duration: 5 }),
+          aspectRatio: "16:9",
+          resolution: "720p",
+        },
+        setStatus,
+      );
+      setTrackVideo(video);
+      setArtifact(music);
+      setStatus("Track package ready: music + artwork + video are all generated.");
+    } catch (error) {
+      setStatus(
+        error instanceof Error ? error.message : "Track package generation failed before completion.",
       );
     } finally {
       setBusy(null);
@@ -150,20 +222,14 @@ export function FreeCreatePanel() {
           />
         </label>
       </div>
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid gap-2 sm:grid-cols-2">
         <StudioButton
           className="w-full"
           disabled={!!busy}
-          onClick={() =>
-            void run("music", {
-              prompt: songPrompt,
-              lyrics,
-              ...(requestedDuration ? { duration: requestedDuration } : {}),
-            })
-          }
+          onClick={() => void generateTrackPackage()}
         >
           <Music2 className="size-4" />
-          {busy === "music" ? "Making music…" : "Generate song"}
+          {busy === "track-package" ? "Building track package…" : "Generate Track + Art + Video"}
         </StudioButton>
         <StudioButton
           variant="ghost"
@@ -222,42 +288,61 @@ export function FreeCreatePanel() {
           status
         )}
       </div>
-      {artifact?.url && (
-        <div className="rounded-2xl border border-border bg-background/50 p-3">
-          <div className="mb-2 flex items-center justify-between gap-2">
-            <span className="text-xs font-semibold">Verified result</span>
-            <a
-              href={artifact.url}
-              target="_blank"
-              rel="noreferrer"
-              download
-              className="inline-flex items-center gap-1 rounded-lg border border-border px-2 py-1 text-xs"
-            >
-              <Download className="size-3" /> Save
-            </a>
-          </div>
-          {artifact.capability === "image" ? (
-            <img
-              src={artifact.url}
-              alt="Generated artwork"
-              className="max-h-96 w-full rounded-xl object-contain"
-            />
-          ) : artifact.capability === "video" ? (
-            <video src={artifact.url} controls className="w-full rounded-xl" />
-          ) : (
-            <audio src={artifact.url} controls className="w-full" />
-          )}
-        </div>
+      {trackMusic?.url && (
+        <TrackArtifact title="Generated Music" kind="audio" url={trackMusic.url} />
+      )}
+      {trackArtwork?.url && (
+        <TrackArtifact title="Track Artwork" kind="image" url={trackArtwork.url} />
+      )}
+      {trackVideo?.url && (
+        <TrackArtifact title="Track Music Video" kind="video" url={trackVideo.url} />
+      )}
+      {artifact?.url && !trackMusic && (
+        <TrackArtifact title="Verified result" kind={artifact.capability} url={artifact.url} />
       )}
       <Note>
         <Readout label="Routing" value="Automatic capability + live schema + fallback" />
-        <Readout label="Providers shown to you" value="None" />
+        <Readout label="Track package" value="Music + matching artwork + matching video" />
         <Readout label="Cost target" value="Free/open first" />
         <Readout label="Success rule" value="Usable artifact required" />
       </Note>
     </Panel>
   );
 }
+function TrackArtifact({
+  title,
+  kind,
+  url,
+}: {
+  title: string;
+  kind: StudioCapability | "audio";
+  url: string;
+}) {
+  return (
+    <div className="rounded-2xl border border-border bg-background/50 p-3">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <span className="text-xs font-semibold">{title}</span>
+        <a
+          href={url}
+          target="_blank"
+          rel="noreferrer"
+          download
+          className="inline-flex items-center gap-1 rounded-lg border border-border px-2 py-1 text-xs"
+        >
+          <Download className="size-3" /> Save
+        </a>
+      </div>
+      {kind === "image" ? (
+        <img src={url} alt={title} className="max-h-96 w-full rounded-xl object-contain" />
+      ) : kind === "video" ? (
+        <video src={url} controls className="w-full rounded-xl" />
+      ) : (
+        <audio src={url} controls className="w-full" />
+      )}
+    </div>
+  );
+}
+
 function EngineButton({
   icon: Icon,
   title,
