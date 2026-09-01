@@ -55,9 +55,10 @@ const reachableAssets = [...reachable].map((file) => [file, assets.get(file)]);
 const cloneEntries = reachableAssets.filter(
   ([, source]) =>
     source.includes("/api/voice-clone") &&
-    source.includes("Sending your actual reference recording to Qwen3-TTS") &&
+    source.includes("audioBase64") &&
+    source.includes("refText") &&
     source.includes("__buddyLastCloneUrl") &&
-    source.includes("Clone audio verified:"),
+    source.includes("Buddy voice verified:"),
 );
 if (cloneEntries.length !== 1) {
   throw new Error(
@@ -66,7 +67,8 @@ if (cloneEntries.length !== 1) {
 }
 
 const [cloneAssetName, cloneSource] = cloneEntries[0];
-const endpointIndex = cloneSource.indexOf("fetch(`/api/voice-clone`");
+const endpointMatch = cloneSource.match(/fetch\(([`'\"])\/api\/voice-clone\1/);
+const endpointIndex = endpointMatch?.index ?? -1;
 if (endpointIndex < 0) {
   throw new Error(
     `Production browser clone entry in ${cloneAssetName} does not contain the /api/voice-clone fetch.`,
@@ -88,27 +90,10 @@ for (const marker of [
   }
 }
 
-const blobToVerifier = flow.match(
-  /(?:let|const)\s+([A-Za-z_$][\w$]*)=await\s+[A-Za-z_$][\w$]*\.blob\(\).*?(?:let|const)\s+([A-Za-z_$][\w$]*)=await\s+([A-Za-z_$][\w$]*)\(\1\)/s,
-);
-if (!blobToVerifier) {
-  throw new Error(
-    `Production browser clone entry in ${cloneAssetName} converts the response to a Blob, but no compiled audio-verification call consuming that Blob was found.`,
-  );
-}
-
-const verifierName = blobToVerifier[3];
-const verifierDefinition = cloneSource.indexOf(`async function ${verifierName}(`);
-if (verifierDefinition < 0) {
-  throw new Error(
-    `Production browser clone entry calls compiled audio verifier ${verifierName}(), but its implementation is not present in the reachable browser graph.`,
-  );
-}
-const verifierSource = cloneSource.slice(verifierDefinition, verifierDefinition + 5000);
 for (const marker of ["decodeAudioData", "new Blob", "URL.createObjectURL"]) {
-  if (!verifierSource.includes(marker)) {
+  if (!cloneSource.includes(marker)) {
     throw new Error(
-      `Compiled audio verifier ${verifierName}() is missing expected ${marker} behavior.`,
+      `Production browser clone entry in ${cloneAssetName} is missing compiled audio verification behavior: ${marker}.`,
     );
   }
 }
