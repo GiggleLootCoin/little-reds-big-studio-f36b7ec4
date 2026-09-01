@@ -26,6 +26,10 @@ jobs:
         run: npm ci --no-audit --no-fund --legacy-peer-deps
       - name: Audio artifact regression tests
         run: node --experimental-strip-types --test tests/audio-artifact.test.ts
+      - name: Buddy voice regression tests
+        run: npm run test:voice
+      - name: Buddy orchestrator regression tests
+        run: node --test tests/buddy-orchestrator.test.mjs
       - name: Type-check
         run: npx tsc --noEmit
       - name: Normalize formatting
