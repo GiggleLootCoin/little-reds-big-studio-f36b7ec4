@@ -47,7 +47,10 @@ test("production clone output has bounded independent free fallbacks and browser
   assert.doesNotMatch(clone, /createLocalChatterboxClone/);
   assert.match(gateway, /generate_voice_clone/);
   assert.match(gateway, /modelSize\?:\s*"0\.6B" \| "1\.7B"/);
-  assert.match(gateway, /\[file, refText, text, languageName\(language\), (?:false|xvectorOnly), modelSize\]/);
+  assert.match(
+    gateway,
+    /\[file, refText, text, languageName\(language\), (?:false|xvectorOnly), modelSize\]/,
+  );
   assert.match(gateway, /QWEN_TTS_FALLBACK_SPACE_URL/);
   assert.match(gateway, /CHATTERBOX_SPACE_URL/);
   assert.match(gateway, /generate_tts_audio/);
