@@ -1,0 +1,1 @@
+Live Buddy latency investigation: current path uses Qwen 1.7B for cloned speech despite the UI passing 0.6B. Fast live mode should explicitly select 0.6B; explicit voice cloning should retain 1.7B.
