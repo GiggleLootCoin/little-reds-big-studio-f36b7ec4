@@ -1,6 +1,7 @@
 import { readdir, readFile } from "node:fs/promises";
 import { join, posix } from "node:path";
 
+// CI note: this verifier intentionally follows the emitted browser graph rather than minifier-specific ordering.
 const root = join(process.cwd(), "dist", "client");
 const assetRoot = join(root, "assets");
 const files = await readdir(assetRoot);
