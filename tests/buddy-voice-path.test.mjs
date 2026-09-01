@@ -84,10 +84,10 @@ test("production clone output is rejected when generation is empty and never rea
   assert.match(clone, /fetch\("\/api\/voice-clone"/);
   assert.match(clone, /const generated = await response\.blob\(\)/);
   assert.match(clone, /normalizeAndVerifyBrowserAudio\(generated\)/);
-  assert.match(clone, /Qwen3-TTS 0\.6B Base/);
+  assert.match(clone, /Qwen3-TTS 1\.7B Base/);
   assert.doesNotMatch(clone, /createLocalChatterboxClone/);
   assert.match(gateway, /use_xvector_only: false/);
-  assert.match(gateway, /model_size: "0\.6B"/);
+  assert.match(gateway, /model_size: "1\.7B"/);
   assert.doesNotMatch(gateway, /x-clone-verified/);
   assert.match(runtime, /runVerifiedClone/);
 });
@@ -117,7 +117,7 @@ test("worker diagnostics classify every Buddy voice failure boundary and reach w
     "generate",
   ])
     assert.match(worker, new RegExp(`\\[${phase}\\]`));
-  assert.match(local, /event\.data\.type === "error"/);
+  assert.match(local, /event\.data\?\.type === "error"/);
   assert.match(local, /String\(event\.data\.message/);
   assert.match(local, /\[webgpu-unavailable\]/);
   assert.match(local, /\[webgpu-adapter\]/);
