@@ -39,6 +39,18 @@ function chatText(result: WorkersAIResult): string {
     ? String((message as Record<string, unknown>).content).trim()
     : "";
 }
+function mediaUrl(result: unknown): string | null {
+  if (typeof result === "string" && /^https?:\/\//i.test(result)) return result;
+  if (!result || typeof result !== "object") return null;
+  const record = result as Record<string, unknown>;
+  for (const key of ["audio", "url", "uri", "result", "output"]) {
+    const value = record[key];
+    if (typeof value === "string" && /^https?:\/\//i.test(value)) return value;
+    const nested = mediaUrl(value);
+    if (nested) return nested;
+  }
+  return null;
+}
 async function reliableSpeechToText(request: Request, env: Env): Promise<Response> {
   if (!env.AI) return jsonError("Cloudflare Workers AI binding is not configured.", 503);
   let body: { audioBase64?: string; language?: string };
@@ -116,6 +128,48 @@ async function reliableChat(request: Request, env: Env): Promise<Response> {
     }
   }
 }
+async function reliableMusic(request: Request, env: Env): Promise<Response> {
+  if (!env.AI) return jsonError("Cloudflare Workers AI binding is not configured.", 503);
+  let body: {
+    prompt?: string;
+    text?: string;
+    lyrics?: string;
+    instrumental?: boolean;
+    lyricsOptimizer?: boolean;
+  };
+  try {
+    body = await request.json();
+  } catch {
+    return jsonError("Invalid music request.", 400);
+  }
+  const prompt = String(body.prompt || body.text || "").trim();
+  if (!prompt) return jsonError("A music description is required.", 400);
+  try {
+    const result = await env.AI.run("minimax/music-2.6", {
+      prompt: prompt.slice(0, 2000),
+      lyrics: body.lyrics?.trim() || undefined,
+      is_instrumental: Boolean(body.instrumental),
+      lyrics_optimizer: body.lyricsOptimizer ?? !body.lyrics?.trim(),
+      format: "mp3",
+    });
+    const audioUrl = mediaUrl(result);
+    if (!audioUrl) throw new Error("MiniMax Music 2.6 returned no audio URL.");
+    const audioResponse = await fetch(audioUrl);
+    if (!audioResponse.ok || !audioResponse.body)
+      throw new Error(`Generated music download failed (${audioResponse.status}).`);
+    const headers = new Headers(audioResponse.headers);
+    headers.set("content-type", headers.get("content-type") || "audio/mpeg");
+    headers.set("cache-control", "no-store");
+    headers.set("x-music-provider", "MiniMax Music 2.6");
+    return new Response(audioResponse.body, { status: 200, headers });
+  } catch (error) {
+    console.error("Reliable music generation failed", error);
+    return jsonError(
+      `Music generation failed. ${error instanceof Error ? error.message : String(error)}`,
+      502,
+    );
+  }
+}
 
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext) {
@@ -154,6 +208,8 @@ export default {
         if (!hasImage) return reliableChat(request, env);
       } catch {}
     }
+    if (path === "/api/ai/music" && request.method === "POST")
+      return reliableMusic(request, env);
     return studioServer.fetch(request, env, ctx);
   },
 };
