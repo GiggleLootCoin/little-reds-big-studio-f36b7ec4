@@ -18,6 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
+      # Production deploy: full voice smoke remains mandatory after every main push.
       - name: Checkout
         uses: actions/checkout@v4
       - name: Setup Node
