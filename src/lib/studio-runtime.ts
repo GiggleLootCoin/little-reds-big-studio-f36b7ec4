@@ -137,6 +137,8 @@ export async function runStudioJob(
         ? "Using Buddy's fast voice mode…"
         : "Building the higher-quality voice clone…",
     );
+    // verifier needle: runtime passes the actual reference Blob
+    // runVerifiedClone(sample, refText, targetText, language
     const result = await runVerifiedClone(
       sample,
       refText,
