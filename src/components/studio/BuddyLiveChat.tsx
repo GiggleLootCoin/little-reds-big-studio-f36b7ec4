@@ -50,15 +50,34 @@ export function BuddyLiveChat() {
     ctx = useRef<AudioContext | null>(null),
     speech = useRef(false);
 
-  // The cleanup function is intentionally a stable imperative cleanup over refs.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     try {
       const x = JSON.parse(localStorage.getItem(KEY) || "[]");
       if (Array.isArray(x)) setMessages(x.slice(-50));
     } catch {}
-    void refreshMics();
-    return () => stopAll();
+    void listMicrophones()
+      .then(setMics)
+      .catch(() => setMics([]));
+    return () => {
+      liveRef.current = false;
+      if (silenceTimer.current) clearTimeout(silenceTimer.current);
+      silenceTimer.current = null;
+      if (raf.current) cancelAnimationFrame(raf.current);
+      raf.current = null;
+      try {
+        void ctx.current?.close();
+      } catch {}
+      ctx.current = null;
+      try {
+        rec.current?.stop();
+      } catch {}
+      rec.current = null;
+      stopMicrophone(stream.current);
+      stream.current = null;
+      try {
+        audio.current?.pause();
+      } catch {}
+    };
   }, []);
   useEffect(() => {
     try {
