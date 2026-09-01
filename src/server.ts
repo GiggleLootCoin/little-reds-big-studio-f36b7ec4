@@ -450,14 +450,8 @@ async function cloudflareAI(request: Request, env: ServerEnv): Promise<Response 
           console.warn("Aura-2 Spanish failed", error);
         }
       }
-      if (
-        (lang === "en" && AURA_EN_SPEAKERS.has(auraSpeaker)) ||
-        (lang === "es" && AURA_ES_SPEAKERS.has(auraSpeaker))
-      )
-        return jsonError(
-          `The selected voice (${requested || auraSpeaker}) could not produce audio.${isCapacityError(lastError) ? " The AI service is at capacity." : ""}`,
-          503,
-        );
+      // Aura-2 is the preferred preset-voice engine. If it is unavailable,
+      // continue to the free MeloTTS fallback instead of failing the whole request.
       try {
         const result = await env.AI.run("@cf/myshell-ai/melotts", { prompt, lang });
         const audio = await rawAudioResponse(result);

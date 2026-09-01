@@ -273,7 +273,7 @@ async function runQwen(
     const speaker = String(input.speaker ?? "Ryan");
     const language = String(input.language ?? "English");
     let last: unknown;
-    for (const size of [String(input.model_size ?? "1.7B"), "0.6B"])
+    for (const size of [String(input.model_size ?? "1.7B")])
       try {
         const r = await cl.predict("/generate_custom_voice", [
           text,
@@ -416,7 +416,12 @@ export async function runStudioJob(
   onStatus?: (s: string) => void,
 ): Promise<StudioArtifact> {
   const prepared = await prepareVoice(capability, input);
-  const providers = runnersFor(prepared.capability);
+  const skipped = new Set(
+    Array.isArray(prepared.input._skipProviders)
+      ? prepared.input._skipProviders.map((value) => String(value))
+      : [],
+  );
+  const providers = runnersFor(prepared.capability).filter((provider) => !skipped.has(provider.id));
   const failures: string[] = [];
   for (const provider of providers) {
     try {

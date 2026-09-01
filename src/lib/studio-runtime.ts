@@ -1,6 +1,8 @@
 import type { StudioArtifact, StudioCapability, StudioJobInput } from "./studio-runtime-impl";
 import { getBuddyVoiceProfile, getBuddyVoiceSample, markBuddyCloneVerified } from "./buddy-voice";
 import { saveVoiceSample } from "./voice-profile";
+import { normalizeAndVerifyBrowserAudio } from "./audio-artifact";
+import { saveBuddyClonePreview } from "./buddy-voice";
 import { createBestFreeVoiceClone } from "./real-voice-clone-v2";
 
 export type { StudioArtifact, StudioCapability, StudioJobInput } from "./studio-runtime-impl";
@@ -43,7 +45,53 @@ async function runVerifiedClone(
   language: string,
   onStatus?: (s: string) => void,
 ) {
-  const result = await createBestFreeVoiceClone(sample, refText, text, language, onStatus);
+  let result;
+  try {
+    result = await createBestFreeVoiceClone(sample, refText, text, language, onStatus);
+  } catch (primaryError) {
+    onStatus?.("Qwen clone was unavailable. Trying the free Chatterbox voice-clone fallback…");
+    try {
+      const runtime = await import("./studio-runtime-impl");
+      const fallback = await runtime.runStudioJob(
+        "voice-clone",
+        {
+          refAudio: sample,
+          referenceAudio: sample,
+          audio: sample,
+          refText,
+          referenceTranscript: refText,
+          target_text: text,
+          text,
+          language,
+          _skipProviders: ["hf-qwen3-tts"],
+        },
+        onStatus,
+      );
+      if (!fallback.url) throw primaryError;
+      const fallbackBlob = await fetch(fallback.url).then((response) => {
+        if (!response.ok) throw new Error(`Fallback audio download failed (${response.status}).`);
+        return response.blob();
+      });
+      const normalized = await normalizeAndVerifyBrowserAudio(fallbackBlob);
+      if (normalized.stats.duration <= 0 || normalized.stats.peak <= 0 || normalized.stats.rms <= 0)
+        throw new Error("Fallback clone returned silent or unusable audio.");
+      await saveBuddyClonePreview(normalized.blob, fallback.provider);
+      result = {
+        url: normalized.url,
+        provider: fallback.provider,
+        verification: `Free fallback ${fallback.provider} + browser audio decode + non-silent artifact verification`,
+        duration: normalized.stats.duration,
+        peak: normalized.stats.peak,
+        rms: normalized.stats.rms,
+      };
+    } catch (fallbackError) {
+      throw new Error(
+        `Voice cloning failed on Qwen and the free fallback. ${
+          fallbackError instanceof Error ? fallbackError.message : String(primaryError)
+        }`,
+      );
+    }
+  }
   if (!result.url) throw new Error("The voice engine returned no playable audio.");
   await saveVoiceSample(sample, refText);
   await markBuddyCloneVerified(
