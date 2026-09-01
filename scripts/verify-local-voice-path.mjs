@@ -39,7 +39,11 @@ const required = [
   ["gateway uploads the actual reference Blob", files.gateway, "qwenUpload(space, audio, env)"],
   ["gateway uses the Qwen voice-clone operation", files.gateway, "generate_voice_clone"],
   ["gateway uses full reference conditioning", files.gateway, "use_xvector_only: false"],
-  ["gateway supports the fast and quality Qwen models", files.gateway, 'modelSize?: "0.6B" | "1.7B"'],
+  [
+    "gateway supports the fast and quality Qwen models",
+    files.gateway,
+    'modelSize?: "0.6B" | "1.7B"',
+  ],
   ["gateway sends the reference audio object", files.gateway, "ref_audio: fileData"],
   ["gateway sends the exact reference transcript", files.gateway, "ref_text: refText"],
   ["gateway sends the target text", files.gateway, "target_text: text"],
@@ -74,7 +78,9 @@ for (const [label, source, needle] of required) {
 }
 
 if (!/model_size:\s*modelSize/.test(files.gateway)) {
-  throw new Error("Voice-path verification failed: selected Qwen model size is not passed to Gradio.");
+  throw new Error(
+    "Voice-path verification failed: selected Qwen model size is not passed to Gradio.",
+  );
 }
 
 const obsoleteClonePath = [
