@@ -1,5 +1,6 @@
 import studioServer from "./server";
 import { handleProductionVoiceClone, voiceCloneHealth } from "./lib/production-voice-clone";
+import { normalizeSpeechLanguage } from "./lib/speech-language.mjs";
 
 type WorkersAIResult = Record<string, unknown> | string | unknown[] | null;
 type WorkersAI = {
@@ -48,7 +49,7 @@ async function reliableSpeechToText(request: Request, env: Env): Promise<Respons
   }
   const audio = String(body.audioBase64 || "").trim();
   if (!audio) return jsonError("Audio is required for speech recognition.", 400);
-  const language = body.language && body.language !== "Auto" ? body.language : undefined;
+  const language = normalizeSpeechLanguage(body.language);
   let firstError: unknown;
   try {
     const result = await env.AI.run("@cf/openai/whisper-large-v3-turbo", {
