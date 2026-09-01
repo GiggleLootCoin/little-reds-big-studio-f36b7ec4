@@ -24,46 +24,21 @@ export function EntitlementBanner() {
   if (unlimited)
     return (
       <div className="rounded-2xl border border-primary/30 bg-primary/10 p-3 text-xs">
-        <div className="flex items-center gap-2">
-          <Crown className="size-4 text-primary" />
-          <strong>
-            {buddyUnleashed ? "Buddy Unleashed is unlocked" : "Buddy Unlimited is unlocked"}
-          </strong>
-          <span className="ml-auto text-muted-foreground">Server verified</span>
-        </div>
+        <div className="flex items-center gap-2"><Crown className="size-4 text-primary" /><strong>{buddyUnleashed ? "Paid — Buddy Unlimited" : "Paid — Studio Unlimited"}</strong><span className="ml-auto text-muted-foreground">Server verified</span></div>
+        <p className="mt-1 text-muted-foreground">$10/month through your Little Red's Big Studio Buy Me a Coffee membership.</p>
       </div>
     );
   if (trialActive)
     return (
       <div className="rounded-2xl border border-primary/25 bg-primary/5 p-3 text-xs">
-        <div className="flex items-center gap-2">
-          <Sparkles className="size-4 text-primary" />
-          <strong>Seven-day all-access trial</strong>
-          <span className="ml-auto text-primary">{left}</span>
-        </div>
-        <p className="mt-1 text-muted-foreground">
-          Your countdown comes from your account entitlement, not a browser timer.
-        </p>
+        <div className="flex items-center gap-2"><Sparkles className="size-4 text-primary" /><strong>FREE — 7 days unlimited</strong><span className="ml-auto text-primary">{left}</span></div>
+        <p className="mt-1 text-muted-foreground">Your 7-day countdown starts on your first successful sign-up/login. No usage cap during the trial. After 7 days, continue for $10/month through Buy Me a Coffee.</p>
       </div>
     );
   return (
     <div className="rounded-2xl border border-border bg-background/50 p-3 text-xs">
-      <div className="flex items-center gap-2">
-        <Crown className="size-4 text-primary" />
-        <strong>Free Studio access</strong>
-        <a
-          className="ml-auto font-semibold text-primary underline"
-          href={BMAC}
-          target="_blank"
-          rel="noreferrer"
-        >
-          Buddy Unlimited — $10/month
-        </a>
-      </div>
-      <p className="mt-1 text-muted-foreground">
-        Your existing projects remain accessible. Eligible free exports can carry the Studio
-        watermark.
-      </p>
+      <div className="flex items-center gap-2"><Crown className="size-4 text-primary" /><strong>FREE TRIAL ENDED</strong><a className="ml-auto font-semibold text-primary underline" href={BMAC} target="_blank" rel="noreferrer">Unlock — $10/month</a></div>
+      <p className="mt-1 text-muted-foreground">Your projects remain yours. Subscribe through Buy Me a Coffee to restore unlimited Buddy and Studio access.</p>
     </div>
   );
 }
