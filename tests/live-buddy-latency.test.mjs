@@ -1,0 +1,18 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+
+const clone = await readFile("src/lib/real-voice-clone-v2.ts", "utf8");
+const gateway = await readFile("src/lib/voice-clone-gateway.ts", "utf8");
+const chat = await readFile("src/components/studio/BuddyLiveChat.tsx", "utf8");
+
+test("live Buddy speech uses the fast 0.6B path while explicit cloning keeps the 1.7B quality path", () => {
+  assert.match(chat, /model_size:\s*"0\.6B"/);
+  assert.match(clone, /modelSize:\s*"0\.6B" \| "1\.7B"/);
+  assert.match(gateway, /modelSize\?:\s*"0\.6B" \| "1\.7B"/);
+  assert.match(gateway, /model_size:\s*modelSize/);
+});
+
+test("live speech is bounded for faster time-to-first-audio", () => {
+  assert.match(clone, /slice\(0, 220\)/);
+});
