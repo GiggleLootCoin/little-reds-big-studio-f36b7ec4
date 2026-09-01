@@ -1,0 +1,7 @@
+# Keep the SPA document fresh so a browser never keeps HTML that points at an older hashed JavaScript chunk.
+/
+  Cache-Control: no-cache, must-revalidate
+
+# Hashed Vite chunks are immutable within a build, but disabling browser caching here prevents cross-deployment chunk mismatches on Android browsers.
+/assets/*
+  Cache-Control: no-cache, must-revalidate
