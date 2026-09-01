@@ -78,8 +78,7 @@ export const FREE_RUNNERS: FreeRunner[] = [
     description: "Free reference-voice cloning fallback using Qwen3-TTS Base 1.7B.",
     capabilities: ["tts", "voice-clone"],
     url: "https://huggingface.co/spaces/Qwen/Qwen3-TTS",
-    notes:
-      "Uses full reference conditioning when a transcript is available and speaker-embedding mode otherwise.",
+    notes: "Uses full reference conditioning when a transcript is available and speaker-embedding mode otherwise.",
     priority: 1000,
   },
   {
@@ -89,8 +88,7 @@ export const FREE_RUNNERS: FreeRunner[] = [
     description: "Free reference-voice cloning engine from Resemble AI.",
     capabilities: ["voice-clone", "tts"],
     url: "https://huggingface.co/spaces/ResembleAI/Chatterbox",
-    notes:
-      "Uses the supplied reference audio directly. Kept as an independent fallback after Qwen.",
+    notes: "Uses the supplied reference audio directly. Kept as an independent fallback after Qwen.",
     priority: 900,
   },
   {
@@ -115,23 +113,23 @@ export const FREE_RUNNERS: FreeRunner[] = [
   },
   {
     id: "hf-seed-vc",
-    name: "Shift",
+    name: "Seed-VC Singing Voice Conversion",
     kind: "public",
-    description: "Voice-conversion fallback for authorized source voices.",
-    capabilities: ["voice-swap"],
+    description: "Zero-shot voice and singing-voice conversion with source-performance preservation.",
+    capabilities: ["voice-swap", "singing-voice-conversion", "song-voice-swap"],
     url: "https://huggingface.co/spaces/Plachta/Seed-VC",
-    notes: "Authorized voices only.",
-    priority: 350,
+    notes: "Preferred free SVC route. The project explicitly supports zero-shot singing conversion; source vocals should be isolated for best results.",
+    priority: 900,
   },
   {
     id: "hf-applio",
-    name: "Forge",
+    name: "Applio RVC/SVC",
     kind: "public",
-    description: "Open voice-conversion fallback for authorized voices.",
-    capabilities: ["voice", "voice-swap", "singing-voice-conversion"],
+    description: "Open voice-conversion fallback for authorized speaking and singing voices.",
+    capabilities: ["voice", "voice-swap", "singing-voice-conversion", "song-voice-swap"],
     url: "https://huggingface.co/spaces/IAHispano/ApplioX",
-    notes: "Voice conversion only; not used to claim a custom clone.",
-    priority: 300,
+    notes: "Fallback conversion engine; not used to claim a custom clone without a verified reference.",
+    priority: 500,
   },
   {
     id: "hf-minimax-music3-upsampler",
@@ -140,8 +138,7 @@ export const FREE_RUNNERS: FreeRunner[] = [
     description: "Free public ZeroGPU MiniMax Music 3 route with a dedicated plain-output API.",
     capabilities: ["music", "song", "lyrics-to-music", "audio-generation"],
     url: "https://huggingface.co/spaces/Upsampler/minimax-music3",
-    notes:
-      "Uses the Space's generate_music API, which returns a WAV file directly. This avoids the streaming-only player used by other Music 3 demos.",
+    notes: "Uses the Space's generate_music API, which returns a WAV file directly. This avoids streaming-only Music 3 demos.",
     priority: 1100,
   },
   {
@@ -151,9 +148,8 @@ export const FREE_RUNNERS: FreeRunner[] = [
     description: "Free public ZeroGPU MiniMax Music 3 fallback.",
     capabilities: ["music", "song", "lyrics-to-music", "audio-generation"],
     url: "https://huggingface.co/spaces/victor/MiniMax-Music3-Jam",
-    notes:
-      "Fallback only; this Space's custom streaming UI may not expose a directly playable artifact through generic Gradio calls.",
-    priority: 1050,
+    notes: "Fallback only; retained because some Music 3 demos expose capabilities that may be useful when their media API is available.",
+    priority: 850,
   },
   {
     id: "cf-music-26",
@@ -166,13 +162,23 @@ export const FREE_RUNNERS: FreeRunner[] = [
     priority: 100,
   },
   {
+    id: "hf-zimage-turbo",
+    name: "Z-Image Turbo — Free ZeroGPU",
+    kind: "gpu",
+    description: "High-quality text-to-image generation on a free ZeroGPU Space.",
+    capabilities: ["image", "image-generation", "artwork", "cover"],
+    url: "https://huggingface.co/spaces/mrfakename/Z-Image-Turbo",
+    notes: "Text-to-image route with prompt, dimensions, steps and seed inputs; preferred for original cover art because it is not an edit-only workflow.",
+    priority: 1150,
+  },
+  {
     id: "hf-qwen-image-fast",
     name: "Qwen Image Fast — Free ZeroGPU",
     kind: "gpu",
-    description: "Free public ZeroGPU image generation/editing route.",
+    description: "Free public ZeroGPU image generation/editing fallback.",
     capabilities: ["image", "image-generation", "artwork", "cover"],
     url: "https://huggingface.co/spaces/prithivMLmods/Qwen-Image-Edit-2511-LoRAs-Fast",
-    notes: "Preferred no-cost image route; live Gradio schema and playable image are required.",
+    notes: "Fallback image route; live schema and playable image are required.",
     priority: 1000,
   },
   {
@@ -182,7 +188,7 @@ export const FREE_RUNNERS: FreeRunner[] = [
     description: "Server-side text-to-image generation and editing.",
     capabilities: ["image", "image-generation", "artwork", "cover"],
     url: "/api/ai/image",
-    notes: "Server route; used only after the free ZeroGPU image route fails.",
+    notes: "Server route; used only after free ZeroGPU image routes fail.",
     priority: 100,
   },
   {
@@ -192,8 +198,8 @@ export const FREE_RUNNERS: FreeRunner[] = [
     description: "Free public ZeroGPU image-to-video/text-to-video generation.",
     capabilities: ["video", "video-generation", "image-to-video", "animation"],
     url: "https://huggingface.co/spaces/kulkas2pintu/Wan2.2-14B-Fast-Preview",
-    notes: "Preferred no-cost video route; live Gradio schema and playable video are required.",
-    priority: 1000,
+    notes: "Preferred free video route currently verified in the provider pool; live schema and playable video are required.",
+    priority: 1100,
   },
   {
     id: "cf-seedance-fast",
@@ -212,7 +218,7 @@ export const FREE_RUNNERS: FreeRunner[] = [
     description: "Real vocal/drum/bass/other separation.",
     capabilities: ["vocal-separation", "stems", "audio-separation"],
     url: "https://huggingface.co/spaces/owiedotch/demucs-stem-separation",
-    notes: "Actual separated audio required.",
+    notes: "Actual separated audio required; intended as the first stage of song voice-swap workflows.",
     priority: 170,
   },
 ];
