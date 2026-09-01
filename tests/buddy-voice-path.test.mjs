@@ -39,7 +39,7 @@ test("the local Chatterbox implementation contains the supported Transformers.js
   assert.match(worker, /conditional_decoder/);
 });
 
-test("production clone output is fetched from free Qwen routes and browser verification owns the verified flag", () => {
+test("production clone output has bounded independent free fallbacks and browser verification owns the verified flag", () => {
   assert.match(clone, /fetch/);
   assert.match(clone, /response\.blob/);
   assert.match(clone, /normalizeAndVerifyBrowserAudio/);
@@ -47,9 +47,10 @@ test("production clone output is fetched from free Qwen routes and browser verif
   assert.doesNotMatch(clone, /createLocalChatterboxClone/);
   assert.match(gateway, /generate_voice_clone/);
   assert.match(gateway, /modelSize\?:\s*"0\.6B" \| "1\.7B"/);
-  assert.match(gateway, /\[file, refText, text, languageName\(language\), false, modelSize\]/);
+  assert.match(gateway, /\[file, refText, text, languageName\(language\), (?:false|xvectorOnly), modelSize\]/);
   assert.match(gateway, /QWEN_TTS_FALLBACK_SPACE_URL/);
-  assert.match(gateway, /handle_generate/);
+  assert.match(gateway, /CHATTERBOX_SPACE_URL/);
+  assert.match(gateway, /generate_tts_audio/);
   assert.match(gateway, /const key = `\$\{space\}\|\$\{referenceId\}`/);
   assert.match(gateway, /headers\.delete/);
   assert.match(gateway, /x-clone-provider/);
