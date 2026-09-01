@@ -12,13 +12,33 @@ export type FreeRunner = {
 /** Free/no-key routes. Runtime validates live API and actual media artifacts. */
 export const FREE_RUNNERS: FreeRunner[] = [
   {
+    id: "cf-qwen3-chat",
+    name: "Cloudflare Qwen3",
+    kind: "public",
+    description: "Server-side Buddy conversation engine.",
+    capabilities: ["chat", "conversation", "text-generation", "text"],
+    url: "/api/ai/chat",
+    notes: "Primary server route; no client-side Gradio dependency.",
+    priority: 1000,
+  },
+  {
+    id: "cf-gpt-oss-chat",
+    name: "Cloudflare GPT-OSS",
+    kind: "public",
+    description: "Open-weight conversational fallback.",
+    capabilities: ["chat", "conversation", "text-generation", "text"],
+    url: "/api/ai/chat",
+    notes: "Server fallback.",
+    priority: 990,
+  },
+  {
     id: "hf-qwen3-chat",
     name: "Qwen3 Free Chat",
     kind: "public",
     description: "Free public Qwen3 conversational fallback for Buddy.",
     capabilities: ["chat", "conversation", "text-generation"],
     url: "https://huggingface.co/spaces/Qwen/Qwen3-Demo",
-    notes: "Public Space fallback; live validation required.",
+    notes: "Public Space fallback only after server routes fail; live validation required.",
     priority: 620,
   },
   {
@@ -30,26 +50,6 @@ export const FREE_RUNNERS: FreeRunner[] = [
     url: "https://huggingface.co/spaces/Qwen/Qwen3-Omni-Demo",
     notes: "Public multimodal Space fallback; live validation required.",
     priority: 610,
-  },
-  {
-    id: "cf-qwen3-chat",
-    name: "Cloudflare Qwen3",
-    kind: "public",
-    description: "Server-side Buddy conversation engine.",
-    capabilities: ["chat", "conversation", "text-generation", "text"],
-    url: "/api/ai/chat",
-    notes: "Server route.",
-    priority: 300,
-  },
-  {
-    id: "cf-gpt-oss-chat",
-    name: "Cloudflare GPT-OSS",
-    kind: "public",
-    description: "Open-weight conversational fallback.",
-    capabilities: ["chat", "conversation", "text-generation", "text"],
-    url: "/api/ai/chat",
-    notes: "Server fallback.",
-    priority: 295,
   },
   {
     id: "cf-buddy-tts",
@@ -68,8 +68,7 @@ export const FREE_RUNNERS: FreeRunner[] = [
     description: "Free reference-voice cloning fallback using Qwen3-TTS Base 1.7B.",
     capabilities: ["tts", "voice-clone"],
     url: "https://huggingface.co/spaces/Qwen/Qwen3-TTS",
-    notes:
-      "Uses full reference conditioning when a transcript is available and speaker-embedding mode otherwise.",
+    notes: "Uses full reference conditioning when a transcript is available and speaker-embedding mode otherwise.",
     priority: 1000,
   },
   {
@@ -79,8 +78,7 @@ export const FREE_RUNNERS: FreeRunner[] = [
     description: "Free reference-voice cloning engine from Resemble AI.",
     capabilities: ["voice-clone", "tts"],
     url: "https://huggingface.co/spaces/ResembleAI/Chatterbox",
-    notes:
-      "Uses the supplied reference audio directly. Kept as an independent fallback after Qwen.",
+    notes: "Uses the supplied reference audio directly. Kept as an independent fallback after Qwen.",
     priority: 900,
   },
   {
