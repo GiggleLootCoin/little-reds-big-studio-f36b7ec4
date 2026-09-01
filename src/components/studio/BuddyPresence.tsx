@@ -55,12 +55,6 @@ export function BuddyPresence({ className }: { className?: string }) {
             preload="metadata"
             aria-label="Animated Buddy"
           />
-          <img
-            src={buddyReference}
-            alt=""
-            className="buddy-character-fallback absolute inset-0 h-full w-full object-contain"
-            aria-hidden
-          />
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5">
