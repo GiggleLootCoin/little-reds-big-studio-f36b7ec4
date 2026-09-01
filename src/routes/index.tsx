@@ -49,7 +49,7 @@ export const Route = createFileRoute("/")({
   component: Studio,
 });
 
-const VERSION = "Studio Version 5.2 — Free/Open Edition";
+const VERSION = "Little Red's Big Studio — Free/Open Edition";
 type TabId = "home" | "write" | "mix" | "video" | "community";
 const TABS: { id: TabId; label: string; icon: typeof Compass }[] = [
   { id: "home", label: "Home", icon: Compass },
