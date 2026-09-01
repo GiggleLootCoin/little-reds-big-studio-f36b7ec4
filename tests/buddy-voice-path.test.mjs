@@ -46,7 +46,9 @@ test("production clone output is rejected when generation is empty and browser v
   assert.match(clone, /Qwen3-TTS/);
   assert.doesNotMatch(clone, /createLocalChatterboxClone/);
   assert.match(gateway, /use_xvector_only: false/);
-  assert.match(gateway, /model_size: "1\.7B"/);
+  assert.match(gateway, /modelSize\?:\s*"0\.6B" \| "1\.7B"/);
+  assert.match(gateway, /model_size:\s*modelSize/);
+  assert.match(gateway, /const modelSize = body\.modelSize === "0\.6B" \? "0\.6B" : "1\.7B"/);
   assert.match(gateway, /headers\.delete/);
   assert.match(runtime, /runVerifiedClone/);
 });
