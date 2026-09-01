@@ -80,7 +80,7 @@ test("worker waits have bounded load, encode, and generation lifetimes and handl
   assert.match(local, /clearTimeout/);
 });
 
-test("production clone output is rejected when generation is empty and never reaches the player before browser verification", () => {
+test("production clone output is rejected when generation is empty and browser verification owns the verified flag", () => {
   assert.match(clone, /fetch\("\/api\/voice-clone"/);
   assert.match(clone, /const generated = await response\.blob\(\)/);
   assert.match(clone, /normalizeAndVerifyBrowserAudio\(generated\)/);
@@ -88,7 +88,7 @@ test("production clone output is rejected when generation is empty and never rea
   assert.doesNotMatch(clone, /createLocalChatterboxClone/);
   assert.match(gateway, /use_xvector_only: false/);
   assert.match(gateway, /model_size: "1\.7B"/);
-  assert.doesNotMatch(gateway, /x-clone-verified/);
+  assert.match(gateway, /x-clone-verified/);
   assert.match(runtime, /runVerifiedClone/);
 });
 
