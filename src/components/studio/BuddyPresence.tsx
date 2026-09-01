@@ -4,6 +4,7 @@ import { buddyLine } from "@/lib/buddy-personality";
 import { getBuddyStatus, subscribeBuddyStatus } from "@/lib/buddy-presence";
 import type { BuddyStatus } from "@/lib/buddy-presence";
 import buddyReference from "../../../file_0000000070e8824391d24367b5f22d59.png";
+import buddyReferenceVideo from "../../../Untitled 2026-08-06 03.58.21.mp4";
 import { cn } from "@/lib/utils";
 import { StudioLogo } from "@/components/studio/StudioLogo";
 import "./BuddyVisual.css";
@@ -41,12 +42,24 @@ export function BuddyPresence({ className }: { className?: string }) {
       aria-label={`Buddy: ${STATUS_LABELS[snapshot.status]}`}
     >
       <div className="flex items-center gap-3">
-        <div className="buddy-presence-character relative size-14 shrink-0 overflow-hidden rounded-xl border border-white/10 bg-black/35">
+        <div className="buddy-presence-character buddy-video-frame relative size-14 shrink-0 overflow-hidden rounded-xl border border-white/10 bg-black/35">
           <div className="buddy-aura absolute inset-0 rounded-full bg-primary/25 blur-lg" />
+          <video
+            className="buddy-character-video relative h-full w-full object-cover"
+            src={buddyReferenceVideo}
+            poster={buddyReference}
+            autoPlay
+            muted
+            loop
+            playsInline
+            preload="metadata"
+            aria-label="Animated Buddy"
+          />
           <img
             src={buddyReference}
-            alt="Buddy"
-            className="buddy-character-image relative h-full w-full object-contain"
+            alt=""
+            className="buddy-character-fallback absolute inset-0 h-full w-full object-contain"
+            aria-hidden
           />
         </div>
         <div className="min-w-0 flex-1">
