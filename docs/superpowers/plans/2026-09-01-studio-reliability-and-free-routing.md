@@ -28,6 +28,7 @@
 ### Task 1: Audit the existing runtime and route seams
 
 **Files:**
+
 - Inspect `.studio-memory/*`
 - Inspect `src/lib/buddy-orchestrator.ts`, `src/lib/buddy-knowledge.ts`, `src/lib/buddy-presence.ts`, `src/lib/buddy-attachments.ts`
 - Inspect provider/runtime routes, artifact validation, and existing tests
@@ -42,10 +43,12 @@
 ### Task 2: Make free-only capability routing explicit and health-aware
 
 **Files:**
+
 - Modify the existing routing/provider registry files identified in Task 1.
 - Add focused router tests beside existing test conventions.
 
 **Interfaces:**
+
 - Candidate route metadata must include capability, free eligibility, input requirements, runtime health and fallback priority.
 - Router returns the best currently eligible route without exposing vendor details to ordinary users.
 
@@ -57,10 +60,12 @@
 ### Task 3: Make Buddy memory model-independent
 
 **Files:**
+
 - Modify existing Buddy knowledge/orchestration and account/project memory integration.
 - Add focused persistence/routing tests.
 
 **Interfaces:**
+
 - `getBuddyContext(accountId, projectId)` supplies user/project memory before model selection.
 - Model selection consumes context but never owns it.
 - New durable user facts are written to account/project memory, not provider-specific conversation state.
@@ -72,11 +77,13 @@
 ### Task 4: Register Buddy visual/video and authorized voice references
 
 **Files:**
+
 - Modify existing Buddy attachment/reference handling.
 - Add metadata for the two uploaded Buddy MP4s and existing voice samples where safe.
 - Update reference-resolution tests/docs.
 
 **Interfaces:**
+
 - Buddy reference resolver returns appropriate visual references for image/video jobs and authorized voice references for voice jobs.
 - Reference assets are source material, not the generated output itself.
 
@@ -88,6 +95,7 @@
 ### Task 5: Repair the user-facing failure/recovery path
 
 **Files:**
+
 - Modify existing generation UI/runtime status handling only where current tests show gaps.
 - Add tests for honest failure states and fallback messaging.
 
@@ -98,6 +106,7 @@
 ### Task 6: Verify production and Android gates
 
 **Files:**
+
 - `.github/workflows/*` only if verification configuration itself is broken.
 - `.studio-memory/CURRENT-STATE.md`, `KNOWN-ISSUES.md`, `CHANGELOG.md` for evidence updates.
 
