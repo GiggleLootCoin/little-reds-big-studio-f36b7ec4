@@ -42,25 +42,13 @@ export const FREE_RUNNERS: FreeRunner[] = [
     priority: 500,
   },
   {
-    id: "cf-fal-chatterbox-clone",
-    name: "Fal Chatterbox Voice Clone",
-    kind: "public",
-    description: "Server-side Chatterbox reference-voice cloning through the protected Fal queue.",
-    capabilities: ["voice-clone"],
-    url: "/api/ai/voice-clone",
-    notes:
-      "Primary clone route. The Fal key stays server-side; the runtime sends the user's sample to the Worker and only accepts returned playable audio as success.",
-    priority: 1200,
-  },
-  {
     id: "hf-qwen3-tts",
     name: "Qwen3-TTS 1.7B Voice Clone",
     kind: "public",
     description: "Free reference-voice cloning fallback using Qwen3-TTS Base 1.7B.",
     capabilities: ["tts", "voice-clone"],
     url: "https://huggingface.co/spaces/Qwen/Qwen3-TTS",
-    notes:
-      "Uses full reference conditioning when a transcript is available and speaker-embedding mode otherwise.",
+    notes: "Uses full reference conditioning when a transcript is available and speaker-embedding mode otherwise.",
     priority: 1000,
   },
   {
@@ -70,8 +58,7 @@ export const FREE_RUNNERS: FreeRunner[] = [
     description: "Free reference-voice cloning engine from Resemble AI.",
     capabilities: ["voice-clone", "tts"],
     url: "https://huggingface.co/spaces/ResembleAI/Chatterbox",
-    notes:
-      "Uses the supplied reference audio directly. Kept as an independent fallback after Qwen.",
+    notes: "Uses the supplied reference audio directly. Kept as an independent fallback after Qwen.",
     priority: 900,
   },
   {
