@@ -61,7 +61,9 @@ const productionResponse = await fetch(`${base}/api/voice-clone?android_smoke=1&
 });
 if (!productionResponse.ok) {
   const detail = await productionResponse.text().catch(() => "");
-  throw new Error(`production clone returned HTTP ${productionResponse.status}: ${detail.slice(0, 300)}`);
+  throw new Error(
+    `production clone returned HTTP ${productionResponse.status}: ${detail.slice(0, 300)}`,
+  );
 }
 const contentType = productionResponse.headers.get("content-type") || "";
 const cors = productionResponse.headers.get("access-control-allow-origin") || "";
@@ -133,7 +135,10 @@ try {
         const audio = new Audio(url);
         audio.preload = "auto";
         await new Promise((resolve, reject) => {
-          const timer = setTimeout(() => reject(new Error("HTMLAudioElement metadata timeout")), 10000);
+          const timer = setTimeout(
+            () => reject(new Error("HTMLAudioElement metadata timeout")),
+            10000,
+          );
           audio.onloadedmetadata = () => {
             clearTimeout(timer);
             resolve();
@@ -169,9 +174,17 @@ try {
     },
     { productionBytes: [...productionBytes], contentType, cors },
   );
-  console.log(JSON.stringify({ status: "ok", referenceTranscript: refText, androidPlayback: playback }, null, 2));
+  console.log(
+    JSON.stringify(
+      { status: "ok", referenceTranscript: refText, androidPlayback: playback },
+      null,
+      2,
+    ),
+  );
 } catch (error) {
-  console.error(`::error::ANDROID_BROWSER_VOICE_TEST ${error instanceof Error ? error.message : String(error)}`);
+  console.error(
+    `::error::ANDROID_BROWSER_VOICE_TEST ${error instanceof Error ? error.message : String(error)}`,
+  );
   throw error;
 } finally {
   await browser.close();
