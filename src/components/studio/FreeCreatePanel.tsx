@@ -117,8 +117,7 @@ export function FreeCreatePanel() {
       const artwork = await runStudioJob(
         "image",
         {
-          prompt:
-            `${brief.trim() || "Original song"}. Create the official cover artwork for this exact music track. Match the genre, mood, story, setting, and visual identity. No generic stock-photo look.`,
+          prompt: `${brief.trim() || "Original song"}. Create the official cover artwork for this exact music track. Match the genre, mood, story, setting, and visual identity. No generic stock-photo look.`,
         },
         setStatus,
       );
@@ -129,8 +128,7 @@ export function FreeCreatePanel() {
       const video = await runStudioJob(
         "video",
         {
-          prompt:
-            `${brief.trim() || "Original song"}. Create a cinematic music video for this exact track. Keep the visual identity, characters, setting, color language, and mood consistent with the cover artwork.`,
+          prompt: `${brief.trim() || "Original song"}. Create a cinematic music video for this exact track. Keep the visual identity, characters, setting, color language, and mood consistent with the cover artwork.`,
           ...(imageDataUrl ? { image: imageDataUrl } : {}),
           ...(requestedDuration
             ? { duration: Math.min(12, Math.max(4, requestedDuration)) }
@@ -145,7 +143,9 @@ export function FreeCreatePanel() {
       setStatus("Track package ready: music + artwork + video are all generated.");
     } catch (error) {
       setStatus(
-        error instanceof Error ? error.message : "Track package generation failed before completion.",
+        error instanceof Error
+          ? error.message
+          : "Track package generation failed before completion.",
       );
     } finally {
       setBusy(null);
