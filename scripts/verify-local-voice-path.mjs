@@ -15,15 +15,28 @@ const required = [
   ["free Qwen fallback", gateway, /QWEN_TTS_FALLBACK_SPACE_URL/],
   ["provider response marker", gateway, /x-clone-provider/],
   ["runtime production clone", runtime, /createBestFreeVoiceClone/],
-  ["voice capability has no legacy fallback", registry, /voice-chatterbox-local[\s\S]*fallbackIds:\s*\[\]/],
+  [
+    "voice capability has no legacy fallback",
+    registry,
+    /voice-chatterbox-local[\s\S]*fallbackIds:\s*\[\]/,
+  ],
 ];
 
 for (const [label, source, pattern] of required) {
   if (!pattern.test(source)) throw new Error(`Voice-path verification failed: ${label}`);
 }
 
-for (const forbidden of ["createLocalChatterboxClone", "rahul7star", "spacekaren", "/api/ai/voice-clone", "OPENROUTERAI_API_KEY"]) {
-  if (clone.includes(forbidden) || runtime.includes(forbidden)) throw new Error(`Forbidden legacy production dependency: ${forbidden}`);
+for (const forbidden of [
+  "createLocalChatterboxClone",
+  "rahul7star",
+  "spacekaren",
+  "/api/ai/voice-clone",
+  "OPENROUTERAI_API_KEY",
+]) {
+  if (clone.includes(forbidden) || runtime.includes(forbidden))
+    throw new Error(`Forbidden legacy production dependency: ${forbidden}`);
 }
 
-console.log("Buddy production voice path verified: browser reference Blob -> /api/voice-clone -> Qwen3-TTS Base clone -> free fallback -> validated browser audio.");
+console.log(
+  "Buddy production voice path verified: browser reference Blob -> /api/voice-clone -> Qwen3-TTS Base clone -> free fallback -> validated browser audio.",
+);
