@@ -134,14 +134,25 @@ export const FREE_RUNNERS: FreeRunner[] = [
     priority: 300,
   },
   {
+    id: "hf-minimax-music3-upsampler",
+    name: "MiniMax Music 3 — Free ZeroGPU",
+    kind: "gpu",
+    description: "Free public ZeroGPU MiniMax Music 3 route with a dedicated plain-output API.",
+    capabilities: ["music", "song", "lyrics-to-music", "audio-generation"],
+    url: "https://huggingface.co/spaces/Upsampler/minimax-music3",
+    notes:
+      "Uses the Space's generate_music API, which returns a WAV file directly. This avoids the streaming-only player used by other Music 3 demos.",
+    priority: 1100,
+  },
+  {
     id: "hf-minimax-music3-jam",
     name: "MiniMax Music 3 Jam — Free ZeroGPU",
     kind: "gpu",
-    description: "Free public ZeroGPU music generation from a song description and lyrics.",
+    description: "Free public ZeroGPU MiniMax Music 3 fallback.",
     capabilities: ["music", "song", "lyrics-to-music", "audio-generation"],
     url: "https://huggingface.co/spaces/victor/MiniMax-Music3-Jam",
-    notes: "Preferred no-cost music route; live Gradio schema and playable audio are required.",
-    priority: 1000,
+    notes: "Fallback only; this Space's custom streaming UI may not expose a directly playable artifact through generic Gradio calls.",
+    priority: 1050,
   },
   {
     id: "cf-music-26",
@@ -150,7 +161,7 @@ export const FREE_RUNNERS: FreeRunner[] = [
     description: "Song and instrumental music generation.",
     capabilities: ["music", "song", "lyrics-to-music", "audio-generation"],
     url: "/api/ai/music",
-    notes: "Server route; used only after the free ZeroGPU music route fails.",
+    notes: "Server route; used only after free ZeroGPU Music 3 routes fail.",
     priority: 100,
   },
   {
