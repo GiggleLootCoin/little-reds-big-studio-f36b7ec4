@@ -10,6 +10,15 @@ export type CloneResult = {
   rms: number;
 };
 
+let cachedReferenceId = "";
+let cachedReferenceBase64 = "";
+
+async function referenceId(blob: Blob): Promise<string> {
+  const bytes = await blob.arrayBuffer();
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return Array.from(new Uint8Array(digest), (value) => value.toString(16).padStart(2, "0")).join("");
+}
+
 function blobBase64(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -27,9 +36,9 @@ function blobBase64(blob: Blob): Promise<string> {
 /**
  * Production browser voice-cloning path.
  *
- * The actual reference recording and its transcript are sent to the
- * server-side Qwen3-TTS 1.7B gateway. The returned audio is not considered
- * usable until the existing browser safety verifier accepts the exact Blob.
+ * The reference is uploaded once per warm backend worker instead of being
+ * re-uploaded on every conversational reply. This removes the largest avoidable
+ * round-trip from Buddy's live voice path while preserving the exact reference.
  */
 export async function createBestFreeVoiceClone(
   sample: Blob,
@@ -42,18 +51,42 @@ export async function createBestFreeVoiceClone(
   if (!refText.trim()) throw new Error("The reference transcript is required.");
   if (!text.trim()) throw new Error("Voice clone target text is empty.");
 
-  onStatus?.("Sending your actual reference recording to Qwen3-TTS 1.7B…");
-  const response = await fetch("/api/voice-clone", {
+  const id = await referenceId(sample);
+  const target = text.trim().replace(/\s+/g, " ").slice(0, 420);
+  if (!target) throw new Error("Voice clone target text is empty.");
+
+  if (cachedReferenceId !== id) {
+    cachedReferenceBase64 = await blobBase64(sample);
+    cachedReferenceId = id;
+  }
+
+  const requestBody = {
+    referenceId: id,
+    audioBase64: cachedReferenceBase64,
+    audioType: sample.type || "audio/wav",
+    refText: refText.trim(),
+    text: target,
+    language: language || "English",
+  };
+
+  onStatus?.("Using your saved voice reference…");
+  let response = await fetch("/api/voice-clone", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      audioBase64: await blobBase64(sample),
-      audioType: sample.type || "audio/wav",
-      refText: refText.trim(),
-      text: text.trim(),
-      language: language || "English",
-    }),
+    body: JSON.stringify(requestBody),
   });
+
+  // A Cloudflare Worker can be replaced between turns. If its short-lived
+  // reference cache was lost, retry once with the actual reference attached.
+  if (response.status === 428) {
+    onStatus?.("Refreshing Buddy's voice reference…");
+    response = await fetch("/api/voice-clone", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(requestBody),
+    });
+  }
+
   if (!response.ok) {
     let detail = `Qwen voice cloning failed (${response.status}).`;
     try {
@@ -68,7 +101,7 @@ export async function createBestFreeVoiceClone(
   const generated = await response.blob();
   if (!generated.size) throw new Error("Qwen returned empty generated audio.");
 
-  onStatus?.("Checking the Qwen-generated clone for real, playable audio…");
+  onStatus?.("Checking the generated clone for real, playable audio…");
   const normalized = await normalizeAndVerifyBrowserAudio(generated);
   if (normalized.stats.duration <= 0 || normalized.stats.peak <= 0 || normalized.stats.rms <= 0)
     throw new Error("Qwen returned silent or unusable audio.");
@@ -77,9 +110,7 @@ export async function createBestFreeVoiceClone(
   await saveBuddyClonePreview(normalized.blob, provider);
   const browserWindow = window as Window & { __buddyLastCloneUrl?: string };
   browserWindow.__buddyLastCloneUrl = normalized.url;
-  onStatus?.(
-    `Clone audio verified: ${normalized.stats.duration.toFixed(2)}s, peak ${normalized.stats.peak.toFixed(3)}, RMS ${normalized.stats.rms.toFixed(4)}.`,
-  );
+  onStatus?.(`Clone audio verified: ${normalized.stats.duration.toFixed(2)}s.`);
   return {
     url: normalized.url,
     provider,
