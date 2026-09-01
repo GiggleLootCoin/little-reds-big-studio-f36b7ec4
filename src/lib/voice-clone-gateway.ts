@@ -154,6 +154,7 @@ async function qwenClone(
   refText: string,
   text: string,
   language: string,
+  modelSize: "0.6B" | "1.7B",
   env: Env,
 ): Promise<string> {
   const fileData = {
@@ -168,7 +169,7 @@ async function qwenClone(
     target_text: text,
     language: languageName(language),
     use_xvector_only: false,
-    model_size: "1.7B",
+    model_size: modelSize,
   };
   const start = await fetch(`${space}/gradio_api/call/generate_voice_clone`, {
     method: "POST",
@@ -218,6 +219,7 @@ export async function handleVoiceClone(request: Request, env: Env): Promise<Resp
     refText?: string;
     text?: string;
     language?: string;
+    modelSize?: "0.6B" | "1.7B";
   };
   try {
     body = (await request.json()) as typeof body;
@@ -237,7 +239,7 @@ export async function handleVoiceClone(request: Request, env: Env): Promise<Resp
     "",
   );
   const audioType = String(body.audioType || "audio/wav");
-  const modelSize = "1.7B";
+  const modelSize = body.modelSize === "0.6B" ? "0.6B" : "1.7B";
   try {
     const cached = await cachedQwenPath(
       body.referenceId.trim(),
@@ -253,6 +255,7 @@ export async function handleVoiceClone(request: Request, env: Env): Promise<Resp
       body.refText.trim(),
       body.text.trim().replace(/\s+/g, " ").slice(0, 220),
       String(body.language || "English"),
+      modelSize,
       env,
     );
     const generated = await fetch(audioUrl, { headers: authHeaders(env) });
@@ -260,7 +263,7 @@ export async function handleVoiceClone(request: Request, env: Env): Promise<Resp
       throw new Error(`Qwen generated audio could not be downloaded (${generated.status}).`);
     const headers = new Headers(generated.headers);
     headers.set("cache-control", "no-store");
-    headers.set("x-clone-provider", "Qwen3-TTS 1.7B Base");
+    headers.set("x-clone-provider", `Qwen3-TTS ${modelSize} Base`);
     headers.delete("x-clone-verified");
     return new Response(generated.body, { status: 200, headers });
   } catch (error) {
