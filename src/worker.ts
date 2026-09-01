@@ -2,7 +2,9 @@ import studioServer from "./server";
 import { handleProductionVoiceClone, voiceCloneHealth } from "./lib/production-voice-clone";
 
 type WorkersAIResult = Record<string, unknown> | string | unknown[] | null;
-type WorkersAI = { run: (model: string, input: unknown, options?: unknown) => Promise<WorkersAIResult> };
+type WorkersAI = {
+  run: (model: string, input: unknown, options?: unknown) => Promise<WorkersAIResult>;
+};
 type Env = {
   AI?: WorkersAI;
   HF_TOKEN?: string;
@@ -26,10 +28,13 @@ function chatText(result: WorkersAIResult): string {
     if (typeof record[key] === "string" && record[key].trim()) return record[key].trim();
   }
   const choices = record.choices;
-  const message = Array.isArray(choices) && choices[0] && typeof choices[0] === "object"
-    ? (choices[0] as Record<string, unknown>).message
-    : undefined;
-  return message && typeof message === "object" && typeof (message as Record<string, unknown>).content === "string"
+  const message =
+    Array.isArray(choices) && choices[0] && typeof choices[0] === "object"
+      ? (choices[0] as Record<string, unknown>).message
+      : undefined;
+  return message &&
+    typeof message === "object" &&
+    typeof (message as Record<string, unknown>).content === "string"
     ? String((message as Record<string, unknown>).content).trim()
     : "";
 }
@@ -137,10 +142,13 @@ export default {
         const hasImage = messages.some((message: unknown) => {
           const item = message as ChatMessage;
           const content = item?.content;
-          return Array.isArray(content) && content.some((part: unknown) => {
-            if (!part || typeof part !== "object") return false;
-            return (part as Record<string, unknown>).type === "image_url";
-          });
+          return (
+            Array.isArray(content) &&
+            content.some((part: unknown) => {
+              if (!part || typeof part !== "object") return false;
+              return (part as Record<string, unknown>).type === "image_url";
+            })
+          );
         });
         if (!hasImage) return reliableChat(request, env);
       } catch {}
