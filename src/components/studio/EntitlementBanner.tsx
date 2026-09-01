@@ -24,7 +24,7 @@ export function EntitlementBanner() {
   if (unlimited)
     return (
       <div className="rounded-2xl border border-primary/30 bg-primary/10 p-3 text-xs">
-        <div className="flex items-center gap-2"><Crown className="size-4 text-primary" /><strong>Paid — Buddy Unlimited</strong><span className="ml-auto text-muted-foreground">Server verified</span></div>
+        <div className="flex items-center gap-2"><Crown className="size-4 text-primary" /><strong>{buddyUnleashed ? "Paid — Buddy Unlimited" : "Paid — Studio Unlimited"}</strong><span className="ml-auto text-muted-foreground">Server verified</span></div>
         <p className="mt-1 text-muted-foreground">$10/month through your Little Red's Big Studio Buy Me a Coffee membership.</p>
       </div>
     );
