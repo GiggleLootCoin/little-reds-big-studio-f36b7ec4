@@ -450,8 +450,6 @@ async function cloudflareAI(request: Request, env: ServerEnv): Promise<Response 
           console.warn("Aura-2 Spanish failed", error);
         }
       }
-      // Aura-2 is the preferred preset-voice engine. If it is unavailable,
-      // continue to the free MeloTTS fallback instead of failing the whole request.
       try {
         const result = await env.AI.run("@cf/myshell-ai/melotts", { prompt, lang });
         const audio = await rawAudioResponse(result);
@@ -500,16 +498,17 @@ async function cloudflareAI(request: Request, env: ServerEnv): Promise<Response 
     if (capability === "music") {
       const result = await env.AI.run("minimax/music-2.6", {
         prompt: prompt.slice(0, 2000),
-        lyrics: body.lyrics || undefined,
+        lyrics: body.lyrics?.trim() || undefined,
         is_instrumental: Boolean(body.instrumental),
-        lyrics_optimizer: body.lyricsOptimizer ?? !body.lyrics,
+        lyrics_optimizer: body.lyricsOptimizer ?? !body.lyrics?.trim(),
+        format: "mp3",
       });
-      const audio = mediaUrl(result, ["audio", "url", "uri", "result", "output"]);
-      if (!audio) return jsonError("Music model returned no usable audio URL.", 502);
-      return Response.json(
-        { audio, provider: "MiniMax Music 2.6" },
-        { headers: { "cache-control": "no-store" } },
-      );
+      const audio = await rawAudioResponse(result);
+      if (!audio) return jsonError("MiniMax Music 2.6 returned no playable audio.", 502);
+      const headers = new Headers(audio.headers);
+      headers.set("cache-control", "no-store");
+      headers.set("x-music-provider", "MiniMax Music 2.6");
+      return new Response(audio.body, { status: 200, headers });
     }
     if (capability === "video") {
       const result = await env.AI.run("bytedance/seedance-2.0-fast", {
