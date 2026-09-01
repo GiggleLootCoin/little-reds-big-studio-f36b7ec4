@@ -33,6 +33,8 @@ jobs:
         run: npx prettier --check .
       - name: ESLint
         run: npm run lint
+      - name: Buddy regression tests
+        run: npm run test:voice
       - name: Static local Buddy voice-path verification
         run: npm run verify:local-voice
       - name: Production build
