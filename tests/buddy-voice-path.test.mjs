@@ -39,21 +39,24 @@ test("the local Chatterbox implementation contains the supported Transformers.js
   assert.match(worker, /conditional_decoder/);
 });
 
-test("production clone output is rejected when generation is empty and browser verification owns the verified flag", () => {
+test("production clone output is fetched from free Qwen routes and browser verification owns the verified flag", () => {
   assert.match(clone, /fetch/);
   assert.match(clone, /response\.blob/);
   assert.match(clone, /normalizeAndVerifyBrowserAudio/);
   assert.match(clone, /Qwen3-TTS/);
   assert.doesNotMatch(clone, /createLocalChatterboxClone/);
-  assert.match(gateway, /use_xvector_only: false/);
+  assert.match(gateway, /generate_voice_clone/);
   assert.match(gateway, /modelSize\?:\s*"0\.6B" \| "1\.7B"/);
-  assert.match(gateway, /model_size:\s*modelSize/);
-  assert.match(gateway, /const modelSize = body\.modelSize === "0\.6B" \? "0\.6B" : "1\.7B"/);
+  assert.match(gateway, /\[file, refText, text, languageName\(language\), false, modelSize\]/);
+  assert.match(gateway, /QWEN_TTS_FALLBACK_SPACE_URL/);
+  assert.match(gateway, /handle_generate/);
+  assert.match(gateway, /const key = `\$\{space\}\|\$\{referenceId\}`/);
   assert.match(gateway, /headers\.delete/);
+  assert.match(gateway, /x-clone-provider/);
   assert.match(runtime, /runVerifiedClone/);
 });
 
-test("the production clone path contains no public voice Space or API-key fallback", () => {
+test("the production clone path contains no obsolete public voice Space or API-key fallback", () => {
   for (const source of [clone, runtime]) {
     for (const needle of [
       ".hf.space",
