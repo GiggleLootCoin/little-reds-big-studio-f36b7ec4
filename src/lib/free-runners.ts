@@ -25,10 +25,12 @@ export const FREE_RUNNERS: FreeRunner[] = [
     id: "buddy-web-search",
     name: "Buddy Live Web Search",
     kind: "public",
-    description: "Server-side live internet search for current facts, research, models, tools, prices, and references.",
+    description:
+      "Server-side live internet search for current facts, research, models, tools, prices, and references.",
     capabilities: ["web-search", "research", "internet-search"],
     url: "/api/ai/web-search",
-    notes: "No-key search route. Results are fetched server-side and returned with titles, URLs, and snippets.",
+    notes:
+      "No-key search route. Results are fetched server-side and returned with titles, URLs, and snippets.",
     priority: 1200,
   },
   {
@@ -88,7 +90,8 @@ export const FREE_RUNNERS: FreeRunner[] = [
     description: "Free reference-voice cloning fallback using Qwen3-TTS Base 1.7B.",
     capabilities: ["tts", "voice-clone"],
     url: "https://huggingface.co/spaces/Qwen/Qwen3-TTS",
-    notes: "Uses full reference conditioning when a transcript is available and speaker-embedding mode otherwise.",
+    notes:
+      "Uses full reference conditioning when a transcript is available and speaker-embedding mode otherwise.",
     priority: 1000,
   },
   {
@@ -98,7 +101,8 @@ export const FREE_RUNNERS: FreeRunner[] = [
     description: "Free reference-voice cloning engine from Resemble AI.",
     capabilities: ["voice-clone", "tts"],
     url: "https://huggingface.co/spaces/ResembleAI/Chatterbox",
-    notes: "Uses the supplied reference audio directly. Kept as an independent fallback after Qwen.",
+    notes:
+      "Uses the supplied reference audio directly. Kept as an independent fallback after Qwen.",
     priority: 900,
   },
   {
@@ -125,10 +129,12 @@ export const FREE_RUNNERS: FreeRunner[] = [
     id: "hf-seed-vc",
     name: "Seed-VC Singing Voice Conversion",
     kind: "public",
-    description: "Zero-shot voice and singing-voice conversion with source-performance preservation.",
+    description:
+      "Zero-shot voice and singing-voice conversion with source-performance preservation.",
     capabilities: ["voice-swap", "singing-voice-conversion", "song-voice-swap"],
     url: "https://huggingface.co/spaces/Plachta/Seed-VC",
-    notes: "Preferred free SVC route. The project explicitly supports zero-shot singing conversion; source vocals should be isolated for best results.",
+    notes:
+      "Preferred free SVC route. The project explicitly supports zero-shot singing conversion; source vocals should be isolated for best results.",
     priority: 900,
   },
   {
@@ -138,7 +144,8 @@ export const FREE_RUNNERS: FreeRunner[] = [
     description: "Open voice-conversion fallback for authorized speaking and singing voices.",
     capabilities: ["voice", "voice-swap", "singing-voice-conversion", "song-voice-swap"],
     url: "https://huggingface.co/spaces/IAHispano/ApplioX",
-    notes: "Fallback conversion engine; not used to claim a custom clone without a verified reference.",
+    notes:
+      "Fallback conversion engine; not used to claim a custom clone without a verified reference.",
     priority: 500,
   },
   {
@@ -228,11 +235,14 @@ export const FREE_RUNNERS: FreeRunner[] = [
     description: "Real vocal/drum/bass/other separation.",
     capabilities: ["vocal-separation", "stems", "audio-separation"],
     url: "https://huggingface.co/spaces/owiedotch/demucs-stem-separation",
-    notes: "Actual separated audio required; intended as the first stage of song voice-swap workflows.",
+    notes:
+      "Actual separated audio required; intended as the first stage of song voice-swap workflows.",
     priority: 170,
   },
 ];
 
 export function runnersFor(capability: string): FreeRunner[] {
-  return FREE_RUNNERS.filter((r) => r.capabilities.includes(capability)).sort((a, b) => b.priority - a.priority);
+  return FREE_RUNNERS.filter((r) => r.capabilities.includes(capability)).sort(
+    (a, b) => b.priority - a.priority,
+  );
 }

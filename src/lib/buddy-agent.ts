@@ -1,12 +1,5 @@
 export type BuddyEmotion =
-  | "neutral"
-  | "happy"
-  | "excited"
-  | "curious"
-  | "thinking"
-  | "surprised"
-  | "concerned"
-  | "proud";
+  "neutral" | "happy" | "excited" | "curious" | "thinking" | "surprised" | "concerned" | "proud";
 
 export type BuddyActionCapability =
   | "music"
@@ -34,20 +27,31 @@ export type BuddyAgentPlan = {
   actions: BuddyAgentAction[];
 };
 
-const WEB_SIGNAL = /\b(latest|current|today|tonight|this week|right now|best|newest|new|find|search|look up|research|who is|what is|where is|how much|price|pricing|available|release|released|update|news)\b/i;
-const CREATIVE_SIGNAL = /\b(make|create|generate|build|turn|convert|edit|write|produce|design|animate|sing|song|music|beat|image|picture|art|cover|thumbnail|video|movie|voice|character|story|storyboard)\b/i;
+const WEB_SIGNAL =
+  /\b(latest|current|today|tonight|this week|right now|best|newest|new|find|search|look up|research|who is|what is|where is|how much|price|pricing|available|release|released|update|news)\b/i;
+const CREATIVE_SIGNAL =
+  /\b(make|create|generate|build|turn|convert|edit|write|produce|design|animate|sing|song|music|beat|image|picture|art|cover|thumbnail|video|movie|voice|character|story|storyboard)\b/i;
 
 export function shouldSearchWeb(text: string): boolean {
   const clean = text.trim();
   if (!clean) return false;
-  return WEB_SIGNAL.test(clean) && (CREATIVE_SIGNAL.test(clean) || /\b(find|search|research|latest|current|best|newest|price|pricing)\b/i.test(clean));
+  return (
+    WEB_SIGNAL.test(clean) &&
+    (CREATIVE_SIGNAL.test(clean) ||
+      /\b(find|search|research|latest|current|best|newest|price|pricing)\b/i.test(clean))
+  );
 }
 
-export function inferEmotion(text: string, phase: "listening" | "thinking" | "speaking" = "speaking"): BuddyEmotion {
+export function inferEmotion(
+  text: string,
+  phase: "listening" | "thinking" | "speaking" = "speaking",
+): BuddyEmotion {
   if (phase === "listening") return "curious";
   if (phase === "thinking") return "thinking";
-  if (/\b(amazing|awesome|love|perfect|hell yeah|great|nailed|success)\b/i.test(text)) return "excited";
-  if (/\b(sorry|failed|error|problem|can't|cannot|unable|sad|bad)\b/i.test(text)) return "concerned";
+  if (/\b(amazing|awesome|love|perfect|hell yeah|great|nailed|success)\b/i.test(text))
+    return "excited";
+  if (/\b(sorry|failed|error|problem|can't|cannot|unable|sad|bad)\b/i.test(text))
+    return "concerned";
   if (/\?|how|why|what|which|where|who\b/i.test(text)) return "curious";
   if (/\b(wow|holy|damn|surprise|surprised)\b/i.test(text)) return "surprised";
   return "neutral";
@@ -74,8 +78,15 @@ export function parseAgentPlan(raw: string, fallbackReply = raw): BuddyAgentPlan
       searchWeb: Boolean(parsed.searchWeb),
       searchQuery: typeof parsed.searchQuery === "string" ? parsed.searchQuery : undefined,
       emotion: parsed.emotion || inferEmotion(fallbackReply),
-      reply: typeof parsed.reply === "string" && parsed.reply.trim() ? parsed.reply.trim() : fallbackReply.trim(),
-      actions: actions.filter((a): a is BuddyAgentAction => Boolean(a && typeof a === "object" && typeof (a as BuddyAgentAction).capability === "string")),
+      reply:
+        typeof parsed.reply === "string" && parsed.reply.trim()
+          ? parsed.reply.trim()
+          : fallbackReply.trim(),
+      actions: actions.filter((a): a is BuddyAgentAction =>
+        Boolean(
+          a && typeof a === "object" && typeof (a as BuddyAgentAction).capability === "string",
+        ),
+      ),
     };
   } catch {
     return {
