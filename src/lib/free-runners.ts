@@ -151,7 +151,8 @@ export const FREE_RUNNERS: FreeRunner[] = [
     description: "Free public ZeroGPU MiniMax Music 3 fallback.",
     capabilities: ["music", "song", "lyrics-to-music", "audio-generation"],
     url: "https://huggingface.co/spaces/victor/MiniMax-Music3-Jam",
-    notes: "Fallback only; this Space's custom streaming UI may not expose a directly playable artifact through generic Gradio calls.",
+    notes:
+      "Fallback only; this Space's custom streaming UI may not expose a directly playable artifact through generic Gradio calls.",
     priority: 1050,
   },
   {
