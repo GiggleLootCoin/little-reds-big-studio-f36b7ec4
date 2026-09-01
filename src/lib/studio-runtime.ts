@@ -161,12 +161,21 @@ export async function runStudioJob(
     if (savedSample) {
       const refText = profile.referenceTranscript?.trim() || DEFAULT_CLONE_TEXT;
       onStatus?.("Speaking in Buddy's built-in Red voice…");
-      const result = await runVerifiedClone(savedSample, refText, text, language, onStatus, modelSize);
+      const result = await runVerifiedClone(
+        savedSample,
+        refText,
+        text,
+        language,
+        onStatus,
+        modelSize,
+      );
       return { capability: "tts", value: result, url: result.url, provider: result.provider };
     }
 
     if (profile.mode === "clone" && profile.cloneVerified) {
-      throw new Error("Buddy's saved voice sample is missing. Please restore the saved voice sample.");
+      throw new Error(
+        "Buddy's saved voice sample is missing. Please restore the saved voice sample.",
+      );
     }
   }
 
