@@ -34,7 +34,9 @@ export function OfficialStationPanel() {
   useEffect(() => {
     const session = getStoredSession();
     if (!session?.access_token || !user?.id) return;
-    getMyStationItems(session.access_token, user.id).then(setItems).catch(() => setItems([]));
+    getMyStationItems(session.access_token, user.id)
+      .then(setItems)
+      .catch(() => setItems([]));
   }, [user?.id]);
 
   if (!profile) {
@@ -101,45 +103,121 @@ export function OfficialStationPanel() {
   };
 
   return (
-    <Panel eyebrow="Creator Channel" title="Official Station" icon={<Radio className="size-5" />} defaultOpen>
+    <Panel
+      eyebrow="Creator Channel"
+      title="Official Station"
+      icon={<Radio className="size-5" />}
+      defaultOpen
+    >
       <div className="grid gap-3">
         <div className="grid gap-2 sm:grid-cols-2">
           <label className="grid gap-1.5 text-xs font-semibold">
             <span>Station handle</span>
-            <input value={handle} onChange={(e) => setHandle(e.target.value.replace(/[^a-zA-Z0-9_-]/g, ""))} className="rounded-xl border border-border bg-background/60 px-3 py-2.5 text-sm font-normal outline-none focus:ring-2 focus:ring-ring" />
+            <input
+              value={handle}
+              onChange={(e) => setHandle(e.target.value.replace(/[^a-zA-Z0-9_-]/g, ""))}
+              className="rounded-xl border border-border bg-background/60 px-3 py-2.5 text-sm font-normal outline-none focus:ring-2 focus:ring-ring"
+            />
           </label>
           <label className="grid gap-1.5 text-xs font-semibold">
             <span>Station name</span>
-            <input value={stationName} onChange={(e) => setStationName(e.target.value)} className="rounded-xl border border-border bg-background/60 px-3 py-2.5 text-sm font-normal outline-none focus:ring-2 focus:ring-ring" />
+            <input
+              value={stationName}
+              onChange={(e) => setStationName(e.target.value)}
+              className="rounded-xl border border-border bg-background/60 px-3 py-2.5 text-sm font-normal outline-none focus:ring-2 focus:ring-ring"
+            />
           </label>
         </div>
         <label className="grid gap-1.5 text-xs font-semibold">
           <span>Bio</span>
-          <textarea value={bio} onChange={(e) => setBio(e.target.value)} rows={3} className="resize-y rounded-xl border border-border bg-background/60 px-3 py-2.5 text-sm font-normal outline-none focus:ring-2 focus:ring-ring" />
+          <textarea
+            value={bio}
+            onChange={(e) => setBio(e.target.value)}
+            rows={3}
+            className="resize-y rounded-xl border border-border bg-background/60 px-3 py-2.5 text-sm font-normal outline-none focus:ring-2 focus:ring-ring"
+          />
         </label>
-        <StudioButton disabled={saving || !handle.trim()} onClick={() => void save()}>{saving ? "Saving…" : "Save Station profile"}</StudioButton>
+        <StudioButton disabled={saving || !handle.trim()} onClick={() => void save()}>
+          {saving ? "Saving…" : "Save Station profile"}
+        </StudioButton>
         <Readout label="Public Station" value={handle ? `/station/${handle}` : "Choose a handle"} />
 
         <div className="border-t border-border/60 pt-3">
-          <div className="mb-2 font-display text-xs font-bold uppercase tracking-[0.18em]">Publish a finished artifact</div>
-          <div className="grid gap-2 sm:grid-cols-[0.7fr_1fr]">
-            <select value={kind} onChange={(e) => setKind(e.target.value as StationItem["kind"])} className="rounded-xl border border-border bg-background/60 px-3 py-2.5 text-sm">
-              <option value="music">Music</option><option value="video">Video</option><option value="artwork">Artwork</option><option value="beat">Beat</option><option value="other">Other</option>
-            </select>
-            <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Release / project title" className="rounded-xl border border-border bg-background/60 px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-ring" />
+          <div className="mb-2 font-display text-xs font-bold uppercase tracking-[0.18em]">
+            Publish a finished artifact
           </div>
-          <input value={assetUrl} onChange={(e) => setAssetUrl(e.target.value)} placeholder="Real artifact URL" className="mt-2 w-full rounded-xl border border-border bg-background/60 px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-ring" />
-          <p className="mt-1 text-[11px] text-muted-foreground">Publishing requires an actual playable/viewable artifact URL. Placeholder job IDs are rejected.</p>
-          <StudioButton className="mt-2 w-full" disabled={publishing || !title.trim() || !assetUrl.trim()} onClick={() => void publish()}>{publishing ? "Publishing…" : "Publish to Official Station"}</StudioButton>
+          <div className="grid gap-2 sm:grid-cols-[0.7fr_1fr]">
+            <select
+              value={kind}
+              onChange={(e) => setKind(e.target.value as StationItem["kind"])}
+              className="rounded-xl border border-border bg-background/60 px-3 py-2.5 text-sm"
+            >
+              <option value="music">Music</option>
+              <option value="video">Video</option>
+              <option value="artwork">Artwork</option>
+              <option value="beat">Beat</option>
+              <option value="other">Other</option>
+            </select>
+            <input
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="Release / project title"
+              className="rounded-xl border border-border bg-background/60 px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-ring"
+            />
+          </div>
+          <input
+            value={assetUrl}
+            onChange={(e) => setAssetUrl(e.target.value)}
+            placeholder="Real artifact URL"
+            className="mt-2 w-full rounded-xl border border-border bg-background/60 px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-ring"
+          />
+          <p className="mt-1 text-[11px] text-muted-foreground">
+            Publishing requires an actual playable/viewable artifact URL. Placeholder job IDs are
+            rejected.
+          </p>
+          <StudioButton
+            className="mt-2 w-full"
+            disabled={publishing || !title.trim() || !assetUrl.trim()}
+            onClick={() => void publish()}
+          >
+            {publishing ? "Publishing…" : "Publish to Official Station"}
+          </StudioButton>
         </div>
 
-        {error && <p className="rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-xs text-destructive">{error}</p>}
+        {error && (
+          <p className="rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-xs text-destructive">
+            {error}
+          </p>
+        )}
         <div className="grid gap-2">
           {items.map((item) => (
-            <div key={item.id} className="flex items-center gap-3 rounded-xl border border-border bg-background/40 p-3">
-              <div className="min-w-0 flex-1"><div className="truncate text-sm font-semibold">{item.title}</div><div className="text-[11px] text-muted-foreground">{item.kind} · {item.visibility}</div></div>
-              <a href={item.asset_url} target="_blank" rel="noreferrer" aria-label={`Open ${item.title}`} className="text-primary"><ExternalLink className="size-4" /></a>
-              <button type="button" onClick={() => void remove(item.id)} aria-label={`Delete ${item.title}`} className="text-muted-foreground hover:text-destructive"><Trash2 className="size-4" /></button>
+            <div
+              key={item.id}
+              className="flex items-center gap-3 rounded-xl border border-border bg-background/40 p-3"
+            >
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-sm font-semibold">{item.title}</div>
+                <div className="text-[11px] text-muted-foreground">
+                  {item.kind} · {item.visibility}
+                </div>
+              </div>
+              <a
+                href={item.asset_url}
+                target="_blank"
+                rel="noreferrer"
+                aria-label={`Open ${item.title}`}
+                className="text-primary"
+              >
+                <ExternalLink className="size-4" />
+              </a>
+              <button
+                type="button"
+                onClick={() => void remove(item.id)}
+                aria-label={`Delete ${item.title}`}
+                className="text-muted-foreground hover:text-destructive"
+              >
+                <Trash2 className="size-4" />
+              </button>
             </div>
           ))}
         </div>

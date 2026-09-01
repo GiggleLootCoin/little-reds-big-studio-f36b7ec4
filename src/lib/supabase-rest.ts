@@ -192,7 +192,19 @@ export async function getProfile(userId: string, token: string): Promise<Profile
 }
 export async function updateProfile(
   userId: string,
-  values: Partial<Pick<ProfileRecord, "display_name" | "avatar_url" | "handle" | "bio" | "banner_url" | "website_url" | "station_name" | "is_public">>,
+  values: Partial<
+    Pick<
+      ProfileRecord,
+      | "display_name"
+      | "avatar_url"
+      | "handle"
+      | "bio"
+      | "banner_url"
+      | "website_url"
+      | "station_name"
+      | "is_public"
+    >
+  >,
   token: string,
 ) {
   const result = await request<ProfileRecord[]>(
@@ -222,7 +234,10 @@ export async function getMyStationItems(token: string, userId: string): Promise<
 }
 export async function publishStationItem(
   token: string,
-  item: Pick<StationItem, "kind" | "title" | "description" | "asset_url" | "thumbnail_url" | "metadata"> & {
+  item: Pick<
+    StationItem,
+    "kind" | "title" | "description" | "asset_url" | "thumbnail_url" | "metadata"
+  > & {
     user_id: string;
   },
 ): Promise<StationItem> {
@@ -232,7 +247,11 @@ export async function publishStationItem(
     {
       method: "POST",
       headers: { Prefer: "return=representation" },
-      body: JSON.stringify({ ...item, visibility: "public", published_at: new Date().toISOString() }),
+      body: JSON.stringify({
+        ...item,
+        visibility: "public",
+        published_at: new Date().toISOString(),
+      }),
     },
     token,
   );

@@ -11,6 +11,7 @@
 **Spec:** `docs/superpowers/specs/2026-09-02-official-station-design.md`
 
 ## Global Constraints
+
 - Android/mobile-first.
 - Free/open AI execution remains separate from paid membership.
 - Seven-day unlimited trial starts on first successful account login; paid tier is $10/month through the existing Buy Me a Coffee membership.
@@ -20,12 +21,15 @@
 - Provider/model machinery stays backstage.
 
 ### Task 1: Profile/station schema and REST contract
+
 **Files:**
+
 - Create: `supabase/migrations/20260902000000_official_station.sql`
 - Create: `tests/official-station-contract.test.mjs`
 - Modify: `src/lib/supabase-rest.ts`
 
 **Interfaces:**
+
 - `ProfileRecord` gains `handle`, `bio`, `banner_url`, `website_url`, `station_name`, `is_public`.
 - Add `StationItem` and REST helpers `getPublicStation`, `getMyStationItems`, `publishStationItem`, `updateStationItem`, `deleteStationItem`.
 
@@ -36,11 +40,14 @@
 - [ ] Run the contract test and type-check; commit the schema/REST layer.
 
 ### Task 2: Profile editor and Station owner controls
+
 **Files:**
+
 - Modify: `src/components/studio/sections-community.tsx`
 - Create: `src/components/studio/OfficialStationPanel.tsx`
 
 **Interfaces:**
+
 - Profile editor saves handle, display name, bio, avatar, banner, website, and station name.
 - Station panel lists current items and provides publish/delete controls.
 
@@ -51,11 +58,14 @@
 - [ ] Run tests and type-check; commit.
 
 ### Task 3: Public Station route
+
 **Files:**
+
 - Create: `src/routes/station.$handle.tsx`
 - Modify: `src/routes/sitemap[.]xml.ts`
 
 **Interfaces:**
+
 - `/station/:handle` resolves the public profile and public station items.
 - Public profiles with no published work still render a valid station page.
 - Private profiles return a non-leaking not-found/private state.
@@ -66,13 +76,16 @@
 - [ ] Run type-check/build and route tests; commit.
 
 ### Task 4: Buddy publishing integration
+
 **Files:**
+
 - Modify: `src/lib/buddy-agent.ts`
 - Modify: `src/components/studio/BuddyLiveChat.tsx`
 - Modify: `src/lib/studio-runtime.ts`
 - Create: `tests/buddy-station-publish.test.mjs`
 
 **Interfaces:**
+
 - Buddy recognizes explicit publish intent and can call `publishStationItem` only with a real artifact URL.
 - Buddy confirms publication only after the REST operation succeeds.
 
@@ -83,12 +96,15 @@
 - [ ] Run the test, type-check, and existing Buddy regression suite; commit.
 
 ### Task 5: Entitlement clarity and BMAC readiness
+
 **Files:**
+
 - Modify: `src/components/studio/EntitlementBanner.tsx`
 - Modify: `src/lib/supabase-rest.ts`
 - Create/modify only if missing after inspection: existing BMAC webhook handler
 
 **Interfaces:**
+
 - Free trial copy explicitly says `7 days unlimited` and `$10/month after trial`.
 - Paid status remains server-authoritative.
 - Existing BMAC signed membership webhook remains the source of paid entitlement; no browser-side payment claim is trusted.
@@ -99,6 +115,7 @@
 - [ ] Run entitlement tests and type-check; commit.
 
 ### Task 6: Full verification and integration
+
 - [ ] Run the full repository validation workflow.
 - [ ] Run `npm run typecheck`, `npm run lint`, and `npm run build` locally/through CI where available.
 - [ ] Verify the feature branch CI status.
