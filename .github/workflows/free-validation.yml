@@ -28,6 +28,8 @@ jobs:
         run: node --experimental-strip-types --test tests/audio-artifact.test.ts
       - name: Buddy voice regression tests
         run: npm run test:voice
+      - name: Buddy live latency regression tests
+        run: node --test tests/live-buddy-latency.test.mjs
       - name: Buddy orchestrator regression tests
         run: node --test tests/buddy-orchestrator.test.mjs
       - name: Type-check
