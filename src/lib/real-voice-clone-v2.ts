@@ -33,13 +33,6 @@ function blobBase64(blob: Blob): Promise<string> {
   });
 }
 
-/**
- * Production browser voice-cloning path.
- *
- * The reference is uploaded once per warm backend worker instead of being
- * re-uploaded on every conversational reply. This removes the largest avoidable
- * round-trip from Buddy's live voice path while preserving the exact reference.
- */
 export async function createBestFreeVoiceClone(
   sample: Blob,
   refText: string,
@@ -55,35 +48,36 @@ export async function createBestFreeVoiceClone(
   const target = text.trim().replace(/\s+/g, " ").slice(0, 420);
   if (!target) throw new Error("Voice clone target text is empty.");
 
-  if (cachedReferenceId !== id) {
+  const alreadyEncoded = cachedReferenceId === id && cachedReferenceBase64.length > 0;
+  if (!alreadyEncoded) {
     cachedReferenceBase64 = await blobBase64(sample);
     cachedReferenceId = id;
   }
 
-  const requestBody = {
+  const makeBody = (includeAudio: boolean) => ({
     referenceId: id,
-    audioBase64: cachedReferenceBase64,
+    ...(includeAudio ? { audioBase64: cachedReferenceBase64 } : {}),
     audioType: sample.type || "audio/wav",
     refText: refText.trim(),
     text: target,
     language: language || "English",
-  };
+  });
 
-  onStatus?.("Using your saved voice reference…");
+  onStatus?.(alreadyEncoded ? "Using Buddy's saved voice reference…" : "Preparing Buddy's voice reference…");
   let response = await fetch("/api/voice-clone", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify(requestBody),
+    body: JSON.stringify(makeBody(!alreadyEncoded)),
   });
 
-  // A Cloudflare Worker can be replaced between turns. If its short-lived
-  // reference cache was lost, retry once with the actual reference attached.
+  // A Cloudflare Worker isolate may have gone cold between replies. Refresh
+  // the server-side reference only when it explicitly reports a cache miss.
   if (response.status === 428) {
     onStatus?.("Refreshing Buddy's voice reference…");
     response = await fetch("/api/voice-clone", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify(requestBody),
+      body: JSON.stringify(makeBody(true)),
     });
   }
 
