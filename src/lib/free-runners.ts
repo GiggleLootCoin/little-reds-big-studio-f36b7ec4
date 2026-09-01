@@ -12,6 +12,16 @@ export type FreeRunner = {
 /** Free/no-key routes. Runtime validates live API and actual media artifacts. */
 export const FREE_RUNNERS: FreeRunner[] = [
   {
+    id: "cf-whisper-large-v3-turbo",
+    name: "Cloudflare Whisper Large V3 Turbo",
+    kind: "public",
+    description: "Primary server-side speech-to-text engine for Buddy microphone input.",
+    capabilities: ["speech-to-text", "transcription"],
+    url: "/api/ai/chat",
+    notes: "Server-side Workers AI Whisper route; accepts normalized PCM16 WAV audio.",
+    priority: 1000,
+  },
+  {
     id: "cf-qwen3-chat",
     name: "Cloudflare Qwen3",
     kind: "public",
@@ -39,7 +49,7 @@ export const FREE_RUNNERS: FreeRunner[] = [
     capabilities: ["chat", "conversation", "text-generation"],
     url: "https://huggingface.co/spaces/Qwen/Qwen3-Demo",
     notes: "Public Space fallback only after server routes fail; live validation required.",
-    priority: 620,
+    priority: 100,
   },
   {
     id: "hf-qwen3-omni-chat",
@@ -49,7 +59,7 @@ export const FREE_RUNNERS: FreeRunner[] = [
     capabilities: ["chat", "conversation", "text-generation"],
     url: "https://huggingface.co/spaces/Qwen/Qwen3-Omni-Demo",
     notes: "Public multimodal Space fallback; live validation required.",
-    priority: 610,
+    priority: 90,
   },
   {
     id: "cf-buddy-tts",
@@ -68,8 +78,7 @@ export const FREE_RUNNERS: FreeRunner[] = [
     description: "Free reference-voice cloning fallback using Qwen3-TTS Base 1.7B.",
     capabilities: ["tts", "voice-clone"],
     url: "https://huggingface.co/spaces/Qwen/Qwen3-TTS",
-    notes:
-      "Uses full reference conditioning when a transcript is available and speaker-embedding mode otherwise.",
+    notes: "Uses full reference conditioning when a transcript is available and speaker-embedding mode otherwise.",
     priority: 1000,
   },
   {
@@ -79,8 +88,7 @@ export const FREE_RUNNERS: FreeRunner[] = [
     description: "Free reference-voice cloning engine from Resemble AI.",
     capabilities: ["voice-clone", "tts"],
     url: "https://huggingface.co/spaces/ResembleAI/Chatterbox",
-    notes:
-      "Uses the supplied reference audio directly. Kept as an independent fallback after Qwen.",
+    notes: "Uses the supplied reference audio directly. Kept as an independent fallback after Qwen.",
     priority: 900,
   },
   {
