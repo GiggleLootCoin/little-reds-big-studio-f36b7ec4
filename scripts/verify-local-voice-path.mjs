@@ -44,7 +44,12 @@ const required = [
   [
     "gateway uploads through the Qwen file endpoint",
     files.gateway,
-    "uploadReference(space, audio, env)",
+    "const form = new FormData()",
+  ],
+  [
+    "gateway uploads the reference to the selected Space",
+    files.gateway,
+    'fetch(`${space}/gradio_api/upload`',
   ],
   ["gateway uses the Qwen voice-clone operation", files.gateway, "generate_voice_clone"],
   [
