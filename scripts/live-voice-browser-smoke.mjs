@@ -1,5 +1,6 @@
 import { chromium } from "playwright";
-import { writeFile, readFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { readFile, writeFile } from "node:fs/promises";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 
@@ -7,6 +8,7 @@ const execFileAsync = promisify(execFile);
 const base = process.env.PRODUCTION_URL;
 const sampleUrl = process.env.SAMPLE_URL;
 if (!base || !sampleUrl) throw new Error("PRODUCTION_URL and SAMPLE_URL are required");
+
 const sourcePath = "/tmp/live-voice-reference-source.mp3";
 const samplePath = "/tmp/live-voice-reference.wav";
 const source = await fetch(sampleUrl).then(async (r) => {
@@ -31,20 +33,39 @@ await execFileAsync("ffmpeg", [
   samplePath,
 ]);
 const sampleBytes = await readFile(samplePath);
+const audioBase64 = sampleBytes.toString("base64");
+const referenceId = createHash("sha256").update(sampleBytes).digest("hex");
 
-const form = new FormData();
-form.append("audio", new Blob([sampleBytes], { type: "audio/wav" }), "voice-reference.wav");
-form.append("text", "Hello. This is the live Android browser playback test.");
-form.append("target_text", "Hello. This is the live Android browser playback test.");
-const productionResponse = await fetch(
-  `${base}/api/ai/voice-clone?android_smoke=1&ts=${Date.now()}`,
-  { method: "POST", body: form },
-);
-if (!productionResponse.ok)
-  throw new Error(`production clone returned HTTP ${productionResponse.status}`);
+const sttResponse = await fetch(`${base}/api/ai/speech-to-text?android_smoke=1&ts=${Date.now()}`, {
+  method: "POST",
+  headers: { "content-type": "application/json" },
+  body: JSON.stringify({ audioBase64, language: "English" }),
+});
+if (!sttResponse.ok) throw new Error(`production STT returned HTTP ${sttResponse.status}`);
+const stt = await sttResponse.json();
+const refText = String(stt.text || stt.transcription || "").trim();
+if (!refText) throw new Error("production STT returned no transcript for the Red reference");
+
+const productionResponse = await fetch(`${base}/api/voice-clone?android_smoke=1&ts=${Date.now()}`, {
+  method: "POST",
+  headers: { "content-type": "application/json" },
+  body: JSON.stringify({
+    referenceId,
+    audioBase64,
+    audioType: "audio/wav",
+    refText,
+    text: "Hello. This is the live Android browser playback test.",
+    language: "English",
+    modelSize: "0.6B",
+  }),
+});
+if (!productionResponse.ok) {
+  const detail = await productionResponse.text().catch(() => "");
+  throw new Error(`production clone returned HTTP ${productionResponse.status}: ${detail.slice(0, 300)}`);
+}
 const contentType = productionResponse.headers.get("content-type") || "";
 const cors = productionResponse.headers.get("access-control-allow-origin") || "";
-if (!/^audio\/wav(?:;|$)/i.test(contentType))
+if (!/^audio\/(wav|wave)(?:;|$)/i.test(contentType))
   throw new Error(`unexpected production MIME: ${contentType}`);
 if (cors !== "*") throw new Error(`CORS header missing for browser audio: ${cors || "<empty>"}`);
 const productionBytes = Buffer.from(await productionResponse.arrayBuffer());
@@ -112,10 +133,7 @@ try {
         const audio = new Audio(url);
         audio.preload = "auto";
         await new Promise((resolve, reject) => {
-          const timer = setTimeout(
-            () => reject(new Error("HTMLAudioElement metadata timeout")),
-            10000,
-          );
+          const timer = setTimeout(() => reject(new Error("HTMLAudioElement metadata timeout")), 10000);
           audio.onloadedmetadata = () => {
             clearTimeout(timer);
             resolve();
@@ -136,7 +154,6 @@ try {
           contentType,
           cors,
           bytes: bytes.byteLength,
-          blobType: blob.type,
           duration: decoded.duration,
           peak,
           rms,
@@ -147,16 +164,14 @@ try {
         };
       } finally {
         URL.revokeObjectURL(url);
+        await context.close();
       }
     },
     { productionBytes: [...productionBytes], contentType, cors },
   );
-  console.log(JSON.stringify({ status: "ok", androidPlayback: playback }, null, 2));
-  await context.close();
+  console.log(JSON.stringify({ status: "ok", referenceTranscript: refText, androidPlayback: playback }, null, 2));
 } catch (error) {
-  console.error(
-    `::error::ANDROID_BROWSER_VOICE_TEST ${error instanceof Error ? error.message : String(error)}`,
-  );
+  console.error(`::error::ANDROID_BROWSER_VOICE_TEST ${error instanceof Error ? error.message : String(error)}`);
   throw error;
 } finally {
   await browser.close();
