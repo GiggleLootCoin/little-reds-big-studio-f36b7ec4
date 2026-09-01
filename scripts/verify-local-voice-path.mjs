@@ -37,14 +37,14 @@ const required = [
     "export async function handleVoiceClone",
   ],
   [
-    "gateway uploads the actual reference Blob",
+    "gateway reconstructs the actual reference Blob",
     files.gateway,
-    "const audio = new Blob([decodeBase64(audioBase64)]",
+    "new Blob([decodeBase64(audioBase64)]",
   ],
   [
     "gateway uploads through the Qwen file endpoint",
     files.gateway,
-    "qwenUpload(space, audio, env)",
+    "uploadReference(space, audio, env)",
   ],
   ["gateway uses the Qwen voice-clone operation", files.gateway, "generate_voice_clone"],
   [
