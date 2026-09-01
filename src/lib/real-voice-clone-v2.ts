@@ -16,7 +16,9 @@ let cachedReferenceBase64 = "";
 async function referenceId(blob: Blob): Promise<string> {
   const bytes = await blob.arrayBuffer();
   const digest = await crypto.subtle.digest("SHA-256", bytes);
-  return Array.from(new Uint8Array(digest), (value) => value.toString(16).padStart(2, "0")).join("");
+  return Array.from(new Uint8Array(digest), (value) => value.toString(16).padStart(2, "0")).join(
+    "",
+  );
 }
 
 function blobBase64(blob: Blob): Promise<string> {
@@ -65,7 +67,9 @@ export async function createBestFreeVoiceClone(
     modelSize,
   });
 
-  onStatus?.(alreadyEncoded ? "Using Buddy's saved voice reference…" : "Preparing Buddy's voice reference…");
+  onStatus?.(
+    alreadyEncoded ? "Using Buddy's saved voice reference…" : "Preparing Buddy's voice reference…",
+  );
   let response = await fetch("/api/voice-clone", {
     method: "POST",
     headers: { "content-type": "application/json" },
