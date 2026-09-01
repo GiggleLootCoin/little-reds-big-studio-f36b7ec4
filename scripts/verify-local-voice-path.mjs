@@ -39,7 +39,7 @@ const required = [
   ["gateway uploads the actual reference Blob", files.gateway, "qwenUpload(space, audio, env)"],
   ["gateway uses the Qwen voice-clone operation", files.gateway, "generate_voice_clone"],
   ["gateway uses full reference conditioning", files.gateway, "use_xvector_only: false"],
-  ["gateway uses Qwen 1.7B Base", files.gateway, 'model_size: "1.7B"'],
+  ["gateway supports the fast and quality Qwen models", files.gateway, 'modelSize?: "0.6B" | "1.7B"'],
   ["gateway sends the reference audio object", files.gateway, "ref_audio: fileData"],
   ["gateway sends the exact reference transcript", files.gateway, "ref_text: refText"],
   ["gateway sends the target text", files.gateway, "target_text: text"],
@@ -50,9 +50,9 @@ const required = [
     'headers.delete("x-clone-verified")',
   ],
   [
-    "gateway identifies the Qwen provider",
+    "gateway identifies the selected Qwen provider",
     files.gateway,
-    'headers.set("x-clone-provider", "Qwen3-TTS 1.7B Base")',
+    'headers.set("x-clone-provider", `Qwen3-TTS ${modelSize} Base`)',
   ],
   ["runtime imports the production clone entry", files.runtime, "createBestFreeVoiceClone"],
   [
@@ -71,6 +71,10 @@ const required = [
 
 for (const [label, source, needle] of required) {
   if (!source.includes(needle)) throw new Error(`Voice-path verification failed: ${label}`);
+}
+
+if (!/model_size:\s*modelSize/.test(files.gateway)) {
+  throw new Error("Voice-path verification failed: selected Qwen model size is not passed to Gradio.");
 }
 
 const obsoleteClonePath = [
@@ -110,5 +114,5 @@ if (!voiceBlock.includes("fallbackIds: []")) {
 }
 
 console.log(
-  "Buddy voice path verified: actual reference Blob -> content-hashed cached base64 -> /api/voice-clone -> Qwen3-TTS 1.7B Base full reference conditioning -> returned Blob -> normalizeAndVerifyBrowserAudio() -> validated normalized browser URL; obsolete local Chatterbox production path rejected.",
+  "Buddy voice path verified: actual reference Blob -> content-hashed cached base64 -> /api/voice-clone -> Qwen3-TTS selected 0.6B/1.7B Base full reference conditioning -> returned Blob -> normalizeAndVerifyBrowserAudio() -> validated normalized browser URL; obsolete local Chatterbox production path rejected.",
 );
