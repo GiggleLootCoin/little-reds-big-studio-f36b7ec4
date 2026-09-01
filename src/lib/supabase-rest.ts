@@ -27,9 +27,34 @@ export type ProfileRecord = {
   id: string;
   display_name: string;
   avatar_url: string | null;
+  handle?: string;
+  bio?: string;
+  banner_url?: string | null;
+  website_url?: string | null;
+  station_name?: string | null;
+  is_public?: boolean;
   trial_started_at?: string | null;
   created_at?: string;
   updated_at?: string;
+};
+export type StationItem = {
+  id: string;
+  user_id: string;
+  kind: "music" | "video" | "artwork" | "beat" | "other";
+  title: string;
+  description: string;
+  asset_url: string;
+  thumbnail_url: string | null;
+  visibility: "public" | "private";
+  published_at: string | null;
+  sort_order: number;
+  metadata: Record<string, unknown>;
+  created_at?: string;
+  updated_at?: string;
+};
+export type PublicStation = {
+  profile: ProfileRecord;
+  items: StationItem[];
 };
 
 async function request<T>(path: string, init: RequestInit = {}, accessToken?: string): Promise<T> {
@@ -155,9 +180,11 @@ export async function updatePassword(password: string) {
     current.access_token,
   );
 }
+const PROFILE_SELECT =
+  "id,display_name,avatar_url,handle,bio,banner_url,website_url,station_name,is_public,trial_started_at,created_at,updated_at";
 export async function getProfile(userId: string, token: string): Promise<ProfileRecord | null> {
   const result = await request<ProfileRecord[]>(
-    `/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}&select=id,display_name,avatar_url,trial_started_at,created_at,updated_at`,
+    `/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}&select=${PROFILE_SELECT}`,
     {},
     token,
   );
@@ -165,7 +192,7 @@ export async function getProfile(userId: string, token: string): Promise<Profile
 }
 export async function updateProfile(
   userId: string,
-  values: Pick<ProfileRecord, "display_name" | "avatar_url">,
+  values: Partial<Pick<ProfileRecord, "display_name" | "avatar_url" | "handle" | "bio" | "banner_url" | "website_url" | "station_name" | "is_public">>,
   token: string,
 ) {
   const result = await request<ProfileRecord[]>(
@@ -174,6 +201,50 @@ export async function updateProfile(
     token,
   );
   return result[0] || null;
+}
+export async function getPublicStation(handle: string): Promise<PublicStation | null> {
+  const profile = await request<ProfileRecord[]>(
+    `/rest/v1/profiles?handle=eq.${encodeURIComponent(handle.toLowerCase())}&is_public=eq.true&select=${PROFILE_SELECT}`,
+  );
+  const creator = profile[0];
+  if (!creator) return null;
+  const items = await request<StationItem[]>(
+    `/rest/v1/station_items?user_id=eq.${encodeURIComponent(creator.id)}&visibility=eq.public&order=sort_order.asc,published_at.desc&select=*`,
+  );
+  return { profile: creator, items };
+}
+export async function getMyStationItems(token: string, userId: string): Promise<StationItem[]> {
+  return request<StationItem[]>(
+    `/rest/v1/station_items?user_id=eq.${encodeURIComponent(userId)}&order=sort_order.asc,created_at.desc&select=*`,
+    {},
+    token,
+  );
+}
+export async function publishStationItem(
+  token: string,
+  item: Pick<StationItem, "kind" | "title" | "description" | "asset_url" | "thumbnail_url" | "metadata"> & {
+    user_id: string;
+  },
+): Promise<StationItem> {
+  if (!item.asset_url.trim()) throw new Error("A real artifact URL is required before publishing.");
+  const result = await request<StationItem[]>(
+    "/rest/v1/station_items",
+    {
+      method: "POST",
+      headers: { Prefer: "return=representation" },
+      body: JSON.stringify({ ...item, visibility: "public", published_at: new Date().toISOString() }),
+    },
+    token,
+  );
+  if (!result[0]) throw new Error("The Station did not confirm publication.");
+  return result[0];
+}
+export async function deleteStationItem(token: string, itemId: string): Promise<void> {
+  await request(
+    `/rest/v1/station_items?id=eq.${encodeURIComponent(itemId)}`,
+    { method: "DELETE" },
+    token,
+  );
 }
 export async function getEntitlement(token: string) {
   return request<Entitlement | null>(
