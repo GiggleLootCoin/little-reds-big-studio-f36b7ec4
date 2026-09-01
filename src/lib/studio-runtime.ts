@@ -100,6 +100,21 @@ async function runVerifiedClone(
   return result;
 }
 
+async function prepareSpeechToText(input: StudioJobInput): Promise<StudioJobInput> {
+  const audio = input.audio;
+  if (!(audio instanceof Blob)) return input;
+  try {
+    const normalized = await normalizeAndVerifyBrowserAudio(audio);
+    return { ...input, audio: normalized.blob };
+  } catch (error) {
+    throw new Error(
+      `The microphone recording could not be decoded. ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  }
+}
+
 export async function runStudioJob(
   capability: StudioCapability,
   input: StudioJobInput,
@@ -144,6 +159,8 @@ export async function runStudioJob(
     }
   }
 
+  const preparedInput =
+    capability === "speech-to-text" ? await prepareSpeechToText(input) : input;
   const mod = await import("./studio-runtime-impl");
-  return mod.runStudioJob(capability, input, onStatus);
+  return mod.runStudioJob(capability, preparedInput, onStatus);
 }
