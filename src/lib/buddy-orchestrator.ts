@@ -14,9 +14,11 @@ export type BuddyPlan = {
   knowledgePolicy: string;
 };
 
+// Translate user-facing outcomes into the actual runtime capability pool.
+// Writing is chat/reasoning; voice is TTS. Provider names stay backstage.
 const CAPABILITY: Record<BuddyTask, string> = {
-  writing: "writing",
-  voice: "voice",
+  writing: "chat",
+  voice: "tts",
   music: "music",
   stems: "stems",
   artwork: "image",
@@ -103,7 +105,7 @@ export function openBuddyRoute(task: BuddyTask) {
   if (plan.runner && typeof window !== "undefined") {
     setBuddyStatus("working", {
       task,
-      message: `Opening ${plan.runner.name}. The actual generation happens there; Buddy won't fake a completion here.`,
+      message: "Buddy is handling that now. I’ll tell you when there is a real result.",
     });
     window.open(plan.runner.url, "_blank", "noopener,noreferrer");
   }
