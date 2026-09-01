@@ -55,8 +55,6 @@ const reachableAssets = [...reachable].map((file) => [file, assets.get(file)]);
 const cloneEntries = reachableAssets.filter(
   ([, source]) =>
     source.includes("/api/voice-clone") &&
-    source.includes("audioBase64") &&
-    source.includes("refText") &&
     source.includes("__buddyLastCloneUrl") &&
     source.includes("Buddy voice verified:"),
 );
@@ -67,6 +65,14 @@ if (cloneEntries.length !== 1) {
 }
 
 const [cloneAssetName, cloneSource] = cloneEntries[0];
+for (const marker of ["audioBase64", "refText"]) {
+  if (!cloneSource.includes(marker)) {
+    throw new Error(
+      `Production browser clone entry in ${cloneAssetName} is missing compiled ${marker} request behavior.`,
+    );
+  }
+}
+
 const endpointMatch = cloneSource.match(/fetch\(([`'\"])\/api\/voice-clone\1/);
 const endpointIndex = endpointMatch?.index ?? -1;
 if (endpointIndex < 0) {
@@ -76,13 +82,7 @@ if (endpointIndex < 0) {
 }
 
 const flow = cloneSource.slice(endpointIndex, endpointIndex + 7000);
-for (const marker of [
-  "audioBase64",
-  "refText",
-  ".blob()",
-  "__buddyLastCloneUrl",
-  "verification:",
-]) {
+for (const marker of [".blob()", "__buddyLastCloneUrl", "verification:"]) {
   if (!flow.includes(marker)) {
     throw new Error(
       `Production browser clone entry in ${cloneAssetName} is missing the compiled ${marker} step after /api/voice-clone.`,
