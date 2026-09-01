@@ -88,7 +88,7 @@ test("production clone output is rejected when generation is empty and browser v
   assert.doesNotMatch(clone, /createLocalChatterboxClone/);
   assert.match(gateway, /use_xvector_only: false/);
   assert.match(gateway, /model_size: "1\.7B"/);
-  assert.match(gateway, /x-clone-verified/);
+  assert.match(gateway, /headers\.delete\("x-clone-verified"\)/);
   assert.match(runtime, /runVerifiedClone/);
 });
 
