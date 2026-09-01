@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 
 // This verifier covers the production Buddy custom-voice path without depending on a live model service.
+// Production trigger: keep the hardened Qwen upload assertions exercised on every deploy.
 const files = {
   clone: await readFile("src/lib/real-voice-clone-v2.ts", "utf8"),
   gateway: await readFile("src/lib/voice-clone-gateway.ts", "utf8"),
