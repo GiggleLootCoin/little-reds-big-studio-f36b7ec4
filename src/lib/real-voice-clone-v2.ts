@@ -28,7 +28,7 @@ function blobBase64(blob: Blob): Promise<string> {
  * Production browser voice-cloning path.
  *
  * The actual reference recording and its transcript are sent to the
- * server-side Qwen3-TTS 0.6B gateway. The returned audio is not considered
+ * server-side Qwen3-TTS 1.7B gateway. The returned audio is not considered
  * usable until the existing browser safety verifier accepts the exact Blob.
  */
 export async function createBestFreeVoiceClone(
@@ -42,7 +42,7 @@ export async function createBestFreeVoiceClone(
   if (!refText.trim()) throw new Error("The reference transcript is required.");
   if (!text.trim()) throw new Error("Voice clone target text is empty.");
 
-  onStatus?.("Sending your actual reference recording to Qwen3-TTS 0.6B…");
+  onStatus?.("Sending your actual reference recording to Qwen3-TTS 1.7B…");
   const response = await fetch("/api/voice-clone", {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -73,7 +73,7 @@ export async function createBestFreeVoiceClone(
   if (normalized.stats.duration <= 0 || normalized.stats.peak <= 0 || normalized.stats.rms <= 0)
     throw new Error("Qwen returned silent or unusable audio.");
 
-  const provider = "Qwen3-TTS 0.6B Base";
+  const provider = "Qwen3-TTS 1.7B Base";
   await saveBuddyClonePreview(normalized.blob, provider);
   const browserWindow = window as Window & { __buddyLastCloneUrl?: string };
   browserWindow.__buddyLastCloneUrl = normalized.url;
@@ -84,7 +84,7 @@ export async function createBestFreeVoiceClone(
     url: normalized.url,
     provider,
     verification:
-      "Qwen3-TTS 0.6B reference conditioning + browser audio decode + non-silent artifact verification",
+      "Qwen3-TTS 1.7B reference conditioning + browser audio decode + non-silent artifact verification",
     duration: normalized.stats.duration,
     peak: normalized.stats.peak,
     rms: normalized.stats.rms,
