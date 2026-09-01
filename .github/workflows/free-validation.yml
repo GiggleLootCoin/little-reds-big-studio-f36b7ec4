@@ -30,6 +30,8 @@ jobs:
         run: npm run test:voice
       - name: Buddy live latency regression tests
         run: node --test tests/live-buddy-latency.test.mjs
+      - name: Production Android voice smoke contract test
+        run: node --test tests/live-voice-browser-smoke.test.mjs
       - name: Buddy orchestrator regression tests
         run: node --test tests/buddy-orchestrator.test.mjs
       - name: Type-check
