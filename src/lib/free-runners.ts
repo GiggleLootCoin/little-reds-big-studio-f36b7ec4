@@ -12,6 +12,26 @@ export type FreeRunner = {
 /** Free/no-key routes. Runtime validates live API and actual media artifacts. */
 export const FREE_RUNNERS: FreeRunner[] = [
   {
+    id: "hf-qwen3-chat",
+    name: "Qwen3 Free Chat",
+    kind: "public",
+    description: "Free public Qwen3 conversational fallback for Buddy.",
+    capabilities: ["chat", "conversation", "text-generation"],
+    url: "https://huggingface.co/spaces/Qwen/Qwen3-Demo",
+    notes: "Public Space fallback; live validation required.",
+    priority: 620,
+  },
+  {
+    id: "hf-qwen3-omni-chat",
+    name: "Qwen3 Omni Free Chat",
+    kind: "public",
+    description: "Free public multimodal conversational fallback for Buddy.",
+    capabilities: ["chat", "conversation", "text-generation"],
+    url: "https://huggingface.co/spaces/Qwen/Qwen3-Omni-Demo",
+    notes: "Public multimodal Space fallback; live validation required.",
+    priority: 610,
+  },
+  {
     id: "cf-qwen3-chat",
     name: "Cloudflare Qwen3",
     kind: "public",
@@ -48,8 +68,7 @@ export const FREE_RUNNERS: FreeRunner[] = [
     description: "Free reference-voice cloning fallback using Qwen3-TTS Base 1.7B.",
     capabilities: ["tts", "voice-clone"],
     url: "https://huggingface.co/spaces/Qwen/Qwen3-TTS",
-    notes:
-      "Uses full reference conditioning when a transcript is available and speaker-embedding mode otherwise.",
+    notes: "Uses full reference conditioning when a transcript is available and speaker-embedding mode otherwise.",
     priority: 1000,
   },
   {
@@ -59,8 +78,7 @@ export const FREE_RUNNERS: FreeRunner[] = [
     description: "Free reference-voice cloning engine from Resemble AI.",
     capabilities: ["voice-clone", "tts"],
     url: "https://huggingface.co/spaces/ResembleAI/Chatterbox",
-    notes:
-      "Uses the supplied reference audio directly. Kept as an independent fallback after Qwen.",
+    notes: "Uses the supplied reference audio directly. Kept as an independent fallback after Qwen.",
     priority: 900,
   },
   {
@@ -102,26 +120,6 @@ export const FREE_RUNNERS: FreeRunner[] = [
     url: "https://huggingface.co/spaces/IAHispano/ApplioX",
     notes: "Voice conversion only; not used to claim a custom clone.",
     priority: 300,
-  },
-  {
-    id: "hf-qwen3-chat",
-    name: "Qwen3",
-    kind: "public",
-    description: "Free conversational fallback.",
-    capabilities: ["chat", "conversation", "text-generation"],
-    url: "https://huggingface.co/spaces/Qwen/Qwen3-Demo",
-    notes: "Live validation required.",
-    priority: 180,
-  },
-  {
-    id: "hf-qwen3-omni-chat",
-    name: "Qwen3 Omni",
-    kind: "public",
-    description: "Multimodal conversational fallback.",
-    capabilities: ["chat", "conversation", "text-generation"],
-    url: "https://huggingface.co/spaces/Qwen/Qwen3-Omni-Demo",
-    notes: "Live validation required.",
-    priority: 170,
   },
   {
     id: "cf-flux-2-klein",
