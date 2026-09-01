@@ -16,4 +16,5 @@
   },
   "workers_dev": true,
   "preview_urls": true,
+  // Production observability is intentionally enabled so Buddy/API failures can be traced without changing the user-facing app.
 }
