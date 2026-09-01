@@ -16,7 +16,7 @@ env:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -67,3 +67,12 @@ jobs:
           done
           cat /tmp/studio.html 2>/dev/null || true
           exit 1
+      - name: Install Playwright for production voice smoke
+        run: |
+          npm install --no-save --no-audit --no-fund --ignore-scripts playwright
+          npx playwright install --with-deps chromium
+      - name: Production Android voice browser smoke
+        env:
+          PRODUCTION_URL: https://little-reds-big-studio-f36b7ec4.gigglelootcoin.workers.dev
+          SAMPLE_URL: https://raw.githubusercontent.com/GiggleLootCoin/little-reds-big-studio-f36b7ec4/${{ github.sha }}/13.7s%20Recording%20%28Jul%202%20%40%205_53%20PM%29.mp3
+        run: node scripts/live-voice-browser-smoke.mjs
