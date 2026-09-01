@@ -106,7 +106,9 @@ export function FreeCreatePanel() {
         "music",
         {
           prompt: songPrompt,
+          description: brief.trim() || "Create an original song",
           lyrics,
+          instrumental: false,
           ...(requestedDuration ? { duration: requestedDuration } : {}),
         },
         setStatus,
