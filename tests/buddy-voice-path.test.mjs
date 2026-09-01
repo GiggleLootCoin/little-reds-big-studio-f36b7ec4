@@ -47,7 +47,13 @@ test("production clone output is rejected when generation is empty and browser v
 
 test("the production clone path contains no public voice Space or API-key fallback", () => {
   for (const source of [clone, runtime]) {
-    for (const needle of [".hf.space", "rahul7star", "spacekaren", "/api/ai/voice-clone", "OPENROUTERAI_API_KEY"]) {
+    for (const needle of [
+      ".hf.space",
+      "rahul7star",
+      "spacekaren",
+      "/api/ai/voice-clone",
+      "OPENROUTERAI_API_KEY",
+    ]) {
       assert.equal(source.includes(needle), false, `forbidden fallback found: ${needle}`);
     }
   }
