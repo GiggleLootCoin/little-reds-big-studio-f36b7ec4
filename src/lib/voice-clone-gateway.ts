@@ -12,6 +12,7 @@ type Body = {
 
 const PRIMARY_SPACE = "https://qwen-qwen3-tts.hf.space";
 const FALLBACK_SPACE = "https://wordercom-qwen3-tts.hf.space";
+const REFERENCE_CACHE_TTL_MS = 15 * 60_000;
 const cache = new Map<string, { path: string; expires: number }>();
 
 function spaces(env: Env) {
@@ -72,12 +73,14 @@ async function upload(
   const path = Array.isArray(payload) ? String(payload[0] || "") : "";
   if (!path) throw new Error("Qwen returned no reference-file path.");
 
-  cache.set(key, { path, expires: Date.now() + 15 * 60_000 });
+  cache.set(key, { path, expires: Date.now() + REFERENCE_CACHE_TTL_MS });
   return path;
 }
 
 export type QwenSSEParseResult =
-  { kind: "audio"; payload: unknown[] } | { kind: "error"; message: string } | { kind: "none" };
+  | { kind: "audio"; payload: unknown[] }
+  | { kind: "error"; message: string }
+  | { kind: "none" };
 
 export function parseQwenSSE(stream: string): QwenSSEParseResult {
   let event = "";
