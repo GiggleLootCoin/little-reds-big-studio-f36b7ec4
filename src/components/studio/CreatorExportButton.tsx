@@ -15,9 +15,13 @@ function reviewFor(kind: ExportKind) {
     "Check the AI provider's output/license terms before commercial use or redistribution.",
   ];
   if (kind === "video")
-    checks.push("Before publishing, check the destination platform's current rules for AI-generated, altered, or reused content and music rights.");
+    checks.push(
+      "Before publishing, check the destination platform's current rules for AI-generated, altered, or reused content and music rights.",
+    );
   if (kind === "audio")
-    checks.push("Listen once for unintended artifacts, copyrighted material, or a voice attribution issue before publishing.");
+    checks.push(
+      "Listen once for unintended artifacts, copyrighted material, or a voice attribution issue before publishing.",
+    );
   return checks;
 }
 
@@ -36,10 +40,21 @@ async function watermarkImage(url: string): Promise<Blob> {
   ctx.font = `600 ${size}px sans-serif`;
   ctx.textBaseline = "bottom";
   ctx.fillStyle = "rgba(0,0,0,.5)";
-  ctx.fillRect(12, canvas.height - size - 18, ctx.measureText("Little Red's Big Studio").width + 20, size + 12);
+  ctx.fillRect(
+    12,
+    canvas.height - size - 18,
+    ctx.measureText("Little Red's Big Studio").width + 20,
+    size + 12,
+  );
   ctx.fillStyle = "rgba(255,255,255,.82)";
   ctx.fillText("Little Red's Big Studio", 22, canvas.height - 14);
-  return await new Promise((resolve, reject) => canvas.toBlob((value) => (value ? resolve(value) : reject(new Error("Could not encode the watermarked image."))), "image/png"));
+  return await new Promise((resolve, reject) =>
+    canvas.toBlob(
+      (value) =>
+        value ? resolve(value) : reject(new Error("Could not encode the watermarked image.")),
+      "image/png",
+    ),
+  );
 }
 
 async function watermarkVideo(url: string): Promise<Blob> {
@@ -52,7 +67,8 @@ async function watermarkVideo(url: string): Promise<Blob> {
   video.playsInline = true;
   await new Promise<void>((resolve, reject) => {
     video.onloadedmetadata = () => resolve();
-    video.onerror = () => reject(new Error("This browser could not decode the video for watermarking."));
+    video.onerror = () =>
+      reject(new Error("This browser could not decode the video for watermarking."));
   });
   const canvas = document.createElement("canvas");
   canvas.width = video.videoWidth;
@@ -94,7 +110,15 @@ async function watermarkVideo(url: string): Promise<Blob> {
   return result;
 }
 
-export function CreatorExportButton({ kind, url, title }: { kind: ExportKind; url: string; title: string }) {
+export function CreatorExportButton({
+  kind,
+  url,
+  title,
+}: {
+  kind: ExportKind;
+  url: string;
+  title: string;
+}) {
   const { unlimited } = useEntitlement();
   const [reviewOpen, setReviewOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -125,15 +149,27 @@ export function CreatorExportButton({ kind, url, title }: { kind: ExportKind; ur
   if (reviewOpen)
     return (
       <div className="rounded-xl border border-primary/25 bg-primary/5 p-3 text-xs">
-        <div className="flex items-center gap-2 font-semibold"><ShieldCheck className="size-4 text-primary" /> Creator export review</div>
+        <div className="flex items-center gap-2 font-semibold">
+          <ShieldCheck className="size-4 text-primary" /> Creator export review
+        </div>
         <ul className="mt-2 list-disc space-y-1 pl-5 text-muted-foreground">
-          {reviewFor(kind).map((item) => <li key={item}>{item}</li>)}
+          {reviewFor(kind).map((item) => (
+            <li key={item}>{item}</li>
+          ))}
         </ul>
         <div className="mt-3 flex gap-2">
           <StudioButton className="text-xs" disabled={busy} onClick={() => void exportNow()}>
-            <Download className="size-3" /> {busy ? "Preparing…" : unlimited ? "Export" : "Export with free watermark"}
+            <Download className="size-3" />{" "}
+            {busy ? "Preparing…" : unlimited ? "Export" : "Export with free watermark"}
           </StudioButton>
-          <StudioButton variant="ghost" className="text-xs" disabled={busy} onClick={() => setReviewOpen(false)}>Cancel</StudioButton>
+          <StudioButton
+            variant="ghost"
+            className="text-xs"
+            disabled={busy}
+            onClick={() => setReviewOpen(false)}
+          >
+            Cancel
+          </StudioButton>
         </div>
         {message ? <p className="mt-2 text-destructive">{message}</p> : null}
       </div>
