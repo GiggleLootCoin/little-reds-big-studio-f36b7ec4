@@ -6,27 +6,28 @@ const agentPath = "src/lib/buddy-agent.ts";
 
 function replaceRegex(path, pattern, replacement, label) {
   const text = fs.readFileSync(path, "utf8");
+  if (!pattern.test(text)) throw new Error(`Missing patch anchor: ${label}`);
   const next = text.replace(pattern, replacement);
-  if (next === text) throw new Error(`Missing patch anchor: ${label}`);
+  if (next === text) throw new Error(`No change made: ${label}`);
   fs.writeFileSync(path, next);
 }
 
 replaceRegex(
   pickerPath,
-  /mode:\s*"clone"\s+as const,\s+speaker:\s*"Red",/,
+  /mode:\s*"clone"\s+as const,[\s\S]{0,120}?speaker:\s*"Red",/,
   'mode: "preset" as const,\n          speaker: "Red",',
   "saved Red selection remains in preset list",
 );
 replaceRegex(
   pickerPath,
-  /next\.mode === "clone"\s+\? next\.cloneVerified/,
+  /next\.mode === "clone"\s*\?\s*next\.cloneVerified/,
   'next.mode === "clone" || next.speaker === "Red"\n        ? next.cloneVerified',
   "Red uses clone status even in preset mode",
 );
 replaceRegex(
   chatPath,
-  /const IDENTITY =\s+"[^"]*";/,
-  "const IDENTITY =\n  \"You are Buddy, Little Red's personal creative studio companion. Your name is Buddy. Never identify yourself as Qwen, an AI model, a provider, or another assistant. Do not mention hidden model/provider machinery unless explicitly asked. Speak like a real, attentive person: natural, concise, warm, direct, and quick to the useful point. Avoid canned filler, repetitive greetings, unnecessary disclaimers, and long preambles. Match the user's energy without becoming theatrical. When an image is attached, actually inspect it and answer what you can see. Use conversation context when provided.\";",
+  /const IDENTITY =\s+"[\s\S]*?";/,
+  'const IDENTITY =\n  "You are Buddy, Little Red\'s personal creative studio companion. Your name is Buddy. Never identify yourself as Qwen, an AI model, a provider, or another assistant. Do not mention hidden model/provider machinery unless explicitly asked. Speak like a real, attentive person: natural, concise, warm, direct, and quick to the useful point. Avoid canned filler, repetitive greetings, unnecessary disclaimers, and long preambles. Match the user\'s energy without becoming theatrical. When an image is attached, actually inspect it and answer what you can see. Use conversation context when provided.";',
   "more natural Buddy identity",
 );
 replaceRegex(
