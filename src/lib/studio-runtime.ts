@@ -45,10 +45,11 @@ async function runVerifiedClone(
   language: string,
   onStatus?: (s: string) => void,
   modelSize: "0.6B" | "1.7B" = "1.7B",
+  persist = true,
 ) {
   let result;
   try {
-    result = await createBestFreeVoiceClone(sample, refText, text, language, onStatus, modelSize);
+    result = await createBestFreeVoiceClone(sample, refText, text, language, onStatus, modelSize, persist);
   } catch (primaryError) {
     onStatus?.("Qwen voice generation was unavailable. Trying the free fallback…");
     try {
@@ -76,7 +77,7 @@ async function runVerifiedClone(
       const normalized = await normalizeAndVerifyBrowserAudio(fallbackBlob);
       if (normalized.stats.duration <= 0 || normalized.stats.peak <= 0 || normalized.stats.rms <= 0)
         throw new Error("Fallback clone returned silent or unusable audio.");
-      await saveBuddyClonePreview(normalized.blob, fallback.provider);
+      if (persist) await saveBuddyClonePreview(normalized.blob, fallback.provider);
       result = {
         url: normalized.url,
         provider: fallback.provider,
@@ -92,10 +93,12 @@ async function runVerifiedClone(
     }
   }
   if (!result.url) throw new Error("The voice engine returned no playable audio.");
-  await saveVoiceSample(sample, refText);
-  await markBuddyCloneVerified(
-    `${result.provider}${result.verification ? ` — ${result.verification}` : ""}`,
-  );
+  if (persist) {
+    await saveVoiceSample(sample, refText);
+    await markBuddyCloneVerified(
+      `${result.provider}${result.verification ? ` — ${result.verification}` : ""}`,
+    );
+  }
   return result;
 }
 
@@ -137,16 +140,7 @@ export async function runStudioJob(
         ? "Using Buddy's fast voice mode…"
         : "Building the higher-quality voice clone…",
     );
-    // verifier needle: runtime passes the actual reference Blob
-    // runVerifiedClone(sample, refText, targetText, language
-    const result = await runVerifiedClone(
-      sample,
-      refText,
-      targetText,
-      language,
-      onStatus,
-      modelSize,
-    );
+    const result = await runVerifiedClone(sample, refText, targetText, language, onStatus, modelSize, true);
     return { capability, value: result, url: result.url, provider: result.provider };
   }
 
@@ -157,8 +151,6 @@ export async function runStudioJob(
     const language = String(input.language ?? profile.language ?? "English");
     const modelSize = input.model_size === "1.7B" ? "1.7B" : "0.6B";
 
-    // Buddy's built-in voice is Red's saved voice sample. A user does not need
-    // to run a separate clone action before Buddy can use that voice.
     const savedSample = await getBuddyVoiceSample();
     if (savedSample) {
       const refText = profile.referenceTranscript?.trim() || DEFAULT_CLONE_TEXT;
@@ -170,6 +162,7 @@ export async function runStudioJob(
         language,
         onStatus,
         modelSize,
+        false,
       );
       return { capability: "tts", value: result, url: result.url, provider: result.provider };
     }
