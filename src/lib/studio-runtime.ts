@@ -49,9 +49,8 @@ async function runVerifiedClone(
   persist = true,
 ) {
   // Buddy's default Red voice has no transcript. Do not send this latency-sensitive
-  // path through Qwen x-vector mode: that provider has been returning no completed
-  // audio for this exact request. Use the multilingual V3 reference-voice route
-  // directly instead, and never allow a generic/demo voice fallback.
+  // path through Qwen x-vector mode or either generic Chatterbox fallback. The
+  // remaining provider is the dedicated fast Turbo reference-voice route.
   if (cloneProfile().speaker === "Red" && !refText.trim()) {
     onStatus?.("Using Buddy's fast Red voice path…");
     const runtime = await import("./studio-runtime-impl");
@@ -67,8 +66,8 @@ async function runVerifiedClone(
         text,
         language,
         model_size: modelSize,
-        // Only the multilingual V3 clone route is allowed for default Red.
-        _skipProviders: ["hf-qwen3-tts", "hf-chatterbox"],
+        // Default Red must never reach Qwen or either generic Chatterbox route.
+        _skipProviders: ["hf-qwen3-tts", "hf-chatterbox", "hf-chatterbox-v3"],
       },
       onStatus,
     );
@@ -76,7 +75,7 @@ async function runVerifiedClone(
     return {
       url: direct.url,
       provider: direct.provider,
-      verification: "Red default multilingual reference-voice path",
+      verification: "Red default fast reference-voice path",
       duration: 0,
       peak: 1,
       rms: 1,
