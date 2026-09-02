@@ -227,7 +227,7 @@ export const BUDDY_TONES = [
   { id: "gentle", label: "Gentle", note: "Soft and considerate" },
   { id: "professional", label: "Professional", note: "Polished and precise" },
 ] as const;
-const RED_DEFAULT_MIGRATION_KEY = "lrbgs-red-default-v2";
+const RED_DEFAULT_MIGRATION_KEY = "lrbgs-red-default-v1";
 const DEFAULT_PROFILE: BuddyVoiceProfile = {
   mode: "preset",
   speaker: "Red",
@@ -415,6 +415,22 @@ function legacyProfile(): Partial<BuddyVoiceProfile> | null {
   }
   return null;
 }
+function isLegacyRyanDefault(profile: Partial<BuddyVoiceProfile> | null): boolean {
+  return Boolean(
+    profile &&
+      profile.mode !== "clone" &&
+      profile.speaker === "Ryan" &&
+      (profile.language === undefined || profile.language === "English") &&
+      (profile.mood === undefined || profile.mood === "natural") &&
+      (profile.tone === undefined || profile.tone === "conversational") &&
+      !profile.referenceDataUrl &&
+      !profile.referenceName &&
+      !profile.referenceTranscript &&
+      !profile.cloneVerified &&
+      !profile.cloneVerifiedAt &&
+      !profile.cloneProvider,
+  );
+}
 export function getBuddyVoiceProfile(): BuddyVoiceProfile {
   if (typeof window === "undefined") return DEFAULT_PROFILE;
   try {
@@ -422,17 +438,20 @@ export function getBuddyVoiceProfile(): BuddyVoiceProfile {
       localStorage.getItem(BUDDY_VOICE_KEY) || "null",
     ) as Partial<BuddyVoiceProfile> | null;
     const selected = parsed ?? legacyProfile();
-    const migrated = localStorage.getItem(RED_DEFAULT_MIGRATION_KEY) !== "1";
-    if (migrated) {
-      const redDefault: BuddyVoiceProfile = {
-        ...DEFAULT_PROFILE,
-        language: selected?.language || DEFAULT_PROFILE.language,
-        mood: selected?.mood || DEFAULT_PROFILE.mood,
-        tone: selected?.tone || DEFAULT_PROFILE.tone,
-      };
+    const needsMigration = localStorage.getItem(RED_DEFAULT_MIGRATION_KEY) !== "1";
+    if (needsMigration) {
+      const shouldMigrate = selected == null || isLegacyRyanDefault(selected);
+      if (shouldMigrate) {
+        const redDefault: BuddyVoiceProfile = {
+          ...DEFAULT_PROFILE,
+          language: selected?.language || DEFAULT_PROFILE.language,
+          mood: selected?.mood || DEFAULT_PROFILE.mood,
+          tone: selected?.tone || DEFAULT_PROFILE.tone,
+        };
+        saveBuddyVoiceProfile(redDefault);
+      }
       localStorage.setItem(RED_DEFAULT_MIGRATION_KEY, "1");
-      saveBuddyVoiceProfile(redDefault);
-      return redDefault;
+      if (shouldMigrate) return getBuddyVoiceProfile();
     }
     return {
       ...DEFAULT_PROFILE,
