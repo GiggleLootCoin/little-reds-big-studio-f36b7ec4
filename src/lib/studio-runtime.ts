@@ -17,16 +17,7 @@ export function artifactText(value: unknown): string {
   if (Array.isArray(value)) return value.map(artifactText).find(Boolean) ?? "";
   if (value && typeof value === "object") {
     for (const key of [
-      "text",
-      "response",
-      "generated_text",
-      "transcription",
-      "transcript",
-      "content",
-      "value",
-      "data",
-      "output",
-      "result",
+      "text", "response", "generated_text", "transcription", "transcript", "content", "value", "data", "output", "result",
     ]) {
       const found = artifactText((value as Record<string, unknown>)[key]);
       if (found) return found;
@@ -35,9 +26,7 @@ export function artifactText(value: unknown): string {
   return "";
 }
 
-function cloneProfile() {
-  return getBuddyVoiceProfile();
-}
+function cloneProfile() { return getBuddyVoiceProfile(); }
 
 async function runVerifiedClone(
   sample: Blob,
@@ -50,16 +39,13 @@ async function runVerifiedClone(
 ) {
   let result;
   try {
-    result = await createBestFreeVoiceClone(
-      sample,
-      refText,
-      text,
-      language,
-      onStatus,
-      modelSize,
-      persist,
-    );
+    result = await createBestFreeVoiceClone(sample, refText, text, language, onStatus, modelSize, persist);
   } catch (primaryError) {
+    // The default Red path must never fall through to a generic/demo voice.
+    // Qwen failure should surface as a real Red-voice failure, not synthesize
+    // the provider's canned demonstration phrase.
+    if (cloneProfile().speaker === "Red" && !refText.trim()) throw primaryError;
+
     onStatus?.("Qwen voice generation was unavailable. Trying the free fallback…");
     try {
       const runtime = await import("./studio-runtime-impl");
@@ -104,9 +90,7 @@ async function runVerifiedClone(
   if (!result.url) throw new Error("The voice engine returned no playable audio.");
   if (persist) {
     await saveVoiceSample(sample, refText);
-    await markBuddyCloneVerified(
-      `${result.provider}${result.verification ? ` — ${result.verification}` : ""}`,
-    );
+    await markBuddyCloneVerified(`${result.provider}${result.verification ? ` — ${result.verification}` : ""}`);
   }
   return result;
 }
@@ -117,9 +101,7 @@ async function prepareSpeechToText(input: StudioJobInput): Promise<StudioJobInpu
   try {
     return { ...input, audio: (await normalizeAndVerifyBrowserAudio(audio)).blob };
   } catch (error) {
-    throw new Error(
-      `The microphone recording could not be decoded. ${error instanceof Error ? error.message : String(error)}`,
-    );
+    throw new Error(`The microphone recording could not be decoded. ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 
@@ -130,34 +112,15 @@ export async function runStudioJob(
 ): Promise<StudioArtifact> {
   if (capability === "voice-clone") {
     const sample = input.refAudio ?? input.referenceAudio ?? input.audio;
-    if (!(sample instanceof Blob))
-      throw new Error("A reference voice recording is required for a real clone.");
+    if (!(sample instanceof Blob)) throw new Error("A reference voice recording is required for a real clone.");
     const refText = String(
-      input.refText ??
-        input.referenceText ??
-        input.referenceTranscript ??
-        cloneProfile().referenceTranscript ??
-        DEFAULT_CLONE_TEXT,
+      input.refText ?? input.referenceText ?? input.referenceTranscript ?? cloneProfile().referenceTranscript ?? DEFAULT_CLONE_TEXT,
     ).trim();
-    const targetText =
-      String(input.target_text ?? input.text ?? input.prompt ?? DEFAULT_CLONE_TEXT).trim() ||
-      DEFAULT_CLONE_TEXT;
+    const targetText = String(input.target_text ?? input.text ?? input.prompt ?? DEFAULT_CLONE_TEXT).trim() || DEFAULT_CLONE_TEXT;
     const language = String(input.language ?? cloneProfile().language ?? "English");
     const modelSize = input.model_size === "1.7B" ? "1.7B" : "0.6B";
-    onStatus?.(
-      modelSize === "0.6B"
-        ? "Using Buddy's fast voice mode…"
-        : "Building the higher-quality voice clone…",
-    );
-    const result = await runVerifiedClone(
-      sample,
-      refText,
-      targetText,
-      language,
-      onStatus,
-      modelSize,
-      true,
-    );
+    onStatus?.(modelSize === "0.6B" ? "Using Buddy's fast voice mode…" : "Building the higher-quality voice clone…");
+    const result = await runVerifiedClone(sample, refText, targetText, language, onStatus, modelSize, true);
     return { capability, value: result, url: result.url, provider: result.provider };
   }
 
@@ -167,8 +130,7 @@ export async function runStudioJob(
     if (!text) throw new Error("Voice text is empty.");
     const language = String(input.language ?? profile.language ?? "English");
     const modelSize = input.model_size === "1.7B" ? "1.7B" : "0.6B";
-    const wantsRedVoice =
-      profile.mode === "clone" || profile.speaker === "Red" || input.speaker === "Red";
+    const wantsRedVoice = profile.mode === "clone" || profile.speaker === "Red" || input.speaker === "Red";
 
     if (wantsRedVoice) {
       let savedSample = await getBuddyVoiceSample();
@@ -177,24 +139,12 @@ export async function runStudioJob(
         if (savedSample) onStatus?.("Using Buddy's built-in Red voice reference…");
       }
       if (!savedSample) {
-        if (profile.mode === "clone" && profile.cloneVerified) {
-          throw new Error(
-            "Buddy's saved voice sample is missing. Please restore the saved voice sample.",
-          );
-        }
+        if (profile.mode === "clone" && profile.cloneVerified) throw new Error("Buddy's saved voice sample is missing. Please restore the saved voice sample.");
         throw new Error("The built-in Red voice reference is unavailable right now.");
       }
       const refText = profile.referenceTranscript?.trim() || "";
       onStatus?.("Speaking in Buddy's built-in Red voice…");
-      const result = await runVerifiedClone(
-        savedSample,
-        refText,
-        text,
-        language,
-        onStatus,
-        modelSize,
-        false,
-      );
+      const result = await runVerifiedClone(savedSample, refText, text, language, onStatus, modelSize, false);
       return { capability: "tts", value: result, url: result.url, provider: result.provider };
     }
   }
