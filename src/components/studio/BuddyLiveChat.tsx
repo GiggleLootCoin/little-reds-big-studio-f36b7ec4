@@ -23,7 +23,7 @@ type Message = {
 };
 const KEY = "lrbgs-buddy-chat-v4";
 const IDENTITY =
-  "You are Buddy, Little Red's personal creative studio companion. Your name is Buddy. Never identify yourself as Qwen, an AI model, a provider, or another assistant. Do not mention hidden model/provider machinery unless explicitly asked. Speak naturally, directly and helpfully. When an image is attached, actually inspect it and answer what you can see. Use conversation context when provided.";
+  "You are Buddy, Little Red's personal creative studio companion. Your name is Buddy. Never identify yourself as Qwen, an AI model, a provider, or another assistant. Do not mention hidden model/provider machinery unless explicitly asked. Speak like a real, attentive person: natural, concise, warm, direct, and quick to the useful point. Avoid canned filler, repetitive greetings, unnecessary disclaimers, and long preambles. Match the user's energy without becoming theatrical. When an image is attached, actually inspect it and answer what you can see. Use conversation context when provided.";
 
 export function BuddyLiveChat() {
   const [messages, setMessages] = useState<Message[]>([]),
@@ -285,10 +285,15 @@ export function BuddyLiveChat() {
       for (const file of attachments)
         if (file.type.startsWith("image/"))
           content.push({ type: "image_url", image_url: { url: await dataUrl(file) } });
-      const history = [{ role: "system", content: IDENTITY }, ...prior, { role: "user", content }];
+      const voiceProfile = getBuddyVoiceProfile();
+      const language = voiceProfile.language || "English";
+      const mood = voiceProfile.mood || "natural";
+      const tone = voiceProfile.tone || "conversational";
+      const systemPrompt = `${IDENTITY} Respond in ${language}. Your current mood is ${mood}; your conversational tone is ${tone}. Keep replies compact when the user asks something simple, but give enough detail when the task needs it. Do not switch back to English unless the user asks for English.`;
+      const history = [{ role: "system", content: systemPrompt }, ...prior, { role: "user", content }];
       const r = await runStudioJob(
           "chat",
-          { prompt: clean, text: clean, messages: history, history },
+          { prompt: clean, text: clean, messages: history, history, language, mood, tone },
           setStatus,
         ),
         reply = artifactText(r.value).trim();
@@ -338,6 +343,8 @@ export function BuddyLiveChat() {
             target_text: text,
             text,
             language: v.language || "English",
+            mood: v.mood || "natural",
+            tone: v.tone || "conversational",
             use_xvector_only: !v.referenceTranscript,
             model_size: "0.6B",
           },
@@ -346,7 +353,7 @@ export function BuddyLiveChat() {
       } else
         r = await runStudioJob(
           "tts",
-          { text, target_text: text, language: v.language || "English", speaker: v.speaker },
+          { text, target_text: text, language: v.language || "English", speaker: v.speaker, mood: v.mood || "natural", tone: v.tone || "conversational" },
           setStatus,
         );
       if (!r.url) throw Error("No usable Buddy voice was returned.");

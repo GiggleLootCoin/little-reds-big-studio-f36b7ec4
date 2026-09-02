@@ -57,7 +57,7 @@ export function BuddyVoicePicker() {
       if (current.mode === "preset" || current.speaker !== "Red") {
         const next = {
           ...current,
-          mode: "clone" as const,
+          mode: "preset" as const,
           speaker: "Red",
           cloneVerified: current.cloneVerified,
         };
@@ -84,7 +84,7 @@ export function BuddyVoicePicker() {
     saveBuddyVoiceProfile(next);
     const voice = allVoices.find((v) => v.id === next.speaker);
     setStatus(
-      next.mode === "clone"
+      next.mode === "clone" || next.speaker === "Red"
         ? next.cloneVerified
           ? "✓ Your verified clone is ready for Buddy."
           : "Your sample is saved. Tap Generate My Voice Clone."
