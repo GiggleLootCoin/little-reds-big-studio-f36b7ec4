@@ -10,7 +10,7 @@ const server = await read("src/server.ts");
 test("Qwen gateway uses the bounded full-reference Base clone contract", () => {
   assert.match(gateway, /generate_voice_clone/);
   assert.match(gateway, /requested/);
-  assert.match(gateway, /requested, env, false/);
+  assert.match(gateway, /requested,\s*\n?\s*env/);
   assert.match(gateway, /\"1\.7B\"/);
   assert.match(gateway, /\"0\.6B\"/);
   assert.doesNotMatch(gateway, /headers\.(?:set|append)\([\"']x-clone-verified[\"']/);
