@@ -2,11 +2,12 @@ import { handleVoiceClone } from "./voice-clone-gateway";
 
 type CloneEnv = {
   HF_TOKEN?: string;
+  VOXCPM_SPACE_URL?: string;
   QWEN_TTS_SPACE_URL?: string;
 };
 
-const BACKEND = "qwen3-reference-clone";
-const VERSION = "voice-clone-qwen3-reference-v1";
+const BACKEND = "voxcpm2-reference-clone";
+const VERSION = "voice-clone-voxcpm2-reference-v1";
 
 function headers() {
   const h = new Headers({
@@ -57,7 +58,7 @@ async function multipartToGateway(request: Request, env: CloneEnv) {
     audioType: file.type || "audio/wav",
     text,
     language: String(form.get("language") || "English"),
-    modelSize: String(form.get("modelSize") || "0.6B") === "1.7B" ? "1.7B" : "0.6B",
+    modelSize: "0.6B" as const,
     refText: String(form.get("refText") || form.get("referenceTranscript") || "").trim(),
   };
 
@@ -79,10 +80,10 @@ export function voiceCloneHealth(_env?: CloneEnv) {
       backend: BACKEND,
       version: VERSION,
       transcriptRequired: false,
-      primary: "official Qwen3-TTS Voice Clone Base",
-      fallback: "Wordercom Qwen3-TTS Voice Clone",
+      primary: "VoxCPM2 persistent GPU reference clone",
+      fallback: "Qwen3-TTS Voice Clone Base",
       outputFormat: "PCM16 WAV",
-      verification: ["reference upload", "Qwen clone provider header", "non-empty audio", "browser playback"],
+      verification: ["reference upload", "clone provider header", "non-empty audio", "browser playback"],
     },
     { headers: headers() },
   );
