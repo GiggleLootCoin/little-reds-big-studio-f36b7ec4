@@ -13,7 +13,11 @@ const required = [
   ["Qwen production handler", gateway, /export async function handleVoiceClone/],
   ["Qwen clone operation", gateway, /generate_voice_clone/],
   ["Qwen reference upload", gateway, /gradio_api\/upload/],
-  ["Qwen fallback space", gateway, /FALLBACK_SPACE\s*=\s*"https:\/\/wordercom-qwen3-tts\.hf\.space"/],
+  [
+    "Qwen fallback space",
+    gateway,
+    /FALLBACK_SPACE\s*=\s*"https:\/\/wordercom-qwen3-tts\.hf\.space"/,
+  ],
   ["provider response marker", gateway, /x-clone-provider/],
   ["runtime production clone", runtime, /createBestFreeVoiceClone/],
   ["server imports the Qwen gateway", server, /from "\.\/lib\/voice-clone-gateway"/],

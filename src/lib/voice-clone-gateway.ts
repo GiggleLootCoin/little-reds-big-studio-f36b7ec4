@@ -16,7 +16,9 @@ const cache = new Map<string, { path: string; expires: number }>();
 
 function spaces(env: Env) {
   const primary = (env.QWEN_TTS_SPACE_URL?.trim() || PRIMARY_SPACE).replace(/\/$/, "");
-  return [primary, FALLBACK_SPACE].filter((value, index, values) => values.indexOf(value) === index);
+  return [primary, FALLBACK_SPACE].filter(
+    (value, index, values) => values.indexOf(value) === index,
+  );
 }
 
 function auth(env: Env): HeadersInit {
@@ -44,7 +46,14 @@ function decode(value: string) {
   return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
 }
 
-async function upload(space: string, id: string, base64: string, type: string, env: Env, refresh = false) {
+async function upload(
+  space: string,
+  id: string,
+  base64: string,
+  type: string,
+  env: Env,
+  refresh = false,
+) {
   const key = `${space}|${id}`;
   const old = cache.get(key);
   if (!refresh && old && old.expires > Date.now()) return old.path;
@@ -68,9 +77,7 @@ async function upload(space: string, id: string, base64: string, type: string, e
 }
 
 export type QwenSSEParseResult =
-  | { kind: "audio"; payload: unknown[] }
-  | { kind: "error"; message: string }
-  | { kind: "none" };
+  { kind: "audio"; payload: unknown[] } | { kind: "error"; message: string } | { kind: "none" };
 
 export function parseQwenSSE(stream: string): QwenSSEParseResult {
   let event = "";
@@ -129,7 +136,12 @@ function fileData(path: string, type: string) {
 }
 
 function toWav(value: unknown): ArrayBuffer | null {
-  if (!Array.isArray(value) || typeof value[0] !== "number" || !Array.isArray(value[1]) || value[1].length === 0) {
+  if (
+    !Array.isArray(value) ||
+    typeof value[0] !== "number" ||
+    !Array.isArray(value[1]) ||
+    value[1].length === 0
+  ) {
     return null;
   }
 
@@ -165,7 +177,13 @@ function toWav(value: unknown): ArrayBuffer | null {
   return output;
 }
 
-async function generate(space: string, path: string, type: string, body: Body, env: Env): Promise<Response> {
+async function generate(
+  space: string,
+  path: string,
+  type: string,
+  body: Body,
+  env: Env,
+): Promise<Response> {
   const refText = body.refText?.trim() || "";
   const targetText = body.text?.trim().replace(/\s+/g, " ").slice(0, 220) || "";
   const modelSize = body.modelSize === "1.7B" ? "1.7B" : "0.6B";
@@ -175,7 +193,14 @@ async function generate(space: string, path: string, type: string, body: Body, e
     method: "POST",
     headers: { ...auth(env), "content-type": "application/json" },
     body: JSON.stringify({
-      data: [fileData(path, type), refText, targetText, body.language || "English", !refText, modelSize],
+      data: [
+        fileData(path, type),
+        refText,
+        targetText,
+        body.language || "English",
+        !refText,
+        modelSize,
+      ],
     }),
   });
   if (!start.ok) throw new Error(`Qwen voice clone start failed (${start.status}).`);
@@ -183,9 +208,12 @@ async function generate(space: string, path: string, type: string, body: Body, e
   const job = (await start.json()) as { event_id?: string };
   if (!job.event_id) throw new Error("Qwen returned no voice-clone job ID.");
 
-  const result = await fetch(`${space}/gradio_api/call/generate_voice_clone/${encodeURIComponent(job.event_id)}`, {
-    headers: { ...auth(env), Accept: "text/event-stream" },
-  });
+  const result = await fetch(
+    `${space}/gradio_api/call/generate_voice_clone/${encodeURIComponent(job.event_id)}`,
+    {
+      headers: { ...auth(env), Accept: "text/event-stream" },
+    },
+  );
   if (!result.ok) throw new Error(`Qwen voice clone job failed (${result.status}).`);
 
   const parsed = parseQwenSSE(await result.text());
@@ -230,7 +258,12 @@ async function generate(space: string, path: string, type: string, body: Body, e
   return new Response(audio.body, { status: 200, headers });
 }
 
-async function generateFromSpace(space: string, body: Body, env: Env, refresh = false): Promise<Response> {
+async function generateFromSpace(
+  space: string,
+  body: Body,
+  env: Env,
+  refresh = false,
+): Promise<Response> {
   const id = body.referenceId!.trim();
   const type = String(body.audioType || "audio/wav");
   const path = await upload(space, id, body.audioBase64!, type, env, refresh);
@@ -238,17 +271,24 @@ async function generateFromSpace(space: string, body: Body, env: Env, refresh = 
 }
 
 export async function handleVoiceClone(request: Request, env: Env): Promise<Response> {
-  if (request.method !== "POST") return Response.json({ ok: false, error: "POST required." }, { status: 405 });
+  if (request.method !== "POST")
+    return Response.json({ ok: false, error: "POST required." }, { status: 405 });
 
   let body: Body;
   try {
     body = (await request.json()) as Body;
   } catch {
-    return Response.json({ ok: false, error: "The clone request was not valid JSON." }, { status: 400 });
+    return Response.json(
+      { ok: false, error: "The clone request was not valid JSON." },
+      { status: 400 },
+    );
   }
 
   if (!body.referenceId?.trim() || !body.audioBase64) {
-    return Response.json({ ok: false, error: "A Red voice reference is required." }, { status: 400 });
+    return Response.json(
+      { ok: false, error: "A Red voice reference is required." },
+      { status: 400 },
+    );
   }
   if (!body.text?.trim()) {
     return Response.json({ ok: false, error: "Target text is required." }, { status: 400 });
