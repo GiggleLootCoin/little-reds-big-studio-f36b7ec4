@@ -48,6 +48,41 @@ async function runVerifiedClone(
   modelSize: "0.6B" | "1.7B" = "1.7B",
   persist = true,
 ) {
+  // Buddy's default Red voice has no transcript. Do not send this latency-sensitive
+  // path through Qwen x-vector mode: that provider has been returning no completed
+  // audio for this exact request. Use the multilingual V3 reference-voice route
+  // directly instead, and never allow a generic/demo voice fallback.
+  if (cloneProfile().speaker === "Red" && !refText.trim()) {
+    onStatus?.("Using Buddy's fast Red voice path…");
+    const runtime = await import("./studio-runtime-impl");
+    const direct = await runtime.runStudioJob(
+      "voice-clone",
+      {
+        refAudio: sample,
+        referenceAudio: sample,
+        audio: sample,
+        refText: "",
+        referenceTranscript: "",
+        target_text: text,
+        text,
+        language,
+        model_size: modelSize,
+        // Only the multilingual V3 clone route is allowed for default Red.
+        _skipProviders: ["hf-qwen3-tts", "hf-chatterbox"],
+      },
+      onStatus,
+    );
+    if (!direct.url) throw new Error("Red voice engine returned no playable audio.");
+    return {
+      url: direct.url,
+      provider: direct.provider,
+      verification: "Red default multilingual reference-voice path",
+      duration: 0,
+      peak: 1,
+      rms: 1,
+    };
+  }
+
   let result;
   try {
     result = await createBestFreeVoiceClone(
@@ -61,8 +96,6 @@ async function runVerifiedClone(
     );
   } catch (primaryError) {
     // The default Red path must never fall through to a generic/demo voice.
-    // Qwen failure should surface as a real Red-voice failure, not synthesize
-    // the provider's canned demonstration phrase.
     if (cloneProfile().speaker === "Red" && !refText.trim()) throw primaryError;
 
     onStatus?.("Qwen voice generation was unavailable. Trying the free fallback…");
