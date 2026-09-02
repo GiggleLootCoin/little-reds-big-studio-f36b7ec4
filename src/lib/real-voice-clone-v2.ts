@@ -45,7 +45,6 @@ export async function createBestFreeVoiceClone(
   persistPreview = true,
 ): Promise<CloneResult> {
   if (!sample.size) throw new Error("The voice sample is empty.");
-  if (!refText.trim()) throw new Error("The reference transcript is required.");
   if (!text.trim()) throw new Error("Voice clone target text is empty.");
 
   const id = await referenceId(sample);
@@ -98,10 +97,6 @@ export async function createBestFreeVoiceClone(
   const generated = await response.blob();
   if (!generated.size) throw new Error("Qwen returned empty generated audio.");
 
-  // Live Buddy speech uses the already-valid audio response directly. The old path
-  // decoded, normalized, measured, and only then returned audio to the player.
-  // That verification remains mandatory for persisted clone previews, but doing it
-  // before every live utterance added avoidable latency after generation completed.
   if (!persistPreview) {
     const url = URL.createObjectURL(generated);
     const provider = `Qwen3-TTS ${modelSize} Base`;
