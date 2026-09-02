@@ -23,6 +23,7 @@ test("saved Red voice is selected without hiding the preset voice list", () => {
 
 test("preset voices are not silently replaced by a saved Red sample", () => {
   assert.match(runtime, /profile\.speaker === "Red"/);
+  assert.match(runtime, /input\.speaker === "Red"/);
 });
 
 test("Buddy sends mood and tone into the conversational model instead of storing them as dead UI state", () => {
