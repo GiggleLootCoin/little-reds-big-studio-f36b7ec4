@@ -1,7 +1,7 @@
 const BUILT_IN_RED_VOICE_URL = "/red_voice_mic_device10_20s_D.wav";
 
 let cachedSample: Blob | null = null;
-let loadingSample: Promise<Blob> | null = null;
+let loadingSample: Promise<Blob | null> | null = null;
 
 export async function getBuiltInRedVoiceSample(): Promise<Blob | null> {
   if (cachedSample?.size) return cachedSample;
@@ -20,7 +20,7 @@ export async function getBuiltInRedVoiceSample(): Promise<Blob | null> {
       .catch(() => null)
       .finally(() => {
         loadingSample = null;
-      }) as Promise<Blob>;
+      });
   }
   return loadingSample;
 }
