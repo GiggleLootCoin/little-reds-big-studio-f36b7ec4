@@ -257,7 +257,8 @@ export const FREE_RUNNERS: FreeRunner[] = [
     description: "Real vocal/drum/bass/other separation.",
     capabilities: ["vocal-separation", "stems", "audio-separation"],
     url: "https://huggingface.co/spaces/owiedotch/demucs-stem-separation",
-    notes: "Actual separated audio required; intended as the first stage of song voice-swap workflows.",
+    notes:
+      "Actual separated audio required; intended as the first stage of song voice-swap workflows.",
     priority: 170,
   },
 ];
