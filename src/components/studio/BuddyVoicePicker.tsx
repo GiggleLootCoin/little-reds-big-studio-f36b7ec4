@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { CheckCircle2, Mic2, Play, Square, Trash2, UserRound, Volume2 } from "lucide-react";
 import { runStudioJob } from "@/lib/studio-runtime";
 import {
@@ -48,28 +48,6 @@ export function BuddyVoicePicker() {
     ],
     [],
   );
-
-  useEffect(() => {
-    let active = true;
-    void getBuddyVoiceSample().then((sample) => {
-      if (!active || !sample) return;
-      const current = getBuddyVoiceProfile();
-      if (current.mode === "preset" || current.speaker !== "Red") {
-        const next = {
-          ...current,
-          mode: "preset" as const,
-          speaker: "Red",
-          cloneVerified: current.cloneVerified,
-        };
-        saveBuddyVoiceProfile(next);
-        setProfile(next);
-        setStatus("Red — My Voice selected. Buddy will use your saved voice clone.");
-      }
-    });
-    return () => {
-      active = false;
-    };
-  }, []);
 
   const setGeneratedAudio = (url: string) => {
     if (audioUrlRef.current && audioUrlRef.current !== url)
