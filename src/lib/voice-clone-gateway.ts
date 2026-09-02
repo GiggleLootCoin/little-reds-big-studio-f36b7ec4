@@ -110,9 +110,7 @@ async function upload(
 }
 
 export type QwenSSEParseResult =
-  | { kind: "audio"; payload: unknown[] }
-  | { kind: "error"; message: string }
-  | { kind: "none" };
+  { kind: "audio"; payload: unknown[] } | { kind: "error"; message: string } | { kind: "none" };
 
 export function parseQwenSSE(stream: string): QwenSSEParseResult {
   let event = "";
