@@ -10,22 +10,22 @@ const required = [
   ["browser clone safety boundary", clone, /normalizeAndVerifyBrowserAudio/],
   ["actual reference Blob reaches clone", clone, /sample:\s*Blob[\s\S]*blobBase64\(sample\)/],
   ["production clone endpoint", clone, /fetch\("\/api\/voice-clone"/],
-  ["Qwen production handler", gateway, /export async function handleVoiceClone/],
-  ["Qwen clone operation", gateway, /generate_voice_clone/],
-  ["Qwen reference upload", gateway, /gradio_api\/upload/],
+  ["VoxCPM production handler", gateway, /export async function handleVoiceClone/],
+  ["VoxCPM clone operation", gateway, /gradio_api\/call\/generate/],
+  ["VoxCPM reference upload", gateway, /gradio_api\/upload/],
   [
-    "Qwen T4 primary space",
+    "VoxCPM primary space",
     gateway,
-    /PRIMARY_SPACE\s*=\s*"https:\/\/wordercom-qwen3-tts\.hf\.space"/,
+    /PRIMARY_SPACE\s*=\s*"https:\/\/openbmb-voxcpm-demo\.hf\.space"/,
   ],
   [
-    "official Qwen fallback space",
+    "Qwen fallback space",
     gateway,
     /FALLBACK_SPACE\s*=\s*"https:\/\/qwen-qwen3-tts\.hf\.space"/,
   ],
   ["provider response marker", gateway, /x-clone-provider/],
   ["runtime production clone", runtime, /runVerifiedClone/],
-  ["server imports the Qwen gateway", server, /from "\.\/lib\/voice-clone-gateway"/],
+  ["server imports the voice gateway", server, /from "\.\/lib\/voice-clone-gateway"/],
   [
     "voice capability has no legacy fallback",
     registry,
@@ -43,11 +43,12 @@ for (const forbidden of [
   "spacekaren",
   "/api/ai/voice-clone",
   "OPENROUTERAI_API_KEY",
+  "generate_voice_clone",
 ]) {
   if (clone.includes(forbidden) || runtime.includes(forbidden) || gateway.includes(forbidden))
     throw new Error(`Forbidden legacy production dependency: ${forbidden}`);
 }
 
 console.log(
-  "Buddy production voice path verified: browser reference Blob -> /api/voice-clone -> live T4 Qwen3-TTS Base clone -> official Qwen fallback -> validated browser audio.",
+  "Buddy production voice path verified: browser reference Blob -> /api/voice-clone -> live VoxCPM2 reference clone -> Qwen fallback -> validated browser audio.",
 );
