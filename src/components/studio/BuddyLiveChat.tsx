@@ -11,6 +11,7 @@ import {
 } from "@/lib/microphone";
 import { BuddyVoicePicker } from "./BuddyVoicePicker";
 import { getBuddyVoiceProfile, getBuddyVoiceSample } from "@/lib/buddy-voice";
+import { getBuiltInRedVoiceSample } from "@/lib/red-default-voice";
 import buddyReference from "../../../file_0000000070e8824391d24367b5f22d59.png";
 import "./BuddyVisual.css";
 
@@ -334,8 +335,12 @@ export function BuddyLiveChat() {
     try {
       let r;
       if (v.mode === "clone" || v.speaker === "Red") {
-        const sample = await getBuddyVoiceSample();
-        if (!sample) throw Error("Your saved Buddy voice sample is unavailable.");
+        let sample = await getBuddyVoiceSample();
+        if (!sample && v.mode === "preset" && v.speaker === "Red") {
+          sample = await getBuiltInRedVoiceSample();
+          if (sample) setStatus("Using Buddy's built-in Red voice reference…");
+        }
+        if (!sample) throw Error("The Red voice reference is unavailable right now.");
         r = await runStudioJob(
           "voice-clone",
           {
@@ -370,6 +375,7 @@ export function BuddyLiveChat() {
       if (!r.url) throw Error("No usable Buddy voice was returned.");
       const a = audio.current ?? new Audio();
       audio.current = a;
+      a.preload = "auto";
       a.src = r.url;
       await new Promise<void>((ok, no) => {
         a.onended = () => ok();
