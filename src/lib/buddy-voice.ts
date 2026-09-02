@@ -227,7 +227,7 @@ export const BUDDY_TONES = [
   { id: "gentle", label: "Gentle", note: "Soft and considerate" },
   { id: "professional", label: "Professional", note: "Polished and precise" },
 ] as const;
-const RED_DEFAULT_MIGRATION_KEY = "lrbgs-red-default-v1";
+const RED_DEFAULT_MIGRATION_KEY = "lrbgs-red-default-v2";
 const DEFAULT_PROFILE: BuddyVoiceProfile = {
   mode: "preset",
   speaker: "Red",
