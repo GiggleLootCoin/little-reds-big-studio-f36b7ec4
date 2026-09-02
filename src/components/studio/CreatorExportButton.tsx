@@ -5,6 +5,10 @@ import { StudioButton } from "./ui";
 
 type ExportKind = "audio" | "image" | "video";
 
+type VideoWithCaptureStream = HTMLVideoElement & {
+  captureStream: () => MediaStream;
+};
+
 function reviewFor(kind: ExportKind) {
   const checks = [
     "Confirm you have the rights or permission for every uploaded source, voice, lyric, sample, and reference used.",
@@ -42,7 +46,7 @@ async function watermarkVideo(url: string): Promise<Blob> {
   const response = await fetch(url);
   if (!response.ok) throw new Error("Could not prepare the video for export.");
   const source = URL.createObjectURL(await response.blob());
-  const video = document.createElement("video");
+  const video = document.createElement("video") as VideoWithCaptureStream;
   video.src = source;
   video.muted = false;
   video.playsInline = true;
@@ -57,7 +61,7 @@ async function watermarkVideo(url: string): Promise<Blob> {
   if (!ctx) throw new Error("Video export is unavailable in this browser.");
   const stream = canvas.captureStream(30);
   const sourceStream = video.captureStream();
-  sourceStream.getAudioTracks().forEach((track) => stream.addTrack(track));
+  sourceStream.getAudioTracks().forEach((track: MediaStreamTrack) => stream.addTrack(track));
   const mime = MediaRecorder.isTypeSupported("video/webm;codecs=vp9,opus")
     ? "video/webm;codecs=vp9,opus"
     : "video/webm";
