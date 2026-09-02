@@ -34,6 +34,8 @@ jobs:
         run: node --test tests/speech-language-normalization.test.mjs
       - name: Production Android voice smoke contract test
         run: node --test tests/live-voice-browser-smoke.test.mjs
+      - name: Create flow contract tests
+        run: node --test tests/create-flow-contract.test.mjs
       - name: Buddy orchestrator regression tests
         run: node --test tests/buddy-orchestrator.test.mjs
       - name: Buddy experience contract tests
