@@ -10,6 +10,7 @@ type Body = {
   modelSize?: "0.6B" | "1.7B";
 };
 
+export const RED_VOICE_PROVIDER = "Qwen3-TTS Base reference clone";
 const PRIMARY_SPACE = "https://qwen-qwen3-tts.hf.space";
 const FALLBACK_SPACE = "https://wordercom-qwen3-tts.hf.space";
 const REFERENCE_CACHE_TTL_MS = 15 * 60_000;
@@ -213,9 +214,7 @@ async function generate(
 
   const result = await fetch(
     `${space}/gradio_api/call/generate_voice_clone/${encodeURIComponent(job.event_id)}`,
-    {
-      headers: { ...auth(env), Accept: "text/event-stream" },
-    },
+    { headers: { ...auth(env), Accept: "text/event-stream" } },
   );
   if (!result.ok) throw new Error(`Qwen voice clone job failed (${result.status}).`);
 
@@ -224,7 +223,7 @@ async function generate(
   if (parsed.kind !== "audio") throw new Error("Qwen completed without cloned audio.");
 
   const wav = toWav(parsed.payload[0]);
-  const provider = `Qwen3-TTS Base ${modelSize} reference clone`;
+  const provider = `${RED_VOICE_PROVIDER} ${modelSize}`;
   if (wav) {
     return new Response(wav, {
       status: 200,
