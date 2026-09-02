@@ -93,7 +93,9 @@ if (
   throw new Error(`unexpected production transcript-clone MIME: ${contentType}`);
 const productionBytes = Buffer.from(await productionResponse.arrayBuffer());
 if (productionBytes.byteLength <= 4096)
-  throw new Error(`returned transcript-clone audio is too small: ${productionBytes.byteLength} bytes`);
+  throw new Error(
+    `returned transcript-clone audio is too small: ${productionBytes.byteLength} bytes`,
+  );
 
 // Default Buddy/Red path: deliberately omit refText so the exact no-transcript path used by the app is exercised.
 const defaultResponse = await cloneRequest({});
@@ -115,7 +117,9 @@ if (defaultBytes.byteLength <= 4096)
   throw new Error(`returned default-Red audio is too small: ${defaultBytes.byteLength} bytes`);
 
 if (createHash("sha256").update(defaultBytes).digest("hex") === referenceId) {
-  throw new Error("default Red clone returned the reference audio unchanged instead of generated speech");
+  throw new Error(
+    "default Red clone returned the reference audio unchanged instead of generated speech",
+  );
 }
 
 const browser = await chromium.launch({
