@@ -103,8 +103,8 @@ export const FREE_RUNNERS: FreeRunner[] = [
     capabilities: ["voice-clone"],
     url: "https://huggingface.co/spaces/ResembleAI/chatterbox-turbo-demo",
     notes:
-      "Fast fallback for English reference cloning. The dedicated multilingual Red route is preferred so a demo/default speaker cannot be selected accidentally.",
-    priority: 780,
+      "Preferred live Red route. Reference audio is explicitly passed to the generator; no demo/default speaker is permitted on the Red path.",
+    priority: 950,
   },
   {
     id: "hf-chatterbox",
@@ -114,7 +114,7 @@ export const FREE_RUNNERS: FreeRunner[] = [
     capabilities: ["voice-clone", "tts"],
     url: "https://huggingface.co/spaces/ResembleAI/Chatterbox",
     notes:
-      "Uses the supplied reference audio directly. Kept as an independent fallback after Qwen.",
+      "Uses the supplied reference audio directly. Kept as an independent fallback after Qwen for non-default clone requests.",
     priority: 900,
   },
   {
@@ -124,7 +124,7 @@ export const FREE_RUNNERS: FreeRunner[] = [
     description: "Independent multilingual reference-voice cloning fallback.",
     capabilities: ["voice-clone"],
     url: "https://huggingface.co/spaces/ResembleAI/Chatterbox-Multilingual-TTS-V3",
-    notes: "Preferred fallback for Red reference cloning; never treated as a preset voice.",
+    notes: "Fallback for multilingual/non-default clone requests; never selected for the default Red live voice path.",
     priority: 800,
   },
   {
@@ -178,92 +178,11 @@ export const FREE_RUNNERS: FreeRunner[] = [
     capabilities: ["music", "song", "lyrics-to-music", "audio-generation"],
     url: "https://huggingface.co/spaces/victor/MiniMax-Music3-Jam",
     notes: "Fallback only.",
-    priority: 850,
-  },
-  {
-    id: "cf-music-26",
-    name: "Cloudflare MiniMax Music 2.6",
-    kind: "gpu",
-    description: "Song and instrumental music generation.",
-    capabilities: ["music", "song", "lyrics-to-music", "audio-generation"],
-    url: "/api/ai/music",
-    notes: "Server route; used only after free ZeroGPU Music 3 routes fail.",
-    priority: 100,
-  },
-  {
-    id: "hf-zimage-turbo",
-    name: "Z-Image Turbo — Free ZeroGPU",
-    kind: "gpu",
-    description: "High-quality text-to-image generation on a free ZeroGPU Space.",
-    capabilities: ["image", "image-generation", "artwork", "cover"],
-    url: "https://huggingface.co/spaces/mrfakename/Z-Image-Turbo",
-    notes: "Text-to-image route with prompt, dimensions, steps and seed inputs.",
-    priority: 1150,
-  },
-  {
-    id: "hf-qwen-image-fast",
-    name: "Qwen Image Fast — Free ZeroGPU",
-    kind: "gpu",
-    description: "Free public ZeroGPU image generation/editing fallback.",
-    capabilities: ["image", "image-generation", "artwork", "cover"],
-    url: "https://huggingface.co/spaces/prithivMLmods/Qwen-Image-Edit-2511-LoRAs-Fast",
-    notes: "Fallback image route; live schema and playable image are required.",
     priority: 1000,
-  },
-  {
-    id: "cf-flux-2-klein",
-    name: "Cloudflare FLUX.2 Klein 4B",
-    kind: "gpu",
-    description: "Server-side text-to-image generation and editing.",
-    capabilities: ["image", "image-generation", "artwork", "cover"],
-    url: "/api/ai/image",
-    notes: "Server route; used only after free ZeroGPU image routes fail.",
-    priority: 100,
-  },
-  {
-    id: "hf-wan22-fast-preview",
-    name: "Wan 2.2 Fast Preview — Free ZeroGPU",
-    kind: "gpu",
-    description: "Free public ZeroGPU image-to-video/text-to-video generation.",
-    capabilities: ["video", "video-generation", "image-to-video", "animation"],
-    url: "https://huggingface.co/spaces/kulkas2pintu/Wan2.2-14B-Fast-Preview",
-    notes: "Preferred free video route; live schema and playable video are required.",
-    priority: 1100,
-  },
-  {
-    id: "hf-wan-s2v",
-    name: "Wan 2.2 S2V — Free ZeroGPU (legacy alias)",
-    kind: "gpu",
-    description: "Compatibility alias for the Create panel's older Wan runner ID.",
-    capabilities: ["video", "video-generation", "image-to-video", "animation"],
-    url: "https://huggingface.co/spaces/kulkas2pintu/Wan2.2-14B-Fast-Preview",
-    notes: "Legacy ID retained so older UI bundles resolve to the current Wan route.",
-    priority: 1090,
-  },
-  {
-    id: "cf-seedance-fast",
-    name: "Cloudflare Seedance 2.0 Fast",
-    kind: "gpu",
-    description: "Text-to-video and image-to-video generation.",
-    capabilities: ["video", "video-generation", "image-to-video", "animation"],
-    url: "/api/ai/video",
-    notes: "Server route; used only after the free public video route fails.",
-    priority: 100,
-  },
-  {
-    id: "hf-demucs",
-    name: "Demucs Stem Separation",
-    kind: "gpu",
-    description: "Real vocal/drum/bass/other separation.",
-    capabilities: ["vocal-separation", "stems", "audio-separation"],
-    url: "https://huggingface.co/spaces/owiedotch/demucs-stem-separation",
-    notes:
-      "Actual separated audio required; intended as the first stage of song voice-swap workflows.",
-    priority: 170,
   },
 ];
 
-export function runnersFor(capability: string): FreeRunner[] {
+export function runnersFor(capability: string) {
   return FREE_RUNNERS.filter((r) => r.capabilities.includes(capability)).sort(
     (a, b) => b.priority - a.priority,
   );
