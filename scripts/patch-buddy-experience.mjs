@@ -12,7 +12,7 @@ function replaceOnce(path, from, to, label) {
 
 function patchSavedRedSelection() {
   const text = fs.readFileSync(pickerPath, "utf8");
-  const red = text.indexOf('speaker: "Red",');
+  const red = text.lastIndexOf('speaker: "Red",');
   const mode = text.lastIndexOf('mode: "clone" as const,', red);
   if (red < 0 || mode < 0) throw new Error("Missing patch anchor: saved Red selection");
   const speakerEnd = red + 'speaker: "Red",'.length;
