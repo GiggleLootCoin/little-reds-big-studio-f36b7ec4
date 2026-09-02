@@ -9,7 +9,8 @@ export async function getBuiltInRedVoiceSample(): Promise<Blob | null> {
   if (!loadingSample) {
     loadingSample = fetch(BUILT_IN_RED_VOICE_URL, { cache: "force-cache" })
       .then((response) => {
-        if (!response.ok) throw new Error(`Built-in Red voice reference failed (${response.status}).`);
+        if (!response.ok)
+          throw new Error(`Built-in Red voice reference failed (${response.status}).`);
         return response.blob();
       })
       .then((blob) => {
