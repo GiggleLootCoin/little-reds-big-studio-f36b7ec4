@@ -1,4 +1,4 @@
-type Env = { HF_TOKEN?: string; QWEN_TTS_SPACE_URL?: string };
+type Env = { HF_TOKEN?: string; VOXCPM_SPACE_URL?: string; QWEN_TTS_SPACE_URL?: string };
 
 type Body = {
   referenceId?: string;
@@ -10,15 +10,14 @@ type Body = {
   modelSize?: "0.6B" | "1.7B";
 };
 
-export const RED_VOICE_PROVIDER = "Qwen3-TTS Base reference clone";
-// The live T4 Space is the primary path for low-latency production cloning.
-const PRIMARY_SPACE = "https://wordercom-qwen3-tts.hf.space";
+export const RED_VOICE_PROVIDER = "VoxCPM2 reference clone";
+const PRIMARY_SPACE = "https://openbmb-voxcpm-demo.hf.space";
 const FALLBACK_SPACE = "https://qwen-qwen3-tts.hf.space";
 const REFERENCE_CACHE_TTL_MS = 15 * 60_000;
 const cache = new Map<string, { path: string; expires: number }>();
 
 function spaces(env: Env) {
-  const primary = (env.QWEN_TTS_SPACE_URL?.trim() || PRIMARY_SPACE).replace(/\/$/, "");
+  const primary = (env.VOXCPM_SPACE_URL?.trim() || PRIMARY_SPACE).replace(/\/$/, "");
   return [primary, FALLBACK_SPACE].filter(
     (value, index, values) => values.indexOf(value) === index,
   );
@@ -35,37 +34,6 @@ function ext(type: string) {
   if (t.includes("ogg")) return "ogg";
   if (t.includes("flac")) return "flac";
   return "wav";
-}
-
-function normalizeLanguage(value?: string) {
-  const language = (value || "English").trim();
-  const key = language.toLowerCase().replace(/_/g, "-");
-  const aliases: Record<string, string> = {
-    auto: "Auto",
-    en: "English",
-    "en-us": "English",
-    "en-gb": "English",
-    english: "English",
-    zh: "Chinese",
-    chinese: "Chinese",
-    ja: "Japanese",
-    japanese: "Japanese",
-    ko: "Korean",
-    korean: "Korean",
-    de: "German",
-    german: "German",
-    fr: "French",
-    french: "French",
-    ru: "Russian",
-    russian: "Russian",
-    pt: "Portuguese",
-    portuguese: "Portuguese",
-    it: "Italian",
-    italian: "Italian",
-    spanish: "Spanish",
-    es: "Spanish",
-  };
-  return aliases[key] || language;
 }
 
 function decode(value: string) {
@@ -100,23 +68,28 @@ async function upload(
     headers: auth(env),
     body: form,
   });
-  if (!response.ok) throw new Error(`Qwen reference upload failed (${response.status}).`);
+  if (!response.ok) {
+    const detail = (await response.text().catch(() => "")).slice(0, 240);
+    throw new Error(`VoxCPM reference upload failed (${response.status}). ${detail}`.trim());
+  }
 
   const payload = (await response.json()) as unknown;
   const path = Array.isArray(payload) ? String(payload[0] || "") : "";
-  if (!path) throw new Error("Qwen returned no reference-file path.");
+  if (!path) throw new Error("VoxCPM returned no reference-file path.");
 
   cache.set(key, { path, expires: Date.now() + REFERENCE_CACHE_TTL_MS });
   return path;
 }
 
-export type QwenSSEParseResult =
-  { kind: "audio"; payload: unknown[] } | { kind: "error"; message: string } | { kind: "none" };
+export type VoxCPMSSEParseResult =
+  | { kind: "audio"; payload: unknown[] }
+  | { kind: "error"; message: string }
+  | { kind: "none" };
 
-export function parseQwenSSE(stream: string): QwenSSEParseResult {
+export function parseVoxCPMSSE(stream: string): VoxCPMSSEParseResult {
   let event = "";
   let data: string[] = [];
-  let result: QwenSSEParseResult = { kind: "none" };
+  let result: VoxCPMSSEParseResult = { kind: "none" };
 
   const flush = () => {
     if (!data.length) return;
@@ -147,7 +120,7 @@ export function parseQwenSSE(stream: string): QwenSSEParseResult {
         }
       }
     } catch {
-      result = { kind: "error", message: "Qwen returned invalid completed JSON." };
+      result = { kind: "error", message: "VoxCPM returned invalid completed JSON." };
     }
   };
 
@@ -188,7 +161,6 @@ function toWav(value: unknown): ArrayBuffer | null {
   const sampleRate = Math.round(value[0]);
   const samples = value[1] as unknown[];
   const pcm = new Int16Array(samples.length);
-
   for (let i = 0; i < samples.length; i++) {
     const n = Math.max(-1, Math.min(1, Number(samples[i]) || 0));
     pcm[i] = n < 0 ? n * 0x8000 : n * 0x7fff;
@@ -199,7 +171,6 @@ function toWav(value: unknown): ArrayBuffer | null {
   const put = (offset: number, text: string) => {
     for (let i = 0; i < text.length; i++) view.setUint8(offset + i, text.charCodeAt(i));
   };
-
   put(0, "RIFF");
   view.setUint32(4, 36 + pcm.byteLength, true);
   put(8, "WAVE");
@@ -226,34 +197,48 @@ async function generate(
 ): Promise<Response> {
   const refText = body.refText?.trim() || "";
   const targetText = body.text?.trim().replace(/\s+/g, " ").slice(0, 220) || "";
-  const modelSize = body.modelSize === "1.7B" ? "1.7B" : "0.6B";
-  const language = normalizeLanguage(body.language);
   if (!targetText) throw new Error("Target text is required.");
 
-  const start = await fetch(`${space}/gradio_api/call/generate_voice_clone`, {
+  const usePromptText = Boolean(refText);
+  const start = await fetch(`${space}/gradio_api/call/generate`, {
     method: "POST",
     headers: { ...auth(env), "content-type": "application/json" },
     body: JSON.stringify({
-      data: [fileData(path, type), refText, targetText, language, !refText, modelSize],
+      data: [
+        targetText,
+        "",
+        fileData(path, type),
+        usePromptText,
+        refText,
+        2.0,
+        true,
+        false,
+      ],
     }),
   });
-  if (!start.ok) throw new Error(`Qwen voice clone start failed (${start.status}).`);
+  if (!start.ok) {
+    const detail = (await start.text().catch(() => "")).slice(0, 300);
+    throw new Error(`VoxCPM clone start failed (${start.status}). ${detail}`.trim());
+  }
 
   const job = (await start.json()) as { event_id?: string };
-  if (!job.event_id) throw new Error("Qwen returned no voice-clone job ID.");
+  if (!job.event_id) throw new Error("VoxCPM returned no clone job ID.");
 
   const result = await fetch(
-    `${space}/gradio_api/call/generate_voice_clone/${encodeURIComponent(job.event_id)}`,
+    `${space}/gradio_api/call/generate/${encodeURIComponent(job.event_id)}`,
     { headers: { ...auth(env), Accept: "text/event-stream" } },
   );
-  if (!result.ok) throw new Error(`Qwen voice clone job failed (${result.status}).`);
+  if (!result.ok) {
+    const detail = (await result.text().catch(() => "")).slice(0, 300);
+    throw new Error(`VoxCPM clone job failed (${result.status}). ${detail}`.trim());
+  }
 
-  const parsed = parseQwenSSE(await result.text());
-  if (parsed.kind === "error") throw new Error(`Qwen voice clone: ${parsed.message.slice(0, 500)}`);
-  if (parsed.kind !== "audio") throw new Error("Qwen completed without cloned audio.");
+  const parsed = parseVoxCPMSSE(await result.text());
+  if (parsed.kind === "error") throw new Error(`VoxCPM clone: ${parsed.message.slice(0, 500)}`);
+  if (parsed.kind !== "audio") throw new Error("VoxCPM completed without cloned audio.");
 
   const wav = toWav(parsed.payload[0]);
-  const provider = `${RED_VOICE_PROVIDER} ${modelSize}`;
+  const provider = RED_VOICE_PROVIDER;
   if (wav) {
     return new Response(wav, {
       status: 200,
@@ -261,7 +246,7 @@ async function generate(
         "content-type": "audio/wav",
         "cache-control": "no-store",
         "x-clone-provider": provider,
-        "x-red-voice-route": "qwen3-reference-clone",
+        "x-red-voice-route": "voxcpm2-reference-clone",
       },
     });
   }
@@ -276,17 +261,16 @@ async function generate(
         : item && typeof item.path === "string"
           ? `${space}/gradio_api/file=${String(item.path).replace(/^\//, "")}`
           : "";
-  if (!artifact) throw new Error("Qwen returned no playable cloned audio artifact.");
+  if (!artifact) throw new Error("VoxCPM returned no playable cloned audio artifact.");
 
   const audio = await fetch(artifact.startsWith("http") ? artifact : `${space}${artifact}`, {
     headers: auth(env),
   });
-  if (!audio.ok || !audio.body) throw new Error(`Qwen audio download failed (${audio.status}).`);
-
+  if (!audio.ok || !audio.body) throw new Error(`VoxCPM audio download failed (${audio.status}).`);
   const headers = new Headers(audio.headers);
   headers.set("cache-control", "no-store");
   headers.set("x-clone-provider", provider);
-  headers.set("x-red-voice-route", "qwen3-reference-clone");
+  headers.set("x-red-voice-route", "voxcpm2-reference-clone");
   return new Response(audio.body, { status: 200, headers });
 }
 
@@ -335,14 +319,14 @@ export async function handleVoiceClone(request: Request, env: Env): Promise<Resp
     } catch (firstError) {
       lastError = firstError;
       console.warn(
-        `[voice-clone] Qwen space failed (${space}): ${firstError instanceof Error ? firstError.message : String(firstError)}`,
+        `[voice-clone] ${space} failed: ${firstError instanceof Error ? firstError.message : String(firstError)}`,
       );
       try {
         return await generateFromSpace(space, body, env, true);
       } catch (refreshError) {
         lastError = refreshError;
         console.warn(
-          `[voice-clone] Qwen space reference refresh failed (${space}): ${
+          `[voice-clone] ${space} reference refresh failed: ${
             refreshError instanceof Error ? refreshError.message : String(refreshError)
           }`,
         );
@@ -353,13 +337,13 @@ export async function handleVoiceClone(request: Request, env: Env): Promise<Resp
   return Response.json(
     {
       ok: false,
-      error: `Red voice cloning failed on all configured Qwen3-TTS voice-clone spaces: ${
+      error: `Red voice cloning failed on all configured reference-clone spaces: ${
         lastError instanceof Error ? lastError.message : String(lastError)
       }`,
     },
     {
       status: 502,
-      headers: { "cache-control": "no-store", "x-red-voice-route": "qwen3-reference-clone" },
+      headers: { "cache-control": "no-store", "x-red-voice-route": "reference-clone" },
     },
   );
 }
