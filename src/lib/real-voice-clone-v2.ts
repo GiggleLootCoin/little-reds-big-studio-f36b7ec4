@@ -16,7 +16,9 @@ let cachedReferenceBase64 = "";
 async function referenceId(blob: Blob): Promise<string> {
   const bytes = await blob.arrayBuffer();
   const digest = await crypto.subtle.digest("SHA-256", bytes);
-  return Array.from(new Uint8Array(digest), (value) => value.toString(16).padStart(2, "0")).join("");
+  return Array.from(new Uint8Array(digest), (value) => value.toString(16).padStart(2, "0")).join(
+    "",
+  );
 }
 
 function blobBase64(blob: Blob): Promise<string> {
@@ -61,7 +63,9 @@ export async function createBestFreeVoiceClone(
     language: language || "English",
     modelSize,
   });
-  onStatus?.(alreadyEncoded ? "Using Buddy's saved voice reference…" : "Preparing Buddy's voice reference…");
+  onStatus?.(
+    alreadyEncoded ? "Using Buddy's saved voice reference…" : "Preparing Buddy's voice reference…",
+  );
   let response = await fetch("/api/ai/voice-clone", {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -87,9 +91,17 @@ export async function createBestFreeVoiceClone(
   if (!generated.size) throw new Error("The voice engine returned empty generated audio.");
   if (!persistPreview) {
     const url = URL.createObjectURL(generated);
-    const provider = response.headers.get("x-clone-provider") || `Chatterbox Turbo ${modelSize} Base`;
+    const provider =
+      response.headers.get("x-clone-provider") || `Chatterbox Turbo ${modelSize} Base`;
     onStatus?.("Buddy audio ready.");
-    return { url, provider, verification: `${provider} live response (deferred browser verification)`, duration: 0, peak: 1, rms: 1 };
+    return {
+      url,
+      provider,
+      verification: `${provider} live response (deferred browser verification)`,
+      duration: 0,
+      peak: 1,
+      rms: 1,
+    };
   }
   const normalized = await normalizeAndVerifyBrowserAudio(generated);
   if (normalized.stats.duration <= 0 || normalized.stats.peak <= 0 || normalized.stats.rms <= 0)
@@ -99,5 +111,12 @@ export async function createBestFreeVoiceClone(
   const browserWindow = window as Window & { __buddyLastCloneUrl?: string };
   browserWindow.__buddyLastCloneUrl = normalized.url;
   onStatus?.(`Buddy voice verified: ${normalized.stats.duration.toFixed(2)}s.`);
-  return { url: normalized.url, provider, verification: `${provider} reference conditioning + browser audio decode + non-silent artifact verification`, duration: normalized.stats.duration, peak: normalized.stats.peak, rms: normalized.stats.rms };
+  return {
+    url: normalized.url,
+    provider,
+    verification: `${provider} reference conditioning + browser audio decode + non-silent artifact verification`,
+    duration: normalized.stats.duration,
+    peak: normalized.stats.peak,
+    rms: normalized.stats.rms,
+  };
 }
