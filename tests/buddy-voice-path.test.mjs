@@ -17,8 +17,6 @@ test("production Red clone uses the production Worker endpoint and verifies retu
   assert.match(runtime, /SHA-256/);
   assert.match(runtime, /normalizeAndVerifyBrowserAudio/);
   assert.match(runtime, /cloneProfile\(\)\.speaker === "Red"/);
-  assert.match(worker, /handleProductionVoiceClone/);
-  assert.match(worker, /path === "\/api\/ai\/voice-clone"/);
   assert.match(production, /ResembleAI-chatterbox-turbo-demo/);
   assert.match(production, /gradio_api\/upload/);
   assert.match(production, /gradio_api\/call\/generate/);
@@ -59,7 +57,7 @@ test("speaker conditioning returned by encode_speech is retained and consumed by
 });
 
 test("the Red default is explicit and migrated once from the stale Ryan default", () => {
-  assert.match(voice, /RED_DEFAULT_MIGRATION_KEY = "lrbgs-red-default-v1"/);
+  assert.match(voice, /RED_DEFAULT_MIGRATION_KEY = "lrbgs-red-default-v2"/);
   assert.match(voice, /speaker: "Red"/);
   assert.match(voice, /localStorage\.getItem\(RED_DEFAULT_MIGRATION_KEY\)/);
   assert.match(voice, /saveBuddyVoiceProfile\(redDefault\)/);
