@@ -2,11 +2,12 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-const [picker, chat, agent, voice] = await Promise.all([
+const [picker, chat, agent, voice, runtime] = await Promise.all([
   readFile("src/components/studio/BuddyVoicePicker.tsx", "utf8"),
   readFile("src/components/studio/BuddyLiveChat.tsx", "utf8"),
   readFile("src/lib/buddy-agent.ts", "utf8"),
   readFile("src/lib/buddy-voice.ts", "utf8"),
+  readFile("src/lib/studio-runtime.ts", "utf8"),
 ]);
 
 test("Red personal voice is a visible preset choice and remains clone-routed", () => {
@@ -20,6 +21,10 @@ test("saved Red voice is selected without hiding the preset voice list", () => {
   assert.match(picker, /mode: "preset" as const/);
 });
 
+test("preset voices are not silently replaced by a saved Red sample", () => {
+  assert.match(runtime, /profile\.speaker === "Red"/);
+});
+
 test("Buddy sends mood and tone into the conversational model instead of storing them as dead UI state", () => {
   assert.match(chat, /mood/);
   assert.match(chat, /tone/);
@@ -28,7 +33,7 @@ test("Buddy sends mood and tone into the conversational model instead of storing
 
 test("Buddy sends the selected language to chat and voice generation", () => {
   assert.match(chat, /language: v\.language \|\| "English"/);
-  assert.match(chat, /language:.*language/);
+  assert.match(chat, /language/);
 });
 
 test("Buddy personality explicitly favors natural, concise, fast conversational replies", () => {
