@@ -55,11 +55,7 @@ async function upload(
   if (!refresh && old && old.expires > Date.now()) return old.path;
 
   const form = new FormData();
-  form.append(
-    "files",
-    new Blob([decode(base64)], { type }),
-    `red-reference.${ext(type)}`,
-  );
+  form.append("files", new Blob([decode(base64)], { type }), `red-reference.${ext(type)}`);
 
   const response = await fetch(`${space}/gradio_api/upload`, {
     method: "POST",
@@ -79,9 +75,7 @@ async function upload(
 }
 
 export type QwenSSEParseResult =
-  | { kind: "audio"; payload: unknown[] }
-  | { kind: "error"; message: string }
-  | { kind: "none" };
+  { kind: "audio"; payload: unknown[] } | { kind: "error"; message: string } | { kind: "none" };
 
 export function parseQwenSSE(stream: string): QwenSSEParseResult {
   let event = "";
@@ -284,7 +278,10 @@ export async function handleVoiceClone(request: Request, env: Env): Promise<Resp
   }
 
   if (!body.referenceId?.trim() || !body.audioBase64) {
-    return Response.json({ ok: false, error: "A Red voice reference is required." }, { status: 400 });
+    return Response.json(
+      { ok: false, error: "A Red voice reference is required." },
+      { status: 400 },
+    );
   }
   if (!body.text?.trim()) {
     return Response.json({ ok: false, error: "Target text is required." }, { status: 400 });
