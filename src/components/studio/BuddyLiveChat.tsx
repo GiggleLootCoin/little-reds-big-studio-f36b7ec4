@@ -356,6 +356,7 @@ export function BuddyLiveChat() {
             tone: v.tone || "conversational",
             use_xvector_only: !v.referenceTranscript,
             model_size: "0.6B",
+            _skipProviders: ["hf-chatterbox", "hf-chatterbox-v3"],
           },
           setStatus,
         );

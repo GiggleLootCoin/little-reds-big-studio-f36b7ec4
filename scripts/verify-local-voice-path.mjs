@@ -4,6 +4,7 @@ const clone = await readFile("src/lib/real-voice-clone-v2.ts", "utf8");
 const gateway = await readFile("src/lib/voice-clone-gateway.ts", "utf8");
 const runtime = await readFile("src/lib/studio-runtime.ts", "utf8");
 const registry = await readFile("src/lib/free-runtime.ts", "utf8");
+const server = await readFile("src/server.ts", "utf8");
 
 const required = [
   ["browser clone safety boundary", clone, /normalizeAndVerifyBrowserAudio/],
@@ -12,9 +13,14 @@ const required = [
   ["Qwen production handler", gateway, /export async function handleVoiceClone/],
   ["Qwen clone operation", gateway, /generate_voice_clone/],
   ["Qwen reference upload", gateway, /gradio_api\/upload/],
-  ["free Qwen fallback", gateway, /QWEN_TTS_FALLBACK_SPACE_URL/],
+  [
+    "Qwen fallback space",
+    gateway,
+    /FALLBACK_SPACE\s*=\s*"https:\/\/wordercom-qwen3-tts\.hf\.space"/,
+  ],
   ["provider response marker", gateway, /x-clone-provider/],
   ["runtime production clone", runtime, /createBestFreeVoiceClone/],
+  ["server imports the Qwen gateway", server, /from "\.\/lib\/voice-clone-gateway"/],
   [
     "voice capability has no legacy fallback",
     registry,
@@ -33,10 +39,10 @@ for (const forbidden of [
   "/api/ai/voice-clone",
   "OPENROUTERAI_API_KEY",
 ]) {
-  if (clone.includes(forbidden) || runtime.includes(forbidden))
+  if (clone.includes(forbidden) || runtime.includes(forbidden) || gateway.includes(forbidden))
     throw new Error(`Forbidden legacy production dependency: ${forbidden}`);
 }
 
 console.log(
-  "Buddy production voice path verified: browser reference Blob -> /api/voice-clone -> Qwen3-TTS Base clone -> free fallback -> validated browser audio.",
+  "Buddy production voice path verified: browser reference Blob -> /api/voice-clone -> Qwen3-TTS Base clone -> verified Qwen fallback -> validated browser audio.",
 );
