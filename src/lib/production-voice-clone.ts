@@ -35,7 +35,8 @@ function toBase64(bytes: Uint8Array) {
 }
 
 async function sha256(bytes: Uint8Array) {
-  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  const buffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+  const digest = await crypto.subtle.digest("SHA-256", buffer);
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
@@ -70,7 +71,7 @@ async function multipartToGateway(request: Request, env: CloneEnv) {
   );
 }
 
-export function voiceCloneHealth() {
+export function voiceCloneHealth(_env?: CloneEnv) {
   return Response.json(
     {
       ok: true,
