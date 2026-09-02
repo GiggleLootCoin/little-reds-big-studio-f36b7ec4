@@ -22,7 +22,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
       - name: Apply Buddy experience improvements
-        if: github.event_name == 'workflow_dispatch' || github.event.head_commit.message != 'fix: apply Buddy experience improvements'
+        if: github.event_name == 'workflow_dispatch' || github.event.head_commit.message != 'fix - apply Buddy experience improvements'
         shell: bash
         run: |
           set -euo pipefail
@@ -30,7 +30,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add src/components/studio/BuddyVoicePicker.tsx src/components/studio/BuddyLiveChat.tsx src/lib/buddy-agent.ts
-          git commit -m "fix: apply Buddy experience improvements"
+          git commit -m "fix - apply Buddy experience improvements"
           git push origin HEAD:main
       - name: Setup Node
         uses: actions/setup-node@v4
