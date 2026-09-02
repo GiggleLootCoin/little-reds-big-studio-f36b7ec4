@@ -26,7 +26,7 @@ test("production Red clone uses the production Worker endpoint and verifies retu
 });
 
 test("Red production generation is optimized to avoid re-uploading the same reference on every reply", () => {
-  assert.match(clone, /SHA-256/);
+  assert.match(clone, /sha256/);
   assert.match(clone, /REFERENCE_CACHE_TTL_MS/);
   assert.match(clone, /referenceCache\.get/);
   assert.match(clone, /referenceCache\.set/);
