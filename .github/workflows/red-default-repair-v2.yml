@@ -7,20 +7,21 @@ on:
 
 permissions:
   contents: write
+  actions: write
 
 jobs:
   repair:
     runs-on: ubuntu-latest
     steps:
-      - name: Patch Red default
+      - name: Patch Red default and redeploy
         uses: actions/github-script@v7
         with:
           script: |
             const owner = context.repo.owner;
             const repo = context.repo.repo;
             const path = 'src/lib/buddy-voice.ts';
-            const wf1 = '.github/workflows/one-time-red-default-repair.yml';
-            const wf2 = '.github/workflows/red-default-repair-v2.yml';
+            const workflow = '.github/workflows/red-default-repair-v2.yml';
+            const deployWorkflow = 'deploy-cloudflare.yml';
             const file = await github.rest.repos.getContent({ owner, repo, path, ref: 'main' });
             let content = Buffer.from(file.data.content, 'base64').toString('utf8');
             if (!content.includes('RED_DEFAULT_MIGRATION_KEY')) {
@@ -57,18 +58,20 @@ const DEFAULT_PROFILE: BuddyVoiceProfile = {
                 content = content.slice(0, ret) + migration + content.slice(ret);
               }
             }
-            const updated = await github.rest.repos.createOrUpdateFileContents({
+            await github.rest.repos.createOrUpdateFileContents({
               owner, repo, path,
               message: 'Fix Red voice default migration',
               content: Buffer.from(content, 'utf8').toString('base64'),
               sha: file.data.sha,
               branch: 'main'
             });
-            for (const workflow of [wf1, wf2]) {
-              try {
-                const wf = await github.rest.repos.getContent({ owner, repo, path: workflow, ref: 'main' });
-                await github.rest.repos.deleteFile({ owner, repo, path: workflow, message: 'Remove temporary Red repair workflow', sha: wf.data.sha, branch: 'main' });
-              } catch (e) {
-                if (workflow === wf2) core.warning(`Could not remove ${workflow}: ${e.message}`);
-              }
-            }
+            await github.rest.actions.createWorkflowDispatch({
+              owner, repo, workflow_id: deployWorkflow, ref: 'main'
+            });
+            const wf = await github.rest.repos.getContent({ owner, repo, path: workflow, ref: 'main' });
+            await github.rest.repos.deleteFile({
+              owner, repo, path: workflow,
+              message: 'Remove temporary Red default repair',
+              sha: wf.data.sha,
+              branch: 'main'
+            });
