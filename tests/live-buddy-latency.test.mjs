@@ -4,6 +4,7 @@ import { readFile } from "node:fs/promises";
 
 const clone = await readFile("src/lib/real-voice-clone-v2.ts", "utf8");
 const gateway = await readFile("src/lib/voice-clone-gateway.ts", "utf8");
+const runtime = await readFile("src/lib/studio-runtime.ts", "utf8");
 const chat = await readFile("src/components/studio/BuddyLiveChat.tsx", "utf8");
 
 test("live Buddy speech uses the fast 0.6B path while explicit cloning keeps the 1.7B quality path", () => {
@@ -12,6 +13,7 @@ test("live Buddy speech uses the fast 0.6B path while explicit cloning keeps the
   assert.match(gateway, /modelSize\?:\s*"0\.6B" \| "1\.7B"/);
 });
 
-test("live speech is bounded for faster time-to-first-audio", () => {
+test("live speech is bounded and does not wait for IndexedDB persistence before playback", () => {
   assert.match(clone, /slice\(0, 220\)/);
+  assert.match(runtime, /runVerifiedClone\(\s*savedSample[\s\S]*?modelSize,\s*false\s*\)/);
 });
