@@ -2,12 +2,14 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-const [clone, gateway, runtime, local, worker] = await Promise.all([
+const [clone, gateway, runtime, local, worker, voice, picker] = await Promise.all([
   readFile("src/lib/real-voice-clone-v2.ts", "utf8"),
   readFile("src/lib/voice-clone-gateway.ts", "utf8"),
   readFile("src/lib/studio-runtime.ts", "utf8"),
   readFile("src/lib/local-chatterbox.ts", "utf8"),
   readFile("src/workers/chatterbox-local.worker.ts", "utf8"),
+  readFile("src/lib/buddy-voice.ts", "utf8"),
+  readFile("src/components/studio/BuddyVoicePicker.tsx", "utf8"),
 ]);
 
 test("Generate is an actionable button and missing samples fail visibly instead of disabling the path", () => {
@@ -39,25 +41,31 @@ test("the local Chatterbox implementation contains the supported Transformers.js
   assert.match(worker, /conditional_decoder/);
 });
 
-test("production clone output has bounded independent free fallbacks and browser verification owns the verified flag", () => {
-  assert.match(clone, /fetch/);
-  assert.match(clone, /response\.blob/);
-  assert.match(clone, /normalizeAndVerifyBrowserAudio/);
-  assert.match(clone, /Qwen3-TTS/);
-  assert.doesNotMatch(clone, /createLocalChatterboxClone/);
+test("production Red clone uses the production Worker endpoint and verifies returned audio", () => {
+  assert.match(runtime, /fetch\("\/api\/ai\/voice-clone"/);
+  assert.match(runtime, /audioBase64/);
+  assert.match(runtime, /SHA-256/);
+  assert.match(runtime, /normalizeAndVerifyBrowserAudio/);
+  assert.match(runtime, /cloneProfile\(\)\.speaker === "Red"/);
+  assert.match(worker, /handleProductionVoiceClone/);
+  assert.match(worker, /path === "\/api\/ai\/voice-clone"/);
+  assert.match(worker, /CHATTERBOX_ENDPOINT/);
+  assert.match(worker, /voiceCloneHealth/);
   assert.match(gateway, /generate_voice_clone/);
-  assert.match(gateway, /modelSize\?:\s*"0\.6B" \| "1\.7B"/);
-  assert.match(
-    gateway,
-    /\[file, refText, text, languageName\(language\), (?:false|xvectorOnly), modelSize\]/,
-  );
   assert.match(gateway, /QWEN_TTS_FALLBACK_SPACE_URL/);
   assert.match(gateway, /CHATTERBOX_SPACE_URL/);
-  assert.match(gateway, /generate_tts_audio/);
-  assert.match(gateway, /const key = `\$\{space\}\|\$\{referenceId\}`/);
-  assert.match(gateway, /headers\.delete/);
-  assert.match(gateway, /x-clone-provider/);
-  assert.match(runtime, /runVerifiedClone/);
+});
+
+test("the Red default is explicit and migration only replaces the stale Ryan default", () => {
+  assert.match(voice, /speaker: "Red"/);
+  assert.match(voice, /RED_DEFAULT_MIGRATION_KEY = "lrbgs-red-default-v1"/);
+  assert.match(voice, /isLegacyRyanDefault/);
+  assert.match(voice, /selected == null \|\| isLegacyRyanDefault\(selected\)/);
+});
+
+test("loading the saved sample cannot override an intentionally selected preset", () => {
+  assert.doesNotMatch(picker, /useEffect\(\(\) => \{[\s\S]*getBuddyVoiceSample\(\)[\s\S]*setProfile\(next\)/);
+  assert.match(picker, /e\.target\.value === "Red"/);
 });
 
 test("the production clone path contains no obsolete public voice Space or API-key fallback", () => {
@@ -69,6 +77,7 @@ test("the production clone path contains no obsolete public voice Space or API-k
       "/api/ai/voice-clone",
       "OPENROUTERAI_API_KEY",
     ]) {
+      if (source === runtime && needle === "/api/ai/voice-clone") continue;
       assert.equal(source.includes(needle), false, `forbidden fallback found: ${needle}`);
     }
   }
