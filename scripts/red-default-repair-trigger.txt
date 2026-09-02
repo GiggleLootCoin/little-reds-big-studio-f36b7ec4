@@ -1,1 +1,1 @@
-Temporary trigger for the Red voice default migration. Safe to remove after the repair workflow runs.
+Trigger Red default repair deployment v2.
