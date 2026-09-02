@@ -34,6 +34,24 @@ function languageName(value: unknown): string {
   };
   return map[raw.toLowerCase()] || raw;
 }
+function languageCode(value: unknown): string {
+  const raw = String(value || "English").trim().toLowerCase();
+  const map: Record<string, string> = {
+    english: "en",
+    spanish: "es",
+    french: "fr",
+    german: "de",
+    italian: "it",
+    portuguese: "pt",
+    russian: "ru",
+    chinese: "zh",
+    japanese: "ja",
+    korean: "ko",
+    hindi: "hi",
+    arabic: "ar",
+  };
+  return map[raw] || raw;
+}
 
 function errorResponse(message: string, status = 500) {
   return Response.json(
@@ -216,6 +234,7 @@ async function chatterboxClone(
   path: string,
   audioType: string,
   text: string,
+  language: string,
   env: Env,
 ): Promise<string> {
   const file = {
@@ -227,7 +246,7 @@ async function chatterboxClone(
   const payload = await startAndPoll(
     space,
     "generate_tts_audio",
-    [text, file, 0.5, 0.8, 0, 0.5],
+    [text, file, languageCode(language), 0.5, 0.8, 0, 0.5],
     env,
   );
   return audioUrl(space, payload[0]);
@@ -291,7 +310,7 @@ export async function handleVoiceClone(request: Request, env: Env): Promise<Resp
     env.QWEN_TTS_FALLBACK_SPACE_URL || "https://wordercom-qwen3-tts.hf.space",
   ).replace(/\/$/, "");
   const chatterbox = String(
-    env.CHATTERBOX_SPACE_URL || "https://resembleai-chatterbox.hf.space",
+    env.CHATTERBOX_SPACE_URL || "https://ResembleAI-Chatterbox-Multilingual-TTS-V3.hf.space",
   ).replace(/\/$/, "");
   const audioType = String(body.audioType || "audio/wav");
   const text = body.text.trim().replace(/\s+/g, " ").slice(0, 220);
@@ -366,17 +385,10 @@ export async function handleVoiceClone(request: Request, env: Env): Promise<Resp
     failures.push(error instanceof Error ? error.message : String(error));
   }
 
-  // The default Red path uses Qwen's speaker-embedding mode. Never send that
-  // path to the legacy Chatterbox fallback: that endpoint has a known behavior
-  // of speaking its own canned demonstration phrase instead of the requested text.
-  // A generic provider response is worse than a hard voice-generation failure.
-  if (xvectorOnly) {
-    return errorResponse(
-      `Red voice generation failed on both Qwen providers. ${failures.join(" | ")}`,
-      502,
-    );
-  }
-
+  // When no reference transcript is available (the default Red path), use the
+  // current Chatterbox Multilingual V3 Space rather than the legacy Chatterbox
+  // demo endpoint. V3 accepts the reference clip directly, does not need a
+  // transcript, and avoids the known canned-demo-phrase behavior.
   try {
     return await downloadAudio(
       await cloneWithReferenceRefresh(
@@ -389,10 +401,10 @@ export async function handleVoiceClone(request: Request, env: Env): Promise<Resp
         language,
         requested,
         env,
-        (path) => chatterboxClone(chatterbox, path, audioType, text, env),
+        (path) => chatterboxClone(chatterbox, path, audioType, text, language, env),
       ),
       env,
-      "Chatterbox independent voice-clone fallback",
+      "Chatterbox Multilingual TTS V3 reference clone",
     );
   } catch (error) {
     failures.push(error instanceof Error ? error.message : String(error));
