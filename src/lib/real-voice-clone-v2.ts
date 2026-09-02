@@ -42,6 +42,7 @@ export async function createBestFreeVoiceClone(
   language: string,
   onStatus?: (s: string) => void,
   modelSize: "0.6B" | "1.7B" = "1.7B",
+  persistPreview = true,
 ): Promise<CloneResult> {
   if (!sample.size) throw new Error("The voice sample is empty.");
   if (!refText.trim()) throw new Error("The reference transcript is required.");
@@ -102,7 +103,7 @@ export async function createBestFreeVoiceClone(
     throw new Error("Qwen returned silent or unusable audio.");
 
   const provider = `Qwen3-TTS ${modelSize} Base`;
-  await saveBuddyClonePreview(normalized.blob, provider);
+  if (persistPreview) await saveBuddyClonePreview(normalized.blob, provider);
   const browserWindow = window as Window & { __buddyLastCloneUrl?: string };
   browserWindow.__buddyLastCloneUrl = normalized.url;
   onStatus?.(`Buddy voice verified: ${normalized.stats.duration.toFixed(2)}s.`);
