@@ -30,7 +30,7 @@ for (const forbidden of [
   "createLocalChatterboxClone",
   "rahul7star",
   "spacekaren",
-  "/api/ai/voice-clone",
+  "/api/voice-clone",
   "OPENROUTERAI_API_KEY",
 ]) {
   if (clone.includes(forbidden) || runtime.includes(forbidden))
