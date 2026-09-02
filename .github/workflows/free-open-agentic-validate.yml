@@ -44,6 +44,9 @@ jobs:
       - name: Install exactly from lockfile
         run: npm ci --ignore-scripts --legacy-peer-deps
 
+      - name: Create flow contract tests
+        run: node --test tests/create-flow-contract.test.mjs
+
       - name: Type-check application
         run: npx tsc --noEmit
 
