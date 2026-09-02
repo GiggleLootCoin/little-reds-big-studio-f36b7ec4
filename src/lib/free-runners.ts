@@ -219,6 +219,16 @@ export const FREE_RUNNERS: FreeRunner[] = [
     priority: 1100,
   },
   {
+    id: "hf-wan-s2v",
+    name: "Wan 2.2 S2V — Free ZeroGPU (legacy alias)",
+    kind: "gpu",
+    description: "Compatibility alias for the Create panel's older Wan runner ID.",
+    capabilities: ["video", "video-generation", "image-to-video", "animation"],
+    url: "https://huggingface.co/spaces/kulkas2pintu/Wan2.2-14B-Fast-Preview",
+    notes: "Legacy ID retained so older UI bundles resolve to the current Wan route.",
+    priority: 1090,
+  },
+  {
     id: "cf-seedance-fast",
     name: "Cloudflare Seedance 2.0 Fast",
     kind: "gpu",
