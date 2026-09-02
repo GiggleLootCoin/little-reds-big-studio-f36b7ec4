@@ -14,7 +14,7 @@ function replaceRegex(path, pattern, replacement, label) {
 
 replaceRegex(
   pickerPath,
-  /mode:\s*"clone"\s+as const,[\s\S]{0,120}?speaker:\s*"Red",/,
+  /mode:\s*"clone"\s+as const,[\s\S]{0,300}?speaker:\s*"Red",/,
   'mode: "preset" as const,\n          speaker: "Red",',
   "saved Red selection remains in preset list",
 );
