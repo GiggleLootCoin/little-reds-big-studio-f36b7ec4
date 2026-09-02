@@ -1,5 +1,6 @@
 import type { StudioArtifact, StudioCapability, StudioJobInput } from "./studio-runtime-impl";
 import { getBuddyVoiceProfile, getBuddyVoiceSample, markBuddyCloneVerified } from "./buddy-voice";
+import { getBuiltInRedVoiceSample } from "./red-default-voice";
 import { saveVoiceSample } from "./voice-profile";
 import { normalizeAndVerifyBrowserAudio } from "./audio-artifact";
 import { saveBuddyClonePreview } from "./buddy-voice";
@@ -170,16 +171,20 @@ export async function runStudioJob(
       profile.mode === "clone" || profile.speaker === "Red" || input.speaker === "Red";
 
     if (wantsRedVoice) {
-      const savedSample = await getBuddyVoiceSample();
+      let savedSample = await getBuddyVoiceSample();
+      if (!savedSample && profile.mode === "preset" && profile.speaker === "Red") {
+        savedSample = await getBuiltInRedVoiceSample();
+        if (savedSample) onStatus?.("Using Buddy's built-in Red voice reference…");
+      }
       if (!savedSample) {
         if (profile.mode === "clone" && profile.cloneVerified) {
           throw new Error(
             "Buddy's saved voice sample is missing. Please restore the saved voice sample.",
           );
         }
-        throw new Error("Your saved Red voice sample is unavailable. Upload or restore it first.");
+        throw new Error("The built-in Red voice reference is unavailable right now.");
       }
-      const refText = profile.referenceTranscript?.trim() || DEFAULT_CLONE_TEXT;
+      const refText = profile.referenceTranscript?.trim() || "";
       onStatus?.("Speaking in Buddy's built-in Red voice…");
       const result = await runVerifiedClone(
         savedSample,
