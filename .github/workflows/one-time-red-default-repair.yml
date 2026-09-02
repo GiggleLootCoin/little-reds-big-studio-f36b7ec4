@@ -1,0 +1,78 @@
+name: One-time Red default repair
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply Red default migration
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('src/lib/buddy-voice.ts')
+          s = p.read_text()
+          old = '''const DEFAULT_PROFILE: BuddyVoiceProfile = {
+  mode: "preset",
+  speaker: "Ryan",
+  language: "English",
+  mood: "natural",
+  tone: "conversational",
+};'''
+          new = '''const RED_DEFAULT_MIGRATION_KEY = "lrbgs-red-default-v1";
+const DEFAULT_PROFILE: BuddyVoiceProfile = {
+  mode: "preset",
+  speaker: "Red",
+  language: "English",
+  mood: "natural",
+  tone: "conversational",
+};'''
+          if old not in s:
+              raise SystemExit('DEFAULT_PROFILE block not found')
+          s = s.replace(old, new, 1)
+          old_fn = '''    const selected = parsed ?? legacyProfile();
+    return {
+      ...DEFAULT_PROFILE,
+      ...selected,'''
+          new_fn = '''    const selected = parsed ?? legacyProfile();
+    const migrated = localStorage.getItem(RED_DEFAULT_MIGRATION_KEY) !== "1";
+    if (migrated) {
+      const redDefault = {
+        ...DEFAULT_PROFILE,
+        language: selected?.language || DEFAULT_PROFILE.language,
+        mood: selected?.mood || DEFAULT_PROFILE.mood,
+        tone: selected?.tone || DEFAULT_PROFILE.tone,
+      };
+      localStorage.setItem(RED_DEFAULT_MIGRATION_KEY, "1");
+      saveBuddyVoiceProfile(redDefault);
+      return redDefault;
+    }
+    return {
+      ...DEFAULT_PROFILE,
+      ...selected,'''
+          if old_fn not in s:
+              raise SystemExit('getBuddyVoiceProfile anchor not found')
+          s = s.replace(old_fn, new_fn, 1)
+          p.write_text(s)
+          PY
+      - name: Verify source contract
+        run: |
+          grep -q 'speaker: "Red"' src/lib/buddy-voice.ts
+          grep -q 'lrbgs-red-default-v1' src/lib/buddy-voice.ts
+      - name: Commit repair and remove one-time workflow
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/lib/buddy-voice.ts .github/workflows/one-time-red-default-repair.yml
+          git commit -m "Fix Red voice default migration"
+          git rm .github/workflows/one-time-red-default-repair.yml
+          git commit -m "Remove one-time Red default repair"
+          git push
