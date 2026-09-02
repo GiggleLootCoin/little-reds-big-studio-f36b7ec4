@@ -59,7 +59,7 @@ const productionResponse = await fetch(`${base}/api/voice-clone?android_smoke=1&
     refText,
     text: "Hello. This is the live Android browser playback test.",
     language: "en",
-    modelSize: "0.6B",
+    modelSize: "1.7B",
   }),
 });
 if (!productionResponse.ok) {
