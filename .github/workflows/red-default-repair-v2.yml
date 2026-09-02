@@ -1,0 +1,74 @@
+name: Red default repair v2
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Patch Red default
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const path = 'src/lib/buddy-voice.ts';
+            const wf1 = '.github/workflows/one-time-red-default-repair.yml';
+            const wf2 = '.github/workflows/red-default-repair-v2.yml';
+            const file = await github.rest.repos.getContent({ owner, repo, path, ref: 'main' });
+            let content = Buffer.from(file.data.content, 'base64').toString('utf8');
+            if (!content.includes('RED_DEFAULT_MIGRATION_KEY')) {
+              const replaced = content.replace(/const DEFAULT_PROFILE: BuddyVoiceProfile = \{[\s\S]*?\n\};/, `const RED_DEFAULT_MIGRATION_KEY = "lrbgs-red-default-v1";
+const DEFAULT_PROFILE: BuddyVoiceProfile = {
+  mode: "preset",
+  speaker: "Red",
+  language: "English",
+  mood: "natural",
+  tone: "conversational",
+};`);
+              if (replaced === content) core.setFailed('DEFAULT_PROFILE block not found');
+              content = replaced;
+            }
+            if (!content.includes('localStorage.getItem(RED_DEFAULT_MIGRATION_KEY)')) {
+              const anchor = '    const selected = parsed ?? legacyProfile();';
+              const start = content.indexOf(anchor);
+              const ret = start >= 0 ? content.indexOf('return {', start) : -1;
+              if (start < 0 || ret < 0) core.setFailed('getBuddyVoiceProfile anchor not found');
+              else {
+                const migration = `    const migrated = localStorage.getItem(RED_DEFAULT_MIGRATION_KEY) !== "1";
+    if (migrated) {
+      const redDefault = {
+        ...DEFAULT_PROFILE,
+        language: selected?.language || DEFAULT_PROFILE.language,
+        mood: selected?.mood || DEFAULT_PROFILE.mood,
+        tone: selected?.tone || DEFAULT_PROFILE.tone,
+      };
+      localStorage.setItem(RED_DEFAULT_MIGRATION_KEY, "1");
+      saveBuddyVoiceProfile(redDefault);
+      return redDefault;
+    }
+`;
+                content = content.slice(0, ret) + migration + content.slice(ret);
+              }
+            }
+            const updated = await github.rest.repos.createOrUpdateFileContents({
+              owner, repo, path,
+              message: 'Fix Red voice default migration',
+              content: Buffer.from(content, 'utf8').toString('base64'),
+              sha: file.data.sha,
+              branch: 'main'
+            });
+            for (const workflow of [wf1, wf2]) {
+              try {
+                const wf = await github.rest.repos.getContent({ owner, repo, path: workflow, ref: 'main' });
+                await github.rest.repos.deleteFile({ owner, repo, path: workflow, message: 'Remove temporary Red repair workflow', sha: wf.data.sha, branch: 'main' });
+              } catch (e) {
+                if (workflow === wf2) core.warning(`Could not remove ${workflow}: ${e.message}`);
+              }
+            }
