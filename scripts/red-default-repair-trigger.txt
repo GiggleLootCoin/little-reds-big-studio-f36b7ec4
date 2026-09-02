@@ -1,1 +1,0 @@
-Trigger Red default repair deployment v2.
