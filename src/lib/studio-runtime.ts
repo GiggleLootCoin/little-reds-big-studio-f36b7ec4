@@ -166,9 +166,18 @@ export async function runStudioJob(
     if (!text) throw new Error("Voice text is empty.");
     const language = String(input.language ?? profile.language ?? "English");
     const modelSize = input.model_size === "1.7B" ? "1.7B" : "0.6B";
+    const wantsRedVoice = profile.mode === "clone" || profile.speaker === "Red" || input.speaker === "Red";
 
-    const savedSample = await getBuddyVoiceSample();
-    if (savedSample) {
+    if (wantsRedVoice) {
+      const savedSample = await getBuddyVoiceSample();
+      if (!savedSample) {
+        if (profile.mode === "clone" && profile.cloneVerified) {
+          throw new Error(
+            "Buddy's saved voice sample is missing. Please restore the saved voice sample.",
+          );
+        }
+        throw new Error("Your saved Red voice sample is unavailable. Upload or restore it first.");
+      }
       const refText = profile.referenceTranscript?.trim() || DEFAULT_CLONE_TEXT;
       onStatus?.("Speaking in Buddy's built-in Red voice…");
       const result = await runVerifiedClone(
@@ -181,12 +190,6 @@ export async function runStudioJob(
         false,
       );
       return { capability: "tts", value: result, url: result.url, provider: result.provider };
-    }
-
-    if (profile.mode === "clone" && profile.cloneVerified) {
-      throw new Error(
-        "Buddy's saved voice sample is missing. Please restore the saved voice sample.",
-      );
     }
   }
 
