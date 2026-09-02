@@ -11,8 +11,8 @@ type Body = {
 };
 
 export const RED_VOICE_PROVIDER = "Qwen3-TTS Base reference clone";
-const PRIMARY_SPACE = "https://qwen-qwen3-tts.hf.space";
-const FALLBACK_SPACE = "https://wordercom-qwen3-tts.hf.space";
+const PRIMARY_SPACE = "https://wordercom-qwen3-tts.hf.space";
+const FALLBACK_SPACE = "https://qwen-qwen3-tts.hf.space";
 const REFERENCE_CACHE_TTL_MS = 15 * 60_000;
 const cache = new Map<string, { path: string; expires: number }>();
 
