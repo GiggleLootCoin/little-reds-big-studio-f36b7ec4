@@ -49,7 +49,15 @@ async function runVerifiedClone(
 ) {
   let result;
   try {
-    result = await createBestFreeVoiceClone(sample, refText, text, language, onStatus, modelSize, persist);
+    result = await createBestFreeVoiceClone(
+      sample,
+      refText,
+      text,
+      language,
+      onStatus,
+      modelSize,
+      persist,
+    );
   } catch (primaryError) {
     onStatus?.("Qwen voice generation was unavailable. Trying the free fallback…");
     try {
@@ -140,7 +148,15 @@ export async function runStudioJob(
         ? "Using Buddy's fast voice mode…"
         : "Building the higher-quality voice clone…",
     );
-    const result = await runVerifiedClone(sample, refText, targetText, language, onStatus, modelSize, true);
+    const result = await runVerifiedClone(
+      sample,
+      refText,
+      targetText,
+      language,
+      onStatus,
+      modelSize,
+      true,
+    );
     return { capability, value: result, url: result.url, provider: result.provider };
   }
 
