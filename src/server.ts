@@ -25,6 +25,7 @@ const HF_PROXY_PREFIX = "/api/hf-space/";
 const AI_PREFIX = "/api/ai/";
 const VOICE_CLONE_PATH = "/api/voice-clone";
 const HF_SPACE_RE = /^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/;
+const WEB_SEARCH_PATH = "/api/ai/web-search/";
 function decodeSpaceToken(token: string) {
   try {
     return decodeURIComponent(token);
@@ -356,6 +357,7 @@ async function cloudflareAI(request: Request, env: ServerEnv): Promise<Response 
     resolution?: string;
     instrumental?: boolean;
     lyricsOptimizer?: boolean;
+    searchQuery?: string;
   };
   try {
     body = await request.json();
@@ -529,11 +531,70 @@ async function cloudflareAI(request: Request, env: ServerEnv): Promise<Response 
         { headers: { "cache-control": "no-store" } },
       );
     }
+    if (capability === "web-search") {
+      const query = String(body.prompt ?? body.text ?? body.searchQuery ?? "").trim();
+      if (!query) return jsonError("Search query is required.", 400);
+      const results = await webSearch(query);
+      return Response.json(
+        { query, results, provider: "DuckDuckGo" },
+        { headers: { "cache-control": "no-store" } },
+      );
+    }
     return jsonError(`Cloudflare AI does not provide the ${capability} capability.`, 400);
   } catch (error) {
     console.error("Workers AI generation failed", error);
     return jsonError(error instanceof Error ? error.message : "Workers AI generation failed.");
   }
+}
+
+async function webSearch(
+  query: string,
+): Promise<{ title: string; url: string; snippet: string }[]> {
+  const url = new URL("https://duckduckgo.com/html/");
+  url.searchParams.set("q", query);
+  url.searchParams.set("kl", "us-en");
+  const response = await fetch(url, {
+    headers: {
+      "user-agent":
+        "Mozilla/5.0 (compatible; LittleRedsBigStudio/1.0; +https://gigglelootcoin.workers.dev)",
+      accept: "text/html",
+    },
+  });
+  if (!response.ok) return [];
+  const html = await response.text();
+  const results: { title: string; url: string; snippet: string }[] = [];
+  const resultBlockRe = /<a[^>]+class="result__a"[^>]*>([\s\S]*?)<\/a>/gi;
+  let blockMatch: RegExpExecArray | null;
+  while ((blockMatch = resultBlockRe.exec(html)) && results.length < 8) {
+    const titleHtml = blockMatch[1] || "";
+    const title = titleHtml
+      .replace(/<[^>]+>/g, " ")
+      .replace(/&amp;/g, "&")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/\s+/g, " ")
+      .trim();
+    const hrefMatch = blockMatch[0].match(/href="([^"]+)"/);
+    const href = hrefMatch ? hrefMatch[1] : "";
+    const snippet = extractSnippet(html, blockMatch.index);
+    results.push({ title, url: href, snippet });
+  }
+  return results;
+}
+
+function extractSnippet(html: string, afterIndex: number): string {
+  const start = Math.max(0, afterIndex);
+  const window = html.slice(start, start + 1400);
+  const snippet = window
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/\s+/g, " ")
+    .trim();
+  const nextResult = snippet.search(/result__a/i);
+  const usable = nextResult >= 0 ? snippet.slice(0, nextResult) : snippet;
+  return usable.replace(/\s+/g, " ").trim();
 }
 async function normalizeCatastrophicSsrResponse(response: Response): Promise<Response> {
   if (response.status < 500) return response;
@@ -563,6 +624,33 @@ export default {
       if (url.pathname === VOICE_CLONE_PATH) {
         if (request.method !== "POST") return jsonError("POST required.", 405);
         return await handleVoiceClone(request, serverEnv);
+      }
+      if (url.pathname === WEB_SEARCH_PATH) {
+        if (request.method !== "POST") return jsonError("POST required.", 405);
+        const body = await request.json().catch(() => null);
+        if (
+          !body ||
+          typeof body !== "object" ||
+          !String(
+            (body as Record<string, unknown>).prompt ??
+              (body as Record<string, unknown>).text ??
+              (body as Record<string, unknown>).searchQuery ??
+              "",
+          ).trim()
+        ) {
+          return jsonError("Search query is required.", 400);
+        }
+        const query = String(
+          (body as Record<string, unknown>).prompt ??
+            (body as Record<string, unknown>).text ??
+            (body as Record<string, unknown>).searchQuery ??
+            "",
+        ).trim();
+        const results = await webSearch(query);
+        return Response.json(
+          { query, results, provider: "DuckDuckGo" },
+          { headers: { "cache-control": "no-store" } },
+        );
       }
       const cloudflare = await cloudflareAI(request, serverEnv);
       if (cloudflare) return cloudflare;

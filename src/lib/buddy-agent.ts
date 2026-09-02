@@ -9,7 +9,8 @@ export type BuddyActionCapability =
   | "voice-swap"
   | "singing-voice-conversion"
   | "vocal-separation"
-  | "tts";
+  | "tts"
+  | "web-search";
 
 export type BuddyAgentAction = {
   capability: BuddyActionCapability;
