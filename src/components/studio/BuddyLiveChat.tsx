@@ -10,8 +10,9 @@ import {
   type MicrophoneInfo,
 } from "@/lib/microphone";
 import { BuddyVoicePicker } from "./BuddyVoicePicker";
-import { getBuddyVoiceProfile, getBuddyVoiceSample } from "@/lib/buddy-voice";
-import { getBuiltInRedVoiceSample } from "@/lib/red-default-voice";
+import { getBuddyVoiceProfile } from "@/lib/buddy-voice";
+import { isRedVoice, speakAsBuddyRed } from "@/lib/buddy-red-voice";
+
 import buddyReference from "../../../file_0000000070e8824391d24367b5f22d59.png";
 import "./BuddyVisual.css";
 
