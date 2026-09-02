@@ -290,7 +290,11 @@ export function BuddyLiveChat() {
       const mood = voiceProfile.mood || "natural";
       const tone = voiceProfile.tone || "conversational";
       const systemPrompt = `${IDENTITY} Respond in ${language}. Your current mood is ${mood}; your conversational tone is ${tone}. Keep replies compact when the user asks something simple, but give enough detail when the task needs it. Do not switch back to English unless the user asks for English.`;
-      const history = [{ role: "system", content: systemPrompt }, ...prior, { role: "user", content }];
+      const history = [
+        { role: "system", content: systemPrompt },
+        ...prior,
+        { role: "user", content },
+      ];
       const r = await runStudioJob(
           "chat",
           { prompt: clean, text: clean, messages: history, history, language, mood, tone },
@@ -353,7 +357,14 @@ export function BuddyLiveChat() {
       } else
         r = await runStudioJob(
           "tts",
-          { text, target_text: text, language: v.language || "English", speaker: v.speaker, mood: v.mood || "natural", tone: v.tone || "conversational" },
+          {
+            text,
+            target_text: text,
+            language: v.language || "English",
+            speaker: v.speaker,
+            mood: v.mood || "natural",
+            tone: v.tone || "conversational",
+          },
           setStatus,
         );
       if (!r.url) throw Error("No usable Buddy voice was returned.");
