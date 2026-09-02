@@ -14,12 +14,17 @@ const required = [
   ["Qwen clone operation", gateway, /generate_voice_clone/],
   ["Qwen reference upload", gateway, /gradio_api\/upload/],
   [
-    "Qwen fallback space",
+    "Qwen T4 primary space",
     gateway,
-    /FALLBACK_SPACE\s*=\s*"https:\/\/wordercom-qwen3-tts\.hf\.space"/,
+    /PRIMARY_SPACE\s*=\s*"https:\/\/wordercom-qwen3-tts\.hf\.space"/,
+  ],
+  [
+    "official Qwen fallback space",
+    gateway,
+    /FALLBACK_SPACE\s*=\s*"https:\/\/qwen-qwen3-tts\.hf\.space"/,
   ],
   ["provider response marker", gateway, /x-clone-provider/],
-  ["runtime production clone", runtime, /createBestFreeVoiceClone/],
+  ["runtime production clone", runtime, /runVerifiedClone/],
   ["server imports the Qwen gateway", server, /from "\.\/lib\/voice-clone-gateway"/],
   [
     "voice capability has no legacy fallback",
@@ -44,5 +49,5 @@ for (const forbidden of [
 }
 
 console.log(
-  "Buddy production voice path verified: browser reference Blob -> /api/voice-clone -> Qwen3-TTS Base clone -> verified Qwen fallback -> validated browser audio.",
+  "Buddy production voice path verified: browser reference Blob -> /api/voice-clone -> live T4 Qwen3-TTS Base clone -> official Qwen fallback -> validated browser audio.",
 );
