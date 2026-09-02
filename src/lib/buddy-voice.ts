@@ -418,17 +418,17 @@ function legacyProfile(): Partial<BuddyVoiceProfile> | null {
 function isLegacyRyanDefault(profile: Partial<BuddyVoiceProfile> | null): boolean {
   return Boolean(
     profile &&
-      profile.mode !== "clone" &&
-      profile.speaker === "Ryan" &&
-      (profile.language === undefined || profile.language === "English") &&
-      (profile.mood === undefined || profile.mood === "natural") &&
-      (profile.tone === undefined || profile.tone === "conversational") &&
-      !profile.referenceDataUrl &&
-      !profile.referenceName &&
-      !profile.referenceTranscript &&
-      !profile.cloneVerified &&
-      !profile.cloneVerifiedAt &&
-      !profile.cloneProvider,
+    profile.mode !== "clone" &&
+    profile.speaker === "Ryan" &&
+    (profile.language === undefined || profile.language === "English") &&
+    (profile.mood === undefined || profile.mood === "natural") &&
+    (profile.tone === undefined || profile.tone === "conversational") &&
+    !profile.referenceDataUrl &&
+    !profile.referenceName &&
+    !profile.referenceTranscript &&
+    !profile.cloneVerified &&
+    !profile.cloneVerifiedAt &&
+    !profile.cloneProvider,
   );
 }
 export function getBuddyVoiceProfile(): BuddyVoiceProfile {

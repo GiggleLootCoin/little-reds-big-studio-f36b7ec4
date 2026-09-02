@@ -84,11 +84,7 @@ async function runProductionRedClone(
   const blob = await response.blob();
   if (!blob.size) throw new Error("Red voice generation returned empty audio.");
   const normalized = await normalizeAndVerifyBrowserAudio(blob);
-  if (
-    normalized.stats.duration <= 0 ||
-    normalized.stats.peak <= 0 ||
-    normalized.stats.rms <= 0
-  )
+  if (normalized.stats.duration <= 0 || normalized.stats.peak <= 0 || normalized.stats.rms <= 0)
     throw new Error("Red voice generation returned silent or unusable audio.");
   return {
     url: normalized.url,

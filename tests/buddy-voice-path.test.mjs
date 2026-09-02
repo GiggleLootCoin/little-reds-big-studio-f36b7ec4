@@ -64,7 +64,10 @@ test("the Red default is explicit and migration only replaces the stale Ryan def
 });
 
 test("loading the saved sample cannot override an intentionally selected preset", () => {
-  assert.doesNotMatch(picker, /useEffect\(\(\) => \{[\s\S]*getBuddyVoiceSample\(\)[\s\S]*setProfile\(next\)/);
+  assert.doesNotMatch(
+    picker,
+    /useEffect\(\(\) => \{[\s\S]*getBuddyVoiceSample\(\)[\s\S]*setProfile\(next\)/,
+  );
   assert.match(picker, /e\.target\.value === "Red"/);
 });
 
