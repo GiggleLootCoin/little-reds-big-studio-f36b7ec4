@@ -49,10 +49,10 @@ test("production clone is Qwen-only with an independent Qwen fallback", () => {
   assert.match(gateway, /generate_voice_clone/);
   assert.match(gateway, /modelSize\?:\s*"0\.6B" \| "1\.7B"/);
   assert.match(gateway, /fileData\(path, type\)/);
-  assert.match(gateway, /body\.language \|\| "English"/);
+  assert.match(gateway, /normalizeLanguage/);
   assert.match(gateway, /!refText/);
-  assert.match(gateway, /PRIMARY_SPACE\s*=\s*"https:\/\/qwen-qwen3-tts\.hf\.space"/);
-  assert.match(gateway, /FALLBACK_SPACE\s*=\s*"https:\/\/wordercom-qwen3-tts\.hf\.space"/);
+  assert.match(gateway, /PRIMARY_SPACE\s*=\s*"https:\/\/wordercom-qwen3-tts\.hf\.space"/);
+  assert.match(gateway, /FALLBACK_SPACE\s*=\s*"https:\/\/qwen-qwen3-tts\.hf\.space"/);
   assert.match(gateway, /x-clone-provider/);
   assert.match(gateway, /qwen3-reference-clone/);
   assert.doesNotMatch(gateway, /CHATTERBOX_SPACE_URL/);
