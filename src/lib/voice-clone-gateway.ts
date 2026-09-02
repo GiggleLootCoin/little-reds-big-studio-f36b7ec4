@@ -263,8 +263,6 @@ async function cloneWithReferenceRefresh(
   try {
     return await clone(path);
   } catch (firstError) {
-    // Gradio upload paths can disappear when a Space restarts while our 15-minute
-    // cache is still warm. Refresh the exact same reference once before failing over.
     if (!audioBase64) throw firstError;
     path = await referencePath(referenceId, audioBase64, audioType, space, env, true);
     return await clone(path);
@@ -288,11 +286,6 @@ export async function handleVoiceClone(request: Request, env: Env): Promise<Resp
     return errorResponse("The clone request was not valid JSON.", 400);
   }
   if (!body.referenceId?.trim()) return errorResponse("A voice reference ID is required.", 400);
-  if (!body.refText?.trim())
-    return errorResponse(
-      "The exact transcript of the reference recording is required for high-quality cloning.",
-      400,
-    );
   if (!body.text?.trim()) return errorResponse("Target text is required.", 400);
 
   const primary = String(env.QWEN_TTS_SPACE_URL || "https://qwen-qwen3-tts.hf.space").replace(
@@ -310,7 +303,8 @@ export async function handleVoiceClone(request: Request, env: Env): Promise<Resp
   const language = String(body.language || "English");
   const requested = body.modelSize === "0.6B" ? "0.6B" : "1.7B";
   const referenceId = body.referenceId.trim();
-  const refText = body.refText.trim();
+  const refText = body.refText?.trim() || "";
+  const xvectorOnly = !refText;
   const failures: string[] = [];
 
   try {
@@ -326,10 +320,10 @@ export async function handleVoiceClone(request: Request, env: Env): Promise<Resp
         requested,
         env,
         (path) =>
-          officialClone(primary, path, audioType, refText, text, language, requested, env, false),
+          officialClone(primary, path, audioType, refText, text, language, requested, env, xvectorOnly),
       ),
       env,
-      `Qwen3-TTS ${requested} Base full-reference`,
+      `Qwen3-TTS ${requested} Base ${xvectorOnly ? "speaker-embedding" : "full-reference"}`,
     );
   } catch (error) {
     failures.push(error instanceof Error ? error.message : String(error));
@@ -348,10 +342,10 @@ export async function handleVoiceClone(request: Request, env: Env): Promise<Resp
         requested,
         env,
         (path) =>
-          officialClone(fallback, path, audioType, refText, text, language, requested, env, false),
+          officialClone(fallback, path, audioType, refText, text, language, requested, env, xvectorOnly),
       ),
       env,
-      `Qwen3-TTS fallback ${requested} Base`,
+      `Qwen3-TTS fallback ${requested} Base ${xvectorOnly ? "speaker-embedding" : "full-reference"}`,
     );
   } catch (error) {
     failures.push(error instanceof Error ? error.message : String(error));
