@@ -66,7 +66,6 @@ async function runVerifiedClone(
     };
   }
 
-
   let result;
   try {
     result = await createBestFreeVoiceClone(

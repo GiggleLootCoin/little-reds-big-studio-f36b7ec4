@@ -334,7 +334,7 @@ export function BuddyLiveChat() {
     setBuddyStatus("working", { message: "Buddy is speaking…" });
     const v = getBuddyVoiceProfile();
     try {
-      let r: { url?: string };
+      let r: { url?: string | null };
       if (isRedVoice(v)) {
         // Default Red never goes through the generic free-provider pool: those
         // spaces (Chatterbox Multilingual / ResembleAI) can answer with their
