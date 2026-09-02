@@ -17,8 +17,10 @@ test("Red personal voice is a visible preset choice and remains clone-routed", (
 });
 
 test("saved Red voice is selected without hiding the preset voice list", () => {
-  assert.match(picker, /speaker: "Red"/);
-  assert.match(picker, /mode: "preset" as const/);
+  assert.match(voice, /speaker: "Red"/);
+  assert.match(picker, /onChange=\{\(e\) =>/);
+  assert.match(picker, /e\.target\.value === "Red"/);
+  assert.match(picker, /mode: "preset"/);
 });
 
 test("preset voices are not silently replaced by a saved Red sample", () => {
@@ -50,4 +52,10 @@ test("supported language catalog is available to non-English users", () => {
   assert.match(voice, /German/);
   assert.match(voice, /French/);
   assert.match(voice, /Spanish/);
+});
+
+test("Red default migration only replaces the stale legacy Ryan default", () => {
+  assert.match(voice, /RED_DEFAULT_MIGRATION_KEY = "lrbgs-red-default-v2"/);
+  assert.match(voice, /isLegacyRyanDefault/);
+  assert.match(voice, /selected == null \|\| isLegacyRyanDefault\(selected\)/);
 });
