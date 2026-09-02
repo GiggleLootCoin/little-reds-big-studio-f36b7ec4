@@ -49,23 +49,28 @@ const stt = await sttResponse.json();
 const refText = String(stt.text || stt.transcription || "").trim();
 if (!refText) throw new Error("production STT returned no transcript for the Red reference");
 
-const productionResponse = await fetch(`${base}/api/voice-clone?android_smoke=1&ts=${Date.now()}`, {
-  method: "POST",
-  headers: { "content-type": "application/json" },
-  body: JSON.stringify({
-    referenceId,
-    audioBase64,
-    audioType: "audio/wav",
-    refText,
-    text: "Hello. This is the live Android browser playback test.",
-    language: "en",
-    modelSize: "1.7B",
-  }),
-});
+async function cloneRequest(extra = {}) {
+  return fetch(`${base}/api/voice-clone?android_smoke=1&ts=${Date.now()}`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      referenceId,
+      audioBase64,
+      audioType: "audio/wav",
+      text: "Hello. This is the live Android browser playback test.",
+      language: "en",
+      modelSize: "1.7B",
+      ...extra,
+    }),
+  });
+}
+
+// Explicit transcript path: keeps the high-quality Qwen reference-conditioned route covered.
+const productionResponse = await cloneRequest({ refText });
 if (!productionResponse.ok) {
   const detail = await productionResponse.text().catch(() => "");
   throw new Error(
-    `production clone returned HTTP ${productionResponse.status}: ${detail.slice(0, 300)}`,
+    `production transcript clone returned HTTP ${productionResponse.status}: ${detail.slice(0, 300)}`,
   );
 }
 const contentType = productionResponse.headers.get("content-type") || "";
@@ -73,10 +78,30 @@ if (
   !/^audio\/(wav|wave)(?:;|$)/i.test(contentType) &&
   !/^application\/octet-stream(?:;|$)/i.test(contentType)
 )
-  throw new Error(`unexpected production MIME: ${contentType}`);
+  throw new Error(`unexpected production transcript-clone MIME: ${contentType}`);
 const productionBytes = Buffer.from(await productionResponse.arrayBuffer());
 if (productionBytes.byteLength <= 4096)
-  throw new Error(`returned audio is too small: ${productionBytes.byteLength} bytes`);
+  throw new Error(`returned transcript-clone audio is too small: ${productionBytes.byteLength} bytes`);
+
+// Default Buddy/Red path: deliberately omit refText so the exact no-transcript path
+// used by the app is exercised. This must return real reference-conditioned audio,
+// not the old canned Chatterbox demo phrase and not a silent failure.
+const defaultResponse = await cloneRequest({});
+if (!defaultResponse.ok) {
+  const detail = await defaultResponse.text().catch(() => "");
+  throw new Error(
+    `production default Red clone returned HTTP ${defaultResponse.status}: ${detail.slice(0, 300)}`,
+  );
+}
+const defaultContentType = defaultResponse.headers.get("content-type") || "";
+if (
+  !/^audio\/(wav|wave)(?:;|$)/i.test(defaultContentType) &&
+  !/^application\/octet-stream(?:;|$)/i.test(defaultContentType)
+)
+  throw new Error(`unexpected production default-Red MIME: ${defaultContentType}`);
+const defaultBytes = Buffer.from(await defaultResponse.arrayBuffer());
+if (defaultBytes.byteLength <= 4096)
+  throw new Error(`returned default-Red audio is too small: ${defaultBytes.byteLength} bytes`);
 
 const browser = await chromium.launch({
   headless: true,
@@ -176,11 +201,18 @@ try {
         URL.revokeObjectURL(url);
       }
     },
-    { productionBytes: [...productionBytes], contentType },
+    { productionBytes: [...defaultBytes], contentType: defaultContentType },
   );
   console.log(
     JSON.stringify(
-      { status: "ok", referenceTranscript: refText, androidPlayback: playback },
+      {
+        status: "ok",
+        referenceTranscript: refText,
+        transcriptCloneBytes: productionBytes.byteLength,
+        defaultRedCloneBytes: defaultBytes.byteLength,
+        defaultRedProvider: defaultResponse.headers.get("x-clone-provider") || "unknown",
+        androidPlayback: playback,
+      },
       null,
       2,
     ),
