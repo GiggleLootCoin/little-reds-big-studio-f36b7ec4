@@ -1,0 +1,104 @@
+name: Red default repair v2
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Patch Red default, clean temporary repair files, and trigger deploy
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const get = async (path) => {
+              const r = await github.rest.repos.getContent({ owner, repo, path, ref: 'main' });
+              return r.data;
+            };
+            const put = async (path, content, sha, message) => {
+              await github.rest.repos.createOrUpdateFileContents({
+                owner, repo, path, message,
+                content: Buffer.from(content, 'utf8').toString('base64'),
+                sha, branch: 'main'
+              });
+            };
+
+            // Patch the actual source of truth. Existing language/mood/tone survive;
+            // only the first migration changes the old stored voice choice to Red.
+            const voice = await get('src/lib/buddy-voice.ts');
+            let voiceText = Buffer.from(voice.content, 'base64').toString('utf8');
+            if (!voiceText.includes('RED_DEFAULT_MIGRATION_KEY')) {
+              const oldDefault = /const DEFAULT_PROFILE: BuddyVoiceProfile = \{[\s\S]*?\n\};/;
+              const replacement = `const RED_DEFAULT_MIGRATION_KEY = "lrbgs-red-default-v1";
+const DEFAULT_PROFILE: BuddyVoiceProfile = {
+  mode: "preset",
+  speaker: "Red",
+  language: "English",
+  mood: "natural",
+  tone: "conversational",
+};`;
+              if (!oldDefault.test(voiceText)) core.setFailed('DEFAULT_PROFILE block not found');
+              voiceText = voiceText.replace(oldDefault, replacement);
+            }
+            if (!voiceText.includes('localStorage.getItem(RED_DEFAULT_MIGRATION_KEY)')) {
+              const anchor = '    const selected = parsed ?? legacyProfile();';
+              const start = voiceText.indexOf(anchor);
+              const ret = start >= 0 ? voiceText.indexOf('return {', start) : -1;
+              if (start < 0 || ret < 0) core.setFailed('getBuddyVoiceProfile anchor not found');
+              else {
+                const migration = `    const migrated = localStorage.getItem(RED_DEFAULT_MIGRATION_KEY) !== "1";
+    if (migrated) {
+      const redDefault = {
+        ...DEFAULT_PROFILE,
+        language: selected?.language || DEFAULT_PROFILE.language,
+        mood: selected?.mood || DEFAULT_PROFILE.mood,
+        tone: selected?.tone || DEFAULT_PROFILE.tone,
+      };
+      localStorage.setItem(RED_DEFAULT_MIGRATION_KEY, "1");
+      saveBuddyVoiceProfile(redDefault);
+      return redDefault;
+    }
+`;
+                voiceText = voiceText.slice(0, ret) + migration + voiceText.slice(ret);
+              }
+            }
+            if (voiceText !== Buffer.from(voice.content, 'base64').toString('utf8')) {
+              await put('src/lib/buddy-voice.ts', voiceText, voice.sha, 'Make Red the default Buddy voice');
+            }
+
+            // Remove the temporary prebuild workaround if present; source now owns the fix.
+            try {
+              const pkg = await get('package.json');
+              const pkgText = Buffer.from(pkg.content, 'base64').toString('utf8');
+              const json = JSON.parse(pkgText);
+              if (json.scripts?.prebuild) {
+                delete json.scripts.prebuild;
+                const next = JSON.stringify(json, null, 2) + '\n';
+                await put('package.json', next, pkg.sha, 'Remove temporary Red default build workaround');
+              }
+            } catch (e) { core.warning(`package.json cleanup skipped: ${e.message}`); }
+
+            // Remove temporary repair artifacts. These commits also trigger the real deploy workflow.
+            for (const path of [
+              '.github/workflows/one-time-red-default-repair.yml',
+              'scripts/red-default-repair-trigger.txt',
+              'scripts/ensure-red-default.mjs',
+              '.github/workflows/red-default-repair-v2.yml'
+            ]) {
+              try {
+                const f = await get(path);
+                await github.rest.repos.deleteFile({
+                  owner, repo, path,
+                  message: 'Remove temporary Red repair machinery',
+                  sha: f.sha,
+                  branch: 'main'
+                });
+              } catch (e) { core.warning(`cleanup skipped for ${path}: ${e.message}`); }
+            }
