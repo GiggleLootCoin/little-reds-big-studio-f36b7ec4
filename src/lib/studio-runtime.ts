@@ -39,6 +39,67 @@ function cloneProfile() {
   return getBuddyVoiceProfile();
 }
 
+async function blobToBase64(blob: Blob) {
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  let binary = "";
+  const chunkSize = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunkSize)
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+  return btoa(binary);
+}
+
+async function runProductionRedClone(
+  sample: Blob,
+  refText: string,
+  text: string,
+  language: string,
+  onStatus?: (s: string) => void,
+) {
+  onStatus?.("Generating Buddy's Red voice…");
+  const bytes = new Uint8Array(await sample.arrayBuffer());
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer,
+  );
+  const referenceId = Array.from(new Uint8Array(digest), (byte) =>
+    byte.toString(16).padStart(2, "0"),
+  ).join("");
+  const response = await fetch("/api/ai/voice-clone", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      referenceId,
+      audioBase64: await blobToBase64(sample),
+      audioType: sample.type || "audio/wav",
+      text: text.trim().slice(0, 220),
+      language,
+      modelSize: "0.6B",
+      refText: refText.trim(),
+    }),
+  });
+  if (!response.ok) {
+    const detail = (await response.text().catch(() => "")).slice(0, 300);
+    throw new Error(`Red voice generation failed (${response.status}). ${detail}`.trim());
+  }
+  const blob = await response.blob();
+  if (!blob.size) throw new Error("Red voice generation returned empty audio.");
+  const normalized = await normalizeAndVerifyBrowserAudio(blob);
+  if (
+    normalized.stats.duration <= 0 ||
+    normalized.stats.peak <= 0 ||
+    normalized.stats.rms <= 0
+  )
+    throw new Error("Red voice generation returned silent or unusable audio.");
+  return {
+    url: normalized.url,
+    provider: response.headers.get("x-clone-provider") || "Production Red reference clone",
+    verification: "Production Red reference clone + browser audio decode + non-silent verification",
+    duration: normalized.stats.duration,
+    peak: normalized.stats.peak,
+    rms: normalized.stats.rms,
+  };
+}
+
 async function runVerifiedClone(
   sample: Blob,
   refText: string,
@@ -48,39 +109,16 @@ async function runVerifiedClone(
   modelSize: "0.6B" | "1.7B" = "1.7B",
   persist = true,
 ) {
-  // Buddy's default Red voice has no transcript. Do not send this latency-sensitive
-  // path through Qwen x-vector mode: that provider has been returning no completed
-  // audio for this exact request. Use the multilingual V3 reference-voice route
-  // directly instead, and never allow a generic/demo voice fallback.
-  if (cloneProfile().speaker === "Red" && !refText.trim()) {
-    onStatus?.("Using Buddy's fast Red voice path…");
-    const runtime = await import("./studio-runtime-impl");
-    const direct = await runtime.runStudioJob(
-      "voice-clone",
-      {
-        refAudio: sample,
-        referenceAudio: sample,
-        audio: sample,
-        refText: "",
-        referenceTranscript: "",
-        target_text: text,
-        text,
-        language,
-        model_size: modelSize,
-        // Only the multilingual V3 clone route is allowed for default Red.
-        _skipProviders: ["hf-qwen3-tts", "hf-chatterbox"],
-      },
-      onStatus,
-    );
-    if (!direct.url) throw new Error("Red voice engine returned no playable audio.");
-    return {
-      url: direct.url,
-      provider: direct.provider,
-      verification: "Red default multilingual reference-voice path",
-      duration: 0,
-      peak: 1,
-      rms: 1,
-    };
+  if (cloneProfile().speaker === "Red") {
+    const result = await runProductionRedClone(sample, refText, text, language, onStatus);
+    if (persist) {
+      await saveVoiceSample(sample, refText);
+      await markBuddyCloneVerified(
+        `${result.provider}${result.verification ? ` — ${result.verification}` : ""}`,
+      );
+      await saveBuddyClonePreview(sample, result.provider);
+    }
+    return result;
   }
 
   let result;
@@ -95,10 +133,7 @@ async function runVerifiedClone(
       persist,
     );
   } catch (primaryError) {
-    // The default Red path must never fall through to a generic/demo voice.
-    if (cloneProfile().speaker === "Red" && !refText.trim()) throw primaryError;
-
-    onStatus?.("Qwen voice generation was unavailable. Trying the free fallback…");
+    onStatus?.("Primary voice generation was unavailable. Trying the free fallback…");
     try {
       const runtime = await import("./studio-runtime-impl");
       const fallback = await runtime.runStudioJob(
@@ -135,7 +170,7 @@ async function runVerifiedClone(
       };
     } catch (fallbackError) {
       throw new Error(
-        `Voice generation failed on Qwen and the free fallback. ${fallbackError instanceof Error ? fallbackError.message : String(primaryError)}`,
+        `Voice generation failed on the primary and free fallback. ${fallbackError instanceof Error ? fallbackError.message : String(primaryError)}`,
       );
     }
   }
@@ -175,18 +210,14 @@ export async function runStudioJob(
         input.referenceText ??
         input.referenceTranscript ??
         cloneProfile().referenceTranscript ??
-        DEFAULT_CLONE_TEXT,
+        "",
     ).trim();
     const targetText =
       String(input.target_text ?? input.text ?? input.prompt ?? DEFAULT_CLONE_TEXT).trim() ||
       DEFAULT_CLONE_TEXT;
     const language = String(input.language ?? cloneProfile().language ?? "English");
     const modelSize = input.model_size === "1.7B" ? "1.7B" : "0.6B";
-    onStatus?.(
-      modelSize === "0.6B"
-        ? "Using Buddy's fast voice mode…"
-        : "Building the higher-quality voice clone…",
-    );
+    onStatus?.("Using Buddy's Red voice mode…");
     const result = await runVerifiedClone(
       sample,
       refText,
@@ -222,7 +253,7 @@ export async function runStudioJob(
         throw new Error("The built-in Red voice reference is unavailable right now.");
       }
       const refText = profile.referenceTranscript?.trim() || "";
-      onStatus?.("Speaking in Buddy's built-in Red voice…");
+      onStatus?.("Speaking in Buddy's Red voice…");
       const result = await runVerifiedClone(
         savedSample,
         refText,
