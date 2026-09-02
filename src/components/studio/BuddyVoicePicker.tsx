@@ -285,7 +285,7 @@ export function BuddyVoicePicker() {
           value={profile.speaker}
           onChange={(e) =>
             e.target.value === "Red"
-              ? update({ mode: "clone", speaker: "Red" })
+              ? update({ mode: "preset", speaker: "Red" })
               : update({ mode: "preset", speaker: e.target.value })
           }
           className="mt-2 w-full rounded-xl border border-border bg-background/70 px-3 py-2 text-xs"
