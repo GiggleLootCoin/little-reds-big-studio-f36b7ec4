@@ -35,7 +35,9 @@ function languageName(value: unknown): string {
   return map[raw.toLowerCase()] || raw;
 }
 function languageCode(value: unknown): string {
-  const raw = String(value || "English").trim().toLowerCase();
+  const raw = String(value || "English")
+    .trim()
+    .toLowerCase();
   const map: Record<string, string> = {
     english: "en",
     spanish: "es",

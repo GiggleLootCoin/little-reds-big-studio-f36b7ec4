@@ -81,7 +81,9 @@ if (
   throw new Error(`unexpected production transcript-clone MIME: ${contentType}`);
 const productionBytes = Buffer.from(await productionResponse.arrayBuffer());
 if (productionBytes.byteLength <= 4096)
-  throw new Error(`returned transcript-clone audio is too small: ${productionBytes.byteLength} bytes`);
+  throw new Error(
+    `returned transcript-clone audio is too small: ${productionBytes.byteLength} bytes`,
+  );
 
 // Default Buddy/Red path: deliberately omit refText so the exact no-transcript path
 // used by the app is exercised. This must return real reference-conditioned audio,
