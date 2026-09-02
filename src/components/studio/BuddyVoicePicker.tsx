@@ -55,13 +55,20 @@ export function BuddyVoicePicker() {
       if (!active || !sample) return;
       const current = getBuddyVoiceProfile();
       if (current.mode === "preset" || current.speaker !== "Red") {
-        const next = { ...current, mode: "clone" as const, speaker: "Red", cloneVerified: current.cloneVerified };
+        const next = {
+          ...current,
+          mode: "clone" as const,
+          speaker: "Red",
+          cloneVerified: current.cloneVerified,
+        };
         saveBuddyVoiceProfile(next);
         setProfile(next);
         setStatus("Red — My Voice selected. Buddy will use your saved voice clone.");
       }
     });
-    return () => { active = false; };
+    return () => {
+      active = false;
+    };
   }, []);
 
   const setGeneratedAudio = (url: string) => {
@@ -283,17 +290,19 @@ export function BuddyVoicePicker() {
           }
           className="mt-2 w-full rounded-xl border border-border bg-background/70 px-3 py-2 text-xs"
         >
-          {["Red — Your Voice", "Buddy Originals", "Aura Studio — 40 distinct English voices"].map((family) => (
-            <optgroup key={family} label={family}>
-              {allVoices
-                .filter((v) => v.family === family)
-                .map((voice) => (
-                  <option key={voice.id} value={voice.id}>
-                    {voice.label} — {voice.note}
-                  </option>
-                ))}
-            </optgroup>
-          ))}
+          {["Red — Your Voice", "Buddy Originals", "Aura Studio — 40 distinct English voices"].map(
+            (family) => (
+              <optgroup key={family} label={family}>
+                {allVoices
+                  .filter((v) => v.family === family)
+                  .map((voice) => (
+                    <option key={voice.id} value={voice.id}>
+                      {voice.label} — {voice.note}
+                    </option>
+                  ))}
+              </optgroup>
+            ),
+          )}
         </select>
       ) : (
         <div className="mt-2 rounded-xl border border-primary/30 bg-background/60 p-3">
