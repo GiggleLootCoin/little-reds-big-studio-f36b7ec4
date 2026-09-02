@@ -310,7 +310,7 @@ export async function handleVoiceClone(request: Request, env: Env): Promise<Resp
     env.QWEN_TTS_FALLBACK_SPACE_URL || "https://wordercom-qwen3-tts.hf.space",
   ).replace(/\/$/, "");
   const chatterbox = String(
-    env.CHATTERBOX_SPACE_URL || "https://ResembleAI-Chatterbox-Multilingual-TTS-V3.hf.space",
+    env.CHATTERBOX_SPACE_URL || "https://resembleai-chatterbox-multilingual-tts-v3.hf.space",
   ).replace(/\/$/, "");
   const audioType = String(body.audioType || "audio/wav");
   const text = body.text.trim().replace(/\s+/g, " ").slice(0, 220);
@@ -320,6 +320,36 @@ export async function handleVoiceClone(request: Request, env: Env): Promise<Resp
   const refText = body.refText?.trim() || "";
   const xvectorOnly = !refText;
   const failures: string[] = [];
+
+  const tryChatterboxV3 = async () =>
+    downloadAudio(
+      await cloneWithReferenceRefresh(
+        chatterbox,
+        referenceId,
+        body.audioBase64,
+        audioType,
+        refText,
+        text,
+        language,
+        requested,
+        env,
+        (path) => chatterboxClone(chatterbox, path, audioType, text, language, env),
+      ),
+      env,
+      "Chatterbox Multilingual TTS V3 reference clone",
+    );
+
+  // The default Red path has no reference transcript. Start with the current
+  // Chatterbox Multilingual V3 Space, which accepts the reference clip directly
+  // and avoids the two known-to-fail Qwen x-vector attempts. This is the fast
+  // conversational path. Explicit transcript-based clones still prefer Qwen.
+  if (xvectorOnly) {
+    try {
+      return await tryChatterboxV3();
+    } catch (error) {
+      failures.push(error instanceof Error ? error.message : String(error));
+    }
+  }
 
   try {
     return await downloadAudio(
@@ -385,29 +415,14 @@ export async function handleVoiceClone(request: Request, env: Env): Promise<Resp
     failures.push(error instanceof Error ? error.message : String(error));
   }
 
-  // When no reference transcript is available (the default Red path), use the
-  // current Chatterbox Multilingual V3 Space rather than the legacy Chatterbox
-  // demo endpoint. V3 accepts the reference clip directly, does not need a
-  // transcript, and avoids the known canned-demo-phrase behavior.
-  try {
-    return await downloadAudio(
-      await cloneWithReferenceRefresh(
-        chatterbox,
-        referenceId,
-        body.audioBase64,
-        audioType,
-        refText,
-        text,
-        language,
-        requested,
-        env,
-        (path) => chatterboxClone(chatterbox, path, audioType, text, language, env),
-      ),
-      env,
-      "Chatterbox Multilingual TTS V3 reference clone",
-    );
-  } catch (error) {
-    failures.push(error instanceof Error ? error.message : String(error));
+  // If V3 was not the first path (explicit transcript mode), it remains the
+  // independent last resort. For the default path it was already attempted.
+  if (!xvectorOnly) {
+    try {
+      return await tryChatterboxV3();
+    } catch (error) {
+      failures.push(error instanceof Error ? error.message : String(error));
+    }
   }
 
   if (failures.every((message) => message === "REFERENCE_REFRESH_REQUIRED"))
