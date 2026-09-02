@@ -65,9 +65,7 @@ async function referencePath(
 }
 
 export type QwenSSEParseResult =
-  | { kind: "audio"; payload: unknown[] }
-  | { kind: "error"; message: string }
-  | { kind: "none" };
+  { kind: "audio"; payload: unknown[] } | { kind: "error"; message: string } | { kind: "none" };
 
 export function parseQwenSSE(stream: string): QwenSSEParseResult {
   let event = "";
@@ -80,7 +78,10 @@ export function parseQwenSSE(stream: string): QwenSSEParseResult {
     if (event === "error" || event === "cancelled") {
       try {
         const parsed = JSON.parse(raw) as unknown;
-        result = { kind: "error", message: typeof parsed === "string" ? parsed : JSON.stringify(parsed) };
+        result = {
+          kind: "error",
+          message: typeof parsed === "string" ? parsed : JSON.stringify(parsed),
+        };
       } catch {
         result = { kind: "error", message: raw };
       }
@@ -114,7 +115,12 @@ export function parseQwenSSE(stream: string): QwenSSEParseResult {
   return result;
 }
 
-async function startAndPoll(space: string, endpoint: string, data: unknown[], env: Env): Promise<unknown[]> {
+async function startAndPoll(
+  space: string,
+  endpoint: string,
+  data: unknown[],
+  env: Env,
+): Promise<unknown[]> {
   const start = await fetch(`${space}/gradio_api/call/${endpoint}`, {
     method: "POST",
     headers: { ...authHeaders(env), "content-type": "application/json" },
@@ -147,7 +153,8 @@ function wavFromTuple(value: unknown): ArrayBuffer | null {
   if (!Array.isArray(value) || value.length < 2 || typeof value[0] !== "number") return null;
   const sampleRate = value[0];
   const samples = value[1];
-  if (!Number.isFinite(sampleRate) || sampleRate <= 0 || !Array.isArray(samples) || !samples.length) return null;
+  if (!Number.isFinite(sampleRate) || sampleRate <= 0 || !Array.isArray(samples) || !samples.length)
+    return null;
   const pcm = new Int16Array(samples.length);
   for (let i = 0; i < samples.length; i++) {
     const n = Math.max(-1, Math.min(1, Number(samples[i]) || 0));
@@ -155,7 +162,8 @@ function wavFromTuple(value: unknown): ArrayBuffer | null {
   }
   const buffer = new ArrayBuffer(44 + pcm.byteLength);
   const view = new DataView(buffer);
-  const write = (offset: number, text: string) => [...text].forEach((c, i) => view.setUint8(offset + i, c.charCodeAt(0)));
+  const write = (offset: number, text: string) =>
+    [...text].forEach((c, i) => view.setUint8(offset + i, c.charCodeAt(0)));
   write(0, "RIFF");
   view.setUint32(4, 36 + pcm.byteLength, true);
   write(8, "WAVE");
@@ -175,7 +183,8 @@ function wavFromTuple(value: unknown): ArrayBuffer | null {
 
 async function downloadAudio(url: string, env: Env, provider: string): Promise<Response> {
   const response = await fetch(url, { headers: authHeaders(env) });
-  if (!response.ok || !response.body) throw new Error(`Generated audio download failed (${response.status}).`);
+  if (!response.ok || !response.body)
+    throw new Error(`Generated audio download failed (${response.status}).`);
   const headers = new Headers(response.headers);
   headers.set("cache-control", "no-store");
   headers.set("x-clone-provider", provider);
@@ -183,18 +192,19 @@ async function downloadAudio(url: string, env: Env, provider: string): Promise<R
   return new Response(response.body, { status: 200, headers });
 }
 
-async function turboClone(space: string, path: string, audioType: string, text: string, env: Env): Promise<Response> {
-  const payload = await startAndPoll(space, "generate", [
-    text,
-    fileData(path, audioType),
-    0.8,
-    0,
-    0,
-    0.95,
-    1000,
-    1.2,
-    true,
-  ], env);
+async function turboClone(
+  space: string,
+  path: string,
+  audioType: string,
+  text: string,
+  env: Env,
+): Promise<Response> {
+  const payload = await startAndPoll(
+    space,
+    "generate",
+    [text, fileData(path, audioType), 0.8, 0, 0, 0.95, 1000, 1.2, true],
+    env,
+  );
   const wav = wavFromTuple(payload[0]);
   if (wav) {
     return new Response(wav, {
@@ -207,9 +217,20 @@ async function turboClone(space: string, path: string, audioType: string, text: 
     });
   }
   const first = payload[0];
-  const url = typeof first === "string" ? first : first && typeof first === "object" && typeof (first as Record<string, unknown>).url === "string" ? String((first as Record<string, unknown>).url) : null;
+  const url =
+    typeof first === "string"
+      ? first
+      : first &&
+          typeof first === "object" &&
+          typeof (first as Record<string, unknown>).url === "string"
+        ? String((first as Record<string, unknown>).url)
+        : null;
   if (!url) throw new Error("Chatterbox Turbo returned no playable audio artifact.");
-  return downloadAudio(url.startsWith("http") ? url : `${space}${url}`, env, "Chatterbox Turbo reference clone");
+  return downloadAudio(
+    url.startsWith("http") ? url : `${space}${url}`,
+    env,
+    "Chatterbox Turbo reference clone",
+  );
 }
 
 async function officialClone(
@@ -231,8 +252,10 @@ async function officialClone(
   if (typeof first === "string") return first.startsWith("http") ? first : `${space}${first}`;
   if (first && typeof first === "object") {
     const item = first as Record<string, unknown>;
-    if (typeof item.url === "string") return item.url.startsWith("http") ? item.url : `${space}${item.url}`;
-    if (typeof item.path === "string") return `${space}/gradio_api/file=${item.path.replace(/^\//, "")}`;
+    if (typeof item.url === "string")
+      return item.url.startsWith("http") ? item.url : `${space}${item.url}`;
+    if (typeof item.path === "string")
+      return `${space}/gradio_api/file=${item.path.replace(/^\//, "")}`;
   }
   throw new Error("Qwen returned no playable cloned audio.");
 }
@@ -258,19 +281,41 @@ let envGlobal: Env = {};
 
 export async function handleVoiceClone(request: Request, env: Env): Promise<Response> {
   envGlobal = env;
-  if (request.method !== "POST") return Response.json({ ok: false, error: "POST required." }, { status: 405 });
-  let body: { referenceId?: string; audioBase64?: string; audioType?: string; refText?: string; text?: string; language?: string; modelSize?: "0.6B" | "1.7B" };
+  if (request.method !== "POST")
+    return Response.json({ ok: false, error: "POST required." }, { status: 405 });
+  let body: {
+    referenceId?: string;
+    audioBase64?: string;
+    audioType?: string;
+    refText?: string;
+    text?: string;
+    language?: string;
+    modelSize?: "0.6B" | "1.7B";
+  };
   try {
     body = (await request.json()) as typeof body;
   } catch {
-    return Response.json({ ok: false, error: "The clone request was not valid JSON." }, { status: 400 });
+    return Response.json(
+      { ok: false, error: "The clone request was not valid JSON." },
+      { status: 400 },
+    );
   }
-  if (!body.referenceId?.trim()) return Response.json({ ok: false, error: "A voice reference ID is required." }, { status: 400 });
-  if (!body.text?.trim()) return Response.json({ ok: false, error: "Target text is required." }, { status: 400 });
+  if (!body.referenceId?.trim())
+    return Response.json(
+      { ok: false, error: "A voice reference ID is required." },
+      { status: 400 },
+    );
+  if (!body.text?.trim())
+    return Response.json({ ok: false, error: "Target text is required." }, { status: 400 });
 
   const turbo = "https://oicui-chatterbox-turbo-demo.hf.space";
-  const primary = String(env.QWEN_TTS_SPACE_URL || "https://qwen-qwen3-tts.hf.space").replace(/\/$/, "");
-  const fallback = String(env.QWEN_TTS_FALLBACK_SPACE_URL || "https://wordercom-qwen3-tts.hf.space").replace(/\/$/, "");
+  const primary = String(env.QWEN_TTS_SPACE_URL || "https://qwen-qwen3-tts.hf.space").replace(
+    /\/$/,
+    "",
+  );
+  const fallback = String(
+    env.QWEN_TTS_FALLBACK_SPACE_URL || "https://wordercom-qwen3-tts.hf.space",
+  ).replace(/\/$/, "");
   const audioType = String(body.audioType || "audio/wav");
   const text = body.text.trim().replace(/\s+/g, " ").slice(0, 220);
   const referenceId = body.referenceId.trim();
@@ -294,17 +339,33 @@ export async function handleVoiceClone(request: Request, env: Env): Promise<Resp
     }
   }
 
-  for (const [label, space] of [["Qwen", primary], ["Qwen fallback", fallback]] as const) {
+  for (const [label, space] of [
+    ["Qwen", primary],
+    ["Qwen fallback", fallback],
+  ] as const) {
     try {
       const result = await cloneWithRefresh(
         space,
         referenceId,
         body.audioBase64,
         audioType,
-        (path) => officialClone(space, path, audioType, refText, text, String(body.language || "English"), env),
+        (path) =>
+          officialClone(
+            space,
+            path,
+            audioType,
+            refText,
+            text,
+            String(body.language || "English"),
+            env,
+          ),
       );
       if (result instanceof Response) return result;
-      return downloadAudio(result, env, `${label} ${xvectorOnly ? "speaker-embedding" : "full-reference"} clone`);
+      return downloadAudio(
+        result,
+        env,
+        `${label} ${xvectorOnly ? "speaker-embedding" : "full-reference"} clone`,
+      );
     } catch (error) {
       failures.push(`${label}: ${error instanceof Error ? error.message : String(error)}`);
     }
@@ -326,9 +387,15 @@ export async function handleVoiceClone(request: Request, env: Env): Promise<Resp
     }
   }
 
-  const refreshOnly = failures.length > 0 && failures.every((x) => x.includes("REFERENCE_REFRESH_REQUIRED"));
+  const refreshOnly =
+    failures.length > 0 && failures.every((x) => x.includes("REFERENCE_REFRESH_REQUIRED"));
   return Response.json(
-    { ok: false, error: refreshOnly ? "The saved voice reference expired from the warm server. Please retry once to refresh it." : `Voice cloning failed without using the generic/demo Chatterbox route. ${failures.join(" | ")}` },
+    {
+      ok: false,
+      error: refreshOnly
+        ? "The saved voice reference expired from the warm server. Please retry once to refresh it."
+        : `Voice cloning failed without using the generic/demo Chatterbox route. ${failures.join(" | ")}`,
+    },
     { status: refreshOnly ? 428 : 502, headers: { "cache-control": "no-store" } },
   );
 }
