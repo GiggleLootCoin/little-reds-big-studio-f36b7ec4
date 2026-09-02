@@ -8,7 +8,7 @@ const registry = await readFile("src/lib/free-runtime.ts", "utf8");
 const required = [
   ["browser clone safety boundary", clone, /normalizeAndVerifyBrowserAudio/],
   ["actual reference Blob reaches clone", clone, /sample:\s*Blob[\s\S]*blobBase64\(sample\)/],
-  ["production clone endpoint", clone, /fetch\("\/api\/voice-clone"/],
+  ["production clone endpoint", clone, /fetch\("\/api\/ai\/voice-clone"/],
   ["Qwen production handler", gateway, /export async function handleVoiceClone/],
   ["Qwen clone operation", gateway, /generate_voice_clone/],
   ["Qwen reference upload", gateway, /gradio_api\/upload/],
@@ -38,5 +38,5 @@ for (const forbidden of [
 }
 
 console.log(
-  "Buddy production voice path verified: browser reference Blob -> /api/voice-clone -> Qwen3-TTS Base clone -> free fallback -> validated browser audio.",
+  "Buddy production voice path verified: browser reference Blob -> /api/ai/voice-clone -> Qwen3-TTS Base clone -> free fallback -> validated browser audio.",
 );
