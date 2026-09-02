@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { CheckCircle2, Mic2, Play, Square, Trash2, UserRound, Volume2 } from "lucide-react";
 import { runStudioJob } from "@/lib/studio-runtime";
 import {
@@ -31,6 +31,15 @@ export function BuddyVoicePicker() {
   const audioUrlRef = useRef<string | null>(null);
   const allVoices = useMemo(
     () => [
+      {
+        id: "Red",
+        label: "Red — My Voice",
+        note: "Your real verified personal voice clone",
+        nativeLanguage: "English",
+        languages: ["English"],
+        character: "Little Red’s own voice — the required Buddy voice.",
+        family: "Red — Your Voice",
+      },
       ...BUDDY_VOICE_PRESETS.map((v) => ({ ...v, family: "Buddy Originals" })),
       ...BUDDY_EXPANDED_VOICES.map((v) => ({
         ...v,
@@ -39,6 +48,21 @@ export function BuddyVoicePicker() {
     ],
     [],
   );
+
+  useEffect(() => {
+    let active = true;
+    void getBuddyVoiceSample().then((sample) => {
+      if (!active || !sample) return;
+      const current = getBuddyVoiceProfile();
+      if (current.mode === "preset" || current.speaker !== "Red") {
+        const next = { ...current, mode: "clone" as const, speaker: "Red", cloneVerified: current.cloneVerified };
+        saveBuddyVoiceProfile(next);
+        setProfile(next);
+        setStatus("Red — My Voice selected. Buddy will use your saved voice clone.");
+      }
+    });
+    return () => { active = false; };
+  }, []);
 
   const setGeneratedAudio = (url: string) => {
     if (audioUrlRef.current && audioUrlRef.current !== url)
@@ -252,10 +276,14 @@ export function BuddyVoicePicker() {
       {profile.mode === "preset" ? (
         <select
           value={profile.speaker}
-          onChange={(e) => update({ speaker: e.target.value })}
+          onChange={(e) =>
+            e.target.value === "Red"
+              ? update({ mode: "clone", speaker: "Red" })
+              : update({ mode: "preset", speaker: e.target.value })
+          }
           className="mt-2 w-full rounded-xl border border-border bg-background/70 px-3 py-2 text-xs"
         >
-          {["Buddy Originals", "Aura Studio — 40 distinct English voices"].map((family) => (
+          {["Red — Your Voice", "Buddy Originals", "Aura Studio — 40 distinct English voices"].map((family) => (
             <optgroup key={family} label={family}>
               {allVoices
                 .filter((v) => v.family === family)
