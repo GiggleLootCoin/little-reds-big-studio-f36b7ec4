@@ -31,6 +31,8 @@ jobs:
           npm install --no-audit --no-fund --ignore-scripts
           node node_modules/esbuild/install.js
           node node_modules/workerd/install.js
+      - name: Buddy experience contract tests
+        run: node --test tests/buddy-experience-contract.test.mjs
       - name: Typecheck
         run: npx tsc --noEmit
       - name: Normalize formatting
