@@ -36,6 +36,37 @@ function ext(type: string) {
   return "wav";
 }
 
+function normalizeLanguage(value?: string) {
+  const language = (value || "English").trim();
+  const key = language.toLowerCase().replace(/_/g, "-");
+  const aliases: Record<string, string> = {
+    auto: "Auto",
+    en: "English",
+    "en-us": "English",
+    "en-gb": "English",
+    english: "English",
+    zh: "Chinese",
+    chinese: "Chinese",
+    ja: "Japanese",
+    japanese: "Japanese",
+    ko: "Korean",
+    korean: "Korean",
+    de: "German",
+    german: "German",
+    fr: "French",
+    french: "French",
+    ru: "Russian",
+    russian: "Russian",
+    pt: "Portuguese",
+    portuguese: "Portuguese",
+    it: "Italian",
+    italian: "Italian",
+    spanish: "Spanish",
+    es: "Spanish",
+  };
+  return aliases[key] || language;
+}
+
 function decode(value: string) {
   const s = value.replace(/^data:[^,]+,/, "").replace(/\s/g, "");
   let binary: string;
@@ -79,7 +110,9 @@ async function upload(
 }
 
 export type QwenSSEParseResult =
-  { kind: "audio"; payload: unknown[] } | { kind: "error"; message: string } | { kind: "none" };
+  | { kind: "audio"; payload: unknown[] }
+  | { kind: "error"; message: string }
+  | { kind: "none" };
 
 export function parseQwenSSE(stream: string): QwenSSEParseResult {
   let event = "";
@@ -107,7 +140,13 @@ export function parseQwenSSE(stream: string): QwenSSEParseResult {
     if (event !== "complete") return;
     try {
       const payload = JSON.parse(raw) as unknown;
-      if (Array.isArray(payload) && payload.length > 0) result = { kind: "audio", payload };
+      if (Array.isArray(payload) && payload.length > 0) {
+        if (payload[0] == null && typeof payload[1] === "string" && payload[1].trim()) {
+          result = { kind: "error", message: payload[1].trim() };
+        } else {
+          result = { kind: "audio", payload };
+        }
+      }
     } catch {
       result = { kind: "error", message: "Qwen returned invalid completed JSON." };
     }
@@ -189,20 +228,14 @@ async function generate(
   const refText = body.refText?.trim() || "";
   const targetText = body.text?.trim().replace(/\s+/g, " ").slice(0, 220) || "";
   const modelSize = body.modelSize === "1.7B" ? "1.7B" : "0.6B";
+  const language = normalizeLanguage(body.language);
   if (!targetText) throw new Error("Target text is required.");
 
   const start = await fetch(`${space}/gradio_api/call/generate_voice_clone`, {
     method: "POST",
     headers: { ...auth(env), "content-type": "application/json" },
     body: JSON.stringify({
-      data: [
-        fileData(path, type),
-        refText,
-        targetText,
-        body.language || "English",
-        !refText,
-        modelSize,
-      ],
+      data: [fileData(path, type), refText, targetText, language, !refText, modelSize],
     }),
   });
   if (!start.ok) throw new Error(`Qwen voice clone start failed (${start.status}).`);
