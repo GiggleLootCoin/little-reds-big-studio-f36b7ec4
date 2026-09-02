@@ -3,6 +3,9 @@ name: Deploy Little Red's Big Studio
 on:
   push:
     branches: [main]
+  pull_request:
+    branches: [main]
+    types: [closed]
   workflow_dispatch:
 
 permissions:
@@ -15,12 +18,15 @@ env:
 
 jobs:
   deploy:
+    if: github.event_name == 'push' || github.event.pull_request.merged == true
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
-      # Production deploy: full voice smoke remains mandatory after every main push.
+      # Production deploy: full voice smoke remains mandatory after every main push/merge.
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: main
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
