@@ -103,8 +103,8 @@ export const FREE_RUNNERS: FreeRunner[] = [
     capabilities: ["voice-clone"],
     url: "https://huggingface.co/spaces/ResembleAI/chatterbox-turbo-demo",
     notes:
-      "Preferred English Red voice path. Uses the supplied reference audio directly and the 350M Turbo model.",
-    priority: 1100,
+      "Fast fallback for English reference cloning. The dedicated multilingual Red route is preferred so a demo/default speaker cannot be selected accidentally.",
+    priority: 780,
   },
   {
     id: "hf-chatterbox",
@@ -124,7 +124,7 @@ export const FREE_RUNNERS: FreeRunner[] = [
     description: "Independent multilingual reference-voice cloning fallback.",
     capabilities: ["voice-clone"],
     url: "https://huggingface.co/spaces/ResembleAI/Chatterbox-Multilingual-TTS-V3",
-    notes: "Fallback only; never treated as a preset voice.",
+    notes: "Preferred fallback for Red reference cloning; never treated as a preset voice.",
     priority: 800,
   },
   {
