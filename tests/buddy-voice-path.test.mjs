@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-const [clone, runtime, local, worker, voice, picker] = await Promise.all([
+const [production, runtime, local, worker, voice, picker] = await Promise.all([
   readFile("src/lib/production-voice-clone.ts", "utf8"),
   readFile("src/lib/studio-runtime.ts", "utf8"),
   readFile("src/lib/local-chatterbox.ts", "utf8"),
@@ -19,17 +19,17 @@ test("production Red clone uses the production Worker endpoint and verifies retu
   assert.match(runtime, /cloneProfile\(\)\.speaker === "Red"/);
   assert.match(worker, /handleProductionVoiceClone/);
   assert.match(worker, /path === "\/api\/ai\/voice-clone"/);
-  assert.match(clone, /ResembleAI\/chatterbox-turbo-demo/);
-  assert.match(clone, /audio_prompt_path/);
-  assert.match(clone, /generate/);
-  assert.match(clone, /referenceCache/);
+  assert.match(production, /ResembleAI-chatterbox-turbo-demo/);
+  assert.match(production, /gradio_api\/upload/);
+  assert.match(production, /gradio_api\/call\/generate/);
+  assert.match(production, /referenceCache/);
 });
 
 test("Red production generation is optimized to avoid re-uploading the same reference on every reply", () => {
-  assert.match(clone, /sha256/);
-  assert.match(clone, /REFERENCE_CACHE_TTL_MS/);
-  assert.match(clone, /referenceCache\.get/);
-  assert.match(clone, /referenceCache\.set/);
+  assert.match(production, /sha256/);
+  assert.match(production, /REFERENCE_CACHE_TTL_MS/);
+  assert.match(production, /referenceCache\.get/);
+  assert.match(production, /referenceCache\.set/);
 });
 
 test("the browser reuses the Red reference and only resends it when the production cache asks for a refresh", () => {
@@ -58,11 +58,11 @@ test("speaker conditioning returned by encode_speech is retained and consumed by
   assert.match(worker, /\.\.\.speakerConditioning/);
 });
 
-test("the Red default is explicit and migration only replaces the stale Ryan default", () => {
+test("the Red default is explicit and migrated once from the stale Ryan default", () => {
+  assert.match(voice, /RED_DEFAULT_MIGRATION_KEY = "lrbgs-red-default-v1"/);
   assert.match(voice, /speaker: "Red"/);
-  assert.match(voice, /RED_DEFAULT_MIGRATION_KEY = "lrbgs-red-default-v2"/);
-  assert.match(voice, /isLegacyRyanDefault/);
-  assert.match(voice, /selected == null \|\| isLegacyRyanDefault\(selected\)/);
+  assert.match(voice, /localStorage\.getItem\(RED_DEFAULT_MIGRATION_KEY\)/);
+  assert.match(voice, /saveBuddyVoiceProfile\(redDefault\)/);
 });
 
 test("loading the saved sample cannot override an intentionally selected preset", () => {
