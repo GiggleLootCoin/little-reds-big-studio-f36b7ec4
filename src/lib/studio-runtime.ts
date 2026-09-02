@@ -166,7 +166,8 @@ export async function runStudioJob(
     if (!text) throw new Error("Voice text is empty.");
     const language = String(input.language ?? profile.language ?? "English");
     const modelSize = input.model_size === "1.7B" ? "1.7B" : "0.6B";
-    const wantsRedVoice = profile.mode === "clone" || profile.speaker === "Red" || input.speaker === "Red";
+    const wantsRedVoice =
+      profile.mode === "clone" || profile.speaker === "Red" || input.speaker === "Red";
 
     if (wantsRedVoice) {
       const savedSample = await getBuddyVoiceSample();
