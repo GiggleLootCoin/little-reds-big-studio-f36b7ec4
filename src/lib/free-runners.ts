@@ -95,6 +95,18 @@ export const FREE_RUNNERS: FreeRunner[] = [
     priority: 1000,
   },
   {
+    id: "hf-chatterbox-turbo",
+    name: "Chatterbox Turbo",
+    kind: "public",
+    description:
+      "Fast English zero-shot reference-voice cloning engine from Resemble AI, optimized for low-latency voice agents.",
+    capabilities: ["voice-clone"],
+    url: "https://huggingface.co/spaces/ResembleAI/chatterbox-turbo-demo",
+    notes:
+      "Preferred English Red voice path. Uses the supplied reference audio directly and the 350M Turbo model.",
+    priority: 1100,
+  },
+  {
     id: "hf-chatterbox",
     name: "Chatterbox Voice Clone",
     kind: "public",
