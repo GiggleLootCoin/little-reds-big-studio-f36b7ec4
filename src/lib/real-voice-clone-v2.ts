@@ -98,12 +98,30 @@ export async function createBestFreeVoiceClone(
   const generated = await response.blob();
   if (!generated.size) throw new Error("Qwen returned empty generated audio.");
 
+  // Live Buddy speech uses the already-valid audio response directly. The old path
+  // decoded, normalized, measured, and only then returned audio to the player.
+  // That verification remains mandatory for persisted clone previews, but doing it
+  // before every live utterance added avoidable latency after generation completed.
+  if (!persistPreview) {
+    const url = URL.createObjectURL(generated);
+    const provider = `Qwen3-TTS ${modelSize} Base`;
+    onStatus?.("Buddy audio ready.");
+    return {
+      url,
+      provider,
+      verification: `${provider} live response (deferred browser verification)`,
+      duration: 0,
+      peak: 1,
+      rms: 1,
+    };
+  }
+
   const normalized = await normalizeAndVerifyBrowserAudio(generated);
   if (normalized.stats.duration <= 0 || normalized.stats.peak <= 0 || normalized.stats.rms <= 0)
     throw new Error("Qwen returned silent or unusable audio.");
 
   const provider = `Qwen3-TTS ${modelSize} Base`;
-  if (persistPreview) await saveBuddyClonePreview(normalized.blob, provider);
+  await saveBuddyClonePreview(normalized.blob, provider);
   const browserWindow = window as Window & { __buddyLastCloneUrl?: string };
   browserWindow.__buddyLastCloneUrl = normalized.url;
   onStatus?.(`Buddy voice verified: ${normalized.stats.duration.toFixed(2)}s.`);
