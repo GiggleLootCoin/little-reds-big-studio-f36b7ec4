@@ -32,6 +32,13 @@ test("Red production generation is optimized to avoid re-uploading the same refe
   assert.match(clone, /referenceCache\.set/);
 });
 
+test("the browser reuses the Red reference and only resends it when the production cache asks for a refresh", () => {
+  assert.match(runtime, /cachedRedReferenceId/);
+  assert.match(runtime, /cachedRedReferenceBase64/);
+  assert.match(runtime, /response\.status === 428/);
+  assert.match(runtime, /makeBody\(!alreadyEncoded\)/);
+});
+
 test("the local Chatterbox implementation contains the supported Transformers.js loading contract", () => {
   assert.match(worker, /AutoProcessor/);
   assert.match(worker, /q4f16/);
