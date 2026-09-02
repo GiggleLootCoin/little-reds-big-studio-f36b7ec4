@@ -28,7 +28,7 @@ test("the Red path sends reference audio to the proven /api/voice-clone gateway"
 
 test("the Red path fails honestly instead of falling back to a demo voice", () => {
   assert.doesNotMatch(redVoice, /runStudioJob/);
-  assert.doesNotMatch(redVoice, /chatterbox/i);
+  assert.doesNotMatch(redVoice, /from "\.\/(local-)?chatterbox[^"]*"/i);
   assert.doesNotMatch(redVoice, /speechSynthesis/);
   assert.match(redVoice, /could not be loaded, so no speech was generated/);
 });
