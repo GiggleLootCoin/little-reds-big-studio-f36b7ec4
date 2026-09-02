@@ -1,0 +1,38 @@
+name: Apply Red Buddy routing fix
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: "!startsWith(github.event.head_commit.message, 'Apply Red Buddy routing fix')"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch Buddy Red voice routing
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('src/components/studio/BuddyLiveChat.tsx')
+          s = p.read_text()
+          old = '            model_size: "0.6B",\n'
+          new = old + '            _skipProviders: ["hf-chatterbox", "hf-chatterbox-v3"],\n'
+          if new not in s:
+              if old not in s:
+                  raise SystemExit('Expected Buddy Red voice call was not found')
+              s = s.replace(old, new, 1)
+              p.write_text(s)
+          PY
+          node --test tests/red-buddy-voice-routing-regression.test.mjs
+      - name: Commit fix and remove one-time workflow
+        run: |
+          rm .github/workflows/apply-red-routing-fix.yml
+          git config user.name 'LittleRedBigSmile'
+          git config user.email 'gigglelootcoin@gmail.com'
+          git add src/components/studio/BuddyLiveChat.tsx tests/red-buddy-voice-routing-regression.test.mjs .github/workflows/apply-red-routing-fix.yml
+          git commit -m 'Apply Red Buddy routing fix'
+          git push
