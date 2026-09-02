@@ -18,11 +18,7 @@ const required = [
     gateway,
     /PRIMARY_SPACE\s*=\s*"https:\/\/openbmb-voxcpm-demo\.hf\.space"/,
   ],
-  [
-    "Qwen fallback space",
-    gateway,
-    /FALLBACK_SPACE\s*=\s*"https:\/\/qwen-qwen3-tts\.hf\.space"/,
-  ],
+  ["Qwen fallback space", gateway, /FALLBACK_SPACE\s*=\s*"https:\/\/qwen-qwen3-tts\.hf\.space"/],
   ["provider response marker", gateway, /x-clone-provider/],
   ["runtime production clone", runtime, /runVerifiedClone/],
   ["server imports the voice gateway", server, /from "\.\/lib\/voice-clone-gateway"/],

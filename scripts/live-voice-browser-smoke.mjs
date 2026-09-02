@@ -85,11 +85,16 @@ if (!productionResponse.ok) {
 }
 assertVoxCPMResponse(productionResponse, "production transcript clone");
 const contentType = productionResponse.headers.get("content-type") || "";
-if (!/^audio\/(wav|wave)(?:;|$)/i.test(contentType) && !/^application\/octet-stream(?:;|$)/i.test(contentType))
+if (
+  !/^audio\/(wav|wave)(?:;|$)/i.test(contentType) &&
+  !/^application\/octet-stream(?:;|$)/i.test(contentType)
+)
   throw new Error(`unexpected production transcript-clone MIME: ${contentType}`);
 const productionBytes = Buffer.from(await productionResponse.arrayBuffer());
 if (productionBytes.byteLength <= 4096)
-  throw new Error(`returned transcript-clone audio is too small: ${productionBytes.byteLength} bytes`);
+  throw new Error(
+    `returned transcript-clone audio is too small: ${productionBytes.byteLength} bytes`,
+  );
 
 const defaultResponse = await cloneRequest({});
 if (!defaultResponse.ok) {
@@ -100,13 +105,18 @@ if (!defaultResponse.ok) {
 }
 assertVoxCPMResponse(defaultResponse, "production default Red clone");
 const defaultContentType = defaultResponse.headers.get("content-type") || "";
-if (!/^audio\/(wav|wave)(?:;|$)/i.test(defaultContentType) && !/^application\/octet-stream(?:;|$)/i.test(defaultContentType))
+if (
+  !/^audio\/(wav|wave)(?:;|$)/i.test(defaultContentType) &&
+  !/^application\/octet-stream(?:;|$)/i.test(defaultContentType)
+)
   throw new Error(`unexpected production default-Red MIME: ${defaultContentType}`);
 const defaultBytes = Buffer.from(await defaultResponse.arrayBuffer());
 if (defaultBytes.byteLength <= 4096)
   throw new Error(`returned default-Red audio is too small: ${defaultBytes.byteLength} bytes`);
 if (createHash("sha256").update(defaultBytes).digest("hex") === referenceId)
-  throw new Error("default Red clone returned the reference audio unchanged instead of generated speech");
+  throw new Error(
+    "default Red clone returned the reference audio unchanged instead of generated speech",
+  );
 
 const browser = await chromium.launch({
   headless: true,
@@ -146,12 +156,17 @@ try {
           }
         }
         const rms = Math.sqrt(sumSquares / Math.max(1, count));
-        if (!(decoded.duration > 0.25)) throw new Error(`decoded duration unusable: ${decoded.duration}`);
-        if (!(peak >= 0.005 && rms >= 0.0005)) throw new Error(`decoded audio is silent: peak=${peak}, rms=${rms}`);
+        if (!(decoded.duration > 0.25))
+          throw new Error(`decoded duration unusable: ${decoded.duration}`);
+        if (!(peak >= 0.005 && rms >= 0.0005))
+          throw new Error(`decoded audio is silent: peak=${peak}, rms=${rms}`);
         const audio = new Audio(url);
         audio.preload = "auto";
         await new Promise((resolve, reject) => {
-          const timer = setTimeout(() => reject(new Error("HTMLAudioElement metadata timeout")), 10000);
+          const timer = setTimeout(
+            () => reject(new Error("HTMLAudioElement metadata timeout")),
+            10000,
+          );
           audio.onloadedmetadata = () => {
             clearTimeout(timer);
             resolve();
@@ -162,28 +177,47 @@ try {
           };
           audio.load();
         });
-        if (!(audio.duration > 0.25)) throw new Error(`HTMLAudioElement duration unusable: ${audio.duration}`);
+        if (!(audio.duration > 0.25))
+          throw new Error(`HTMLAudioElement duration unusable: ${audio.duration}`);
         await audio.play();
-        if (audio.paused) throw new Error("HTMLAudioElement.play() resolved but playback remained paused");
+        if (audio.paused)
+          throw new Error("HTMLAudioElement.play() resolved but playback remained paused");
         audioContext.close();
-        return { contentType, bytes: bytes.byteLength, duration: decoded.duration, peak, rms, htmlAudioDuration: audio.duration, readyState: audio.readyState, paused: audio.paused };
+        return {
+          contentType,
+          bytes: bytes.byteLength,
+          duration: decoded.duration,
+          peak,
+          rms,
+          htmlAudioDuration: audio.duration,
+          readyState: audio.readyState,
+          paused: audio.paused,
+        };
       } finally {
         URL.revokeObjectURL(url);
       }
     },
     { productionBytes: [...defaultBytes], contentType: defaultContentType },
   );
-  console.log(JSON.stringify({
-    status: "ok",
-    referenceTranscript: refText,
-    transcriptCloneBytes: productionBytes.byteLength,
-    transcriptCloneProvider: productionResponse.headers.get("x-clone-provider"),
-    defaultRedCloneBytes: defaultBytes.byteLength,
-    defaultRedProvider: defaultResponse.headers.get("x-clone-provider"),
-    androidPlayback: playback,
-  }, null, 2));
+  console.log(
+    JSON.stringify(
+      {
+        status: "ok",
+        referenceTranscript: refText,
+        transcriptCloneBytes: productionBytes.byteLength,
+        transcriptCloneProvider: productionResponse.headers.get("x-clone-provider"),
+        defaultRedCloneBytes: defaultBytes.byteLength,
+        defaultRedProvider: defaultResponse.headers.get("x-clone-provider"),
+        androidPlayback: playback,
+      },
+      null,
+      2,
+    ),
+  );
 } catch (error) {
-  console.error(`::error::ANDROID_BROWSER_VOICE_TEST ${error instanceof Error ? error.message : String(error)}`);
+  console.error(
+    `::error::ANDROID_BROWSER_VOICE_TEST ${error instanceof Error ? error.message : String(error)}`,
+  );
   throw error;
 } finally {
   if (context) await context.close();

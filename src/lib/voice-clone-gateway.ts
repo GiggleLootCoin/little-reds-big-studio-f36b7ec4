@@ -82,9 +82,7 @@ async function upload(
 }
 
 export type VoxCPMSSEParseResult =
-  | { kind: "audio"; payload: unknown[] }
-  | { kind: "error"; message: string }
-  | { kind: "none" };
+  { kind: "audio"; payload: unknown[] } | { kind: "error"; message: string } | { kind: "none" };
 
 export function parseVoxCPMSSE(stream: string): VoxCPMSSEParseResult {
   let event = "";
@@ -204,16 +202,7 @@ async function generate(
     method: "POST",
     headers: { ...auth(env), "content-type": "application/json" },
     body: JSON.stringify({
-      data: [
-        targetText,
-        "",
-        fileData(path, type),
-        usePromptText,
-        refText,
-        2.0,
-        true,
-        false,
-      ],
+      data: [targetText, "", fileData(path, type), usePromptText, refText, 2.0, true, false],
     }),
   });
   if (!start.ok) {
