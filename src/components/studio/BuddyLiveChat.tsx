@@ -334,29 +334,17 @@ export function BuddyLiveChat() {
     setBuddyStatus("working", { message: "Buddy is speaking…" });
     const v = getBuddyVoiceProfile();
     try {
-      let r;
-      if (v.mode === "clone" || v.speaker === "Red") {
-        let sample = await getBuddyVoiceSample();
-        if (!sample && v.mode === "preset" && v.speaker === "Red") {
-          sample = await getBuiltInRedVoiceSample();
-          if (sample) setStatus("Using Buddy's built-in Red voice reference…");
-        }
-        if (!sample) throw Error("The Red voice reference is unavailable right now.");
-        r = await runStudioJob(
-          "voice-clone",
+      let r: { url?: string };
+      if (isRedVoice(v)) {
+        // Default Red never goes through the generic free-provider pool: those
+        // spaces (Chatterbox Multilingual / ResembleAI) can answer with their
+        // own canned demo phrase. Red always uses the reference-audio gateway.
+        r = await speakAsBuddyRed(
+          text,
           {
-            refAudio: sample,
-            referenceAudio: sample,
-            audio: sample,
-            referenceTranscript: v.referenceTranscript || "",
-            refText: v.referenceTranscript || "",
-            target_text: text,
-            text,
             language: v.language || "English",
-            mood: v.mood || "natural",
-            tone: v.tone || "conversational",
-            use_xvector_only: !v.referenceTranscript,
-            model_size: "0.6B",
+            refText: v.referenceTranscript || "",
+            modelSize: "0.6B",
           },
           setStatus,
         );
@@ -373,6 +361,7 @@ export function BuddyLiveChat() {
           },
           setStatus,
         );
+
       if (!r.url) throw Error("No usable Buddy voice was returned.");
       const a = audio.current ?? new Audio();
       audio.current = a;
