@@ -179,7 +179,7 @@ export function BuddyVoicePicker() {
     console.info("[BuddyVoiceDiagnostic] BUSY_STATUS_SET");
     try {
       const current = getBuddyVoiceProfile();
-      if (current.mode === "clone") {
+      if (current.mode === "clone" || current.speaker === "Red") {
         const sample = await getBuddyVoiceSample();
         if (!sample) throw new Error("Your voice sample is missing. Upload or record it again.");
         const referenceTranscript = current.referenceTranscript || REFERENCE_TRANSCRIPT;

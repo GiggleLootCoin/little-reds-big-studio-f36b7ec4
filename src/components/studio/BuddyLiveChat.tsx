@@ -324,7 +324,7 @@ export function BuddyLiveChat() {
     const v = getBuddyVoiceProfile();
     try {
       let r;
-      if (v.mode === "clone") {
+      if (v.mode === "clone" || v.speaker === "Red") {
         const sample = await getBuddyVoiceSample();
         if (!sample) throw Error("Your saved Buddy voice sample is unavailable.");
         r = await runStudioJob(
@@ -359,7 +359,7 @@ export function BuddyLiveChat() {
         void a.play().catch(no);
       });
     } catch (error) {
-      if (v.mode !== "preset") {
+      if (v.mode !== "preset" || v.speaker === "Red") {
         setStatus(
           error instanceof Error ? error.message : "Buddy's cloned voice could not be generated.",
         );
