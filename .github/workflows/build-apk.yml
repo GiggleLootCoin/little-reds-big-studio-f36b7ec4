@@ -3,15 +3,7 @@ name: Build Little Red's Big Studio APK
 on:
   push:
     branches: [main]
-    paths:
-      - 'twa/twa-manifest.json'
-      - '.github/workflows/build-apk.yml'
   workflow_dispatch:
-    inputs:
-      version_code:
-        description: 'Increment version code for the APK'
-        required: true
-        default: '1'
 
 permissions:
   contents: read
@@ -98,8 +90,18 @@ jobs:
             const jdkPath = process.env.JAVA_HOME;
             const targetDir = path.resolve('app');
             const manifestJson = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+
+            // Ensure each build has a newer Android versionCode so the APK can
+            // be installed as an update instead of being rejected as a downgrade.
+            const timestampVersion = Math.floor(Date.now() / 1000);
+            manifestJson.appVersionCode = timestampVersion;
+            manifestJson.appVersionName = `1.0.${timestampVersion}`;
+
             console.log('Package ID:', manifestJson.packageId);
             console.log('Host:', manifestJson.host);
+            console.log('APK versionCode:', manifestJson.appVersionCode);
+            console.log('APK versionName:', manifestJson.appVersionName);
+
             const corePath = path.join(process.cwd(), 'node_modules/@bubblewrap/core/dist/index.js');
             if (!fs.existsSync(corePath)) throw new Error(`@bubblewrap/core not found at ${corePath}`);
             const core = require(corePath);
