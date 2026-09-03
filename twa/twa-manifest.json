@@ -1,0 +1,18 @@
+{
+  "packageId": "com.littleredbigstudio.app",
+  "launcherName": "Little Red's Big Studio",
+  "host": "little-reds-big-studio-f36b7ec4.gigglelootcoin.workers.dev",
+  "launcherIcon": "launcher-icon.svg",
+  "enableCache": true,
+  "display": "standalone",
+  "themeColor": "#d71932",
+  "backgroundColor": "#0b0506",
+  "orientation": "any",
+  "fallbackType": "customtabs",
+  "splashScreenFadeOutDuration": 300,
+  "signingKey": {
+    "path": "twa/lrbs-release-key.jks",
+    "alias": "key0"
+  },
+  "stackPackages": []
+}

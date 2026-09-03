@@ -1,0 +1,75 @@
+name: Build Little Red's Big Studio APK
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'twa/twa-manifest.json'
+      - '.github/workflows/build-apk.yml'
+  workflow_dispatch:
+    inputs:
+      version_code:
+        description: 'Increment version code for the APK'
+        required: true
+        default: '1'
+
+permissions:
+  contents: read
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install Bubblewrap
+        run: npm install -g @bubblewrap/cli
+
+      - name: Decode signing key
+        env:
+          TWA_SIGNING_KEY_BASE64: ${{ secrets.TWA_SIGNING_KEY_BASE64 }}
+        run: |
+          if [ -n "$TWA_SIGNING_KEY_BASE64" ]; then
+            echo "$TWA_SIGNING_KEY_BASE64" | base64 -d > twa/lrbs-release-key.jks
+            echo "Signing key decoded."
+          else
+            echo "::warning::TWA_SIGNING_KEY_BASE64 not set; building unsigned debug APK."
+            touch twa/lrbs-release-key.jks
+          fi
+
+      - name: Initialize TWA project
+        working-directory: twa
+        run: |
+          bubblewrap init --manifest=twa-manifest.json --skipServiceAccount --quiet
+
+      - name: Build APK
+        working-directory: twa
+        env:
+          TWA_SIGNING_KEY_ALIAS: key0
+          TWA_SIGNING_KEY_PASSWORD: ${{ secrets.TWA_SIGNING_KEY_PASSWORD || 'android' }}
+          TWA_SIGNING_KEY_STORE_PASSWORD: ${{ secrets.TWA_SIGNING_KEY_STORE_PASSWORD || 'android' }}
+        run: |
+          bubblewrap build --type=apk
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: little-reds-big-studio-apk
+          path: twa/app/build/outputs/apk/*.apk
+          retention-days: 30
+          compression-level: 9
