@@ -74,7 +74,7 @@ jobs:
             console.log('Host:', manifestJson.host);
 
             // Use @bubblewrap/core installed locally in twa/node_modules
-            const corePath = path.resolve(__dirname, 'node_modules/@bubblewrap/core/dist/index.js');
+            const corePath = path.join(process.cwd(), 'node_modules/@bubblewrap/core/dist/index.js');
             if (!fs.existsSync(corePath)) {
               console.error('@bubblewrap/core not found at', corePath);
               process.exit(1);
