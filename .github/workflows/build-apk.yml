@@ -120,7 +120,7 @@ jobs:
               for (const entry of fs.readdirSync(dir)) {
                 const full = path.join(dir, entry);
                 const rel = path.relative(targetDir, full);
-                if (fs.isDirectory(full)) walk(full);
+                if (fs.statSync(full).isDirectory()) walk(full);
                 else files.push(rel);
               }
             }
