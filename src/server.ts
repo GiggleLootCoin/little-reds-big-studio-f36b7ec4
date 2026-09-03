@@ -220,13 +220,13 @@ async function openRouterChat(env: ServerEnv, messages: unknown[]): Promise<unkn
     headers: {
       Authorization: `Bearer ${key}`,
       "Content-Type": "application/json",
-      "HTTP-Referer": "https://little-reds-big-studio-f36b7ec4.gigglelootcoin.workers.dev",
+      "HTTP-Referer": "https://little-reds-big-studio-f36b7ec4.workers.dev",
       "X-Title": "Buddy AI",
     },
     body: JSON.stringify({
       model: "openrouter/free",
       messages,
-      max_tokens: 1024,
+      max_tokens: 640,
       temperature: 0.6,
     }),
   });
@@ -475,8 +475,14 @@ async function cloudflareAI(request: Request, env: ServerEnv): Promise<Response 
         ? "@cf/google/gemma-4-26b-a4b-it"
         : "@cf/qwen/qwen3-30b-a3b-fp8";
       let result: unknown;
+      const chatOptions = {
+        messages,
+        max_tokens: 640,
+        temperature: 0.6,
+        chat_template_kwargs: { enable_thinking: false },
+      };
       try {
-        result = await env.AI.run(model, { messages, max_tokens: 1024, temperature: 0.6 });
+        result = await env.AI.run(model, chatOptions);
       } catch (primaryError) {
         console.warn("Primary Buddy model failed; trying OpenRouter", primaryError);
         try {
@@ -485,7 +491,7 @@ async function cloudflareAI(request: Request, env: ServerEnv): Promise<Response 
           console.warn("OpenRouter fallback failed; using GPT-OSS fallback", openRouterError);
           result = await env.AI.run("@cf/openai/gpt-oss-20b", {
             messages,
-            max_tokens: 1024,
+            max_tokens: 640,
             temperature: 0.6,
           });
         }
@@ -560,108 +566,38 @@ async function webSearch(
       accept: "text/html",
     },
   });
-  if (!response.ok) return [];
+  if (!response.ok) throw new Error(`Web search failed (${response.status}).`);
   const html = await response.text();
   const results: { title: string; url: string; snippet: string }[] = [];
-  const resultBlockRe = /<a[^>]+class="result__a"[^>]*>([\s\S]*?)<\/a>/gi;
-  let blockMatch: RegExpExecArray | null;
-  while ((blockMatch = resultBlockRe.exec(html)) && results.length < 8) {
-    const titleHtml = blockMatch[1] || "";
-    const title = titleHtml
-      .replace(/<[^>]+>/g, " ")
-      .replace(/&amp;/g, "&")
-      .replace(/&lt;/g, "<")
-      .replace(/&gt;/g, ">")
-      .replace(/\s+/g, " ")
-      .trim();
-    const hrefMatch = blockMatch[0].match(/href="([^"]+)"/);
-    const href = hrefMatch ? hrefMatch[1] : "";
-    const snippet = extractSnippet(html, blockMatch.index);
-    results.push({ title, url: href, snippet });
+  const itemRe = /<a[^>]+class="result__a"[^>]+href="([^"]+)"[^>]*>(.*?)<\/a>[\s\S]*?<a[^>]+class="result__snippet"[^>]*>(.*?)<\/a>/gi;
+  let match: RegExpExecArray | null;
+  while ((match = itemRe.exec(html)) && results.length < 8) {
+    const decode = (s: string) =>
+      s.replace(/<[^>]*>/g, " ")
+        .replace(/&amp;/g, "&")
+        .replace(/&quot;/g, '"')
+        .replace(/&#x27;/g, "'")
+        .replace(/\s+/g, " ")
+        .trim();
+    results.push({ title: decode(match[2]), url: match[1], snippet: decode(match[3]) });
   }
   return results;
 }
 
-function extractSnippet(html: string, afterIndex: number): string {
-  const start = Math.max(0, afterIndex);
-  const window = html.slice(start, start + 1400);
-  const snippet = window
-    .replace(/<[^>]+>/g, " ")
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/\s+/g, " ")
-    .trim();
-  const nextResult = snippet.search(/result__a/i);
-  const usable = nextResult >= 0 ? snippet.slice(0, nextResult) : snippet;
-  return usable.replace(/\s+/g, " ").trim();
-}
-async function normalizeCatastrophicSsrResponse(response: Response): Promise<Response> {
-  if (response.status < 500) return response;
-  const contentType = response.headers.get("content-type") ?? "";
-  if (!contentType.includes("application/json")) return response;
-  const body = await response.clone().text();
-  if (!isH3SwallowedErrorBody(body)) return response;
-  console.error(consumeLastCapturedError() ?? new Error(`h3 swallowed SSR error: ${body}`));
-  return new Response(renderErrorPage(), {
-    status: 500,
-    headers: { "content-type": "text/html; charset=utf-8" },
-  });
-}
-function isH3SwallowedErrorBody(body: string): boolean {
-  try {
-    const payload = JSON.parse(body) as { unhandled?: unknown; message?: unknown };
-    return payload.unhandled === true && payload.message === "HTTPError";
-  } catch {
-    return false;
-  }
-}
 export default {
   async fetch(request: Request, env: unknown, ctx: unknown) {
     try {
-      const serverEnv = env as ServerEnv;
-      const url = new URL(request.url);
-      if (url.pathname === VOICE_CLONE_PATH) {
-        if (request.method !== "POST") return jsonError("POST required.", 405);
-        return await handleVoiceClone(request, serverEnv);
-      }
-      if (url.pathname === WEB_SEARCH_PATH) {
-        if (request.method !== "POST") return jsonError("POST required.", 405);
-        const body = await request.json().catch(() => null);
-        if (
-          !body ||
-          typeof body !== "object" ||
-          !String(
-            (body as Record<string, unknown>).prompt ??
-              (body as Record<string, unknown>).text ??
-              (body as Record<string, unknown>).searchQuery ??
-              "",
-          ).trim()
-        ) {
-          return jsonError("Search query is required.", 400);
-        }
-        const query = String(
-          (body as Record<string, unknown>).prompt ??
-            (body as Record<string, unknown>).text ??
-            (body as Record<string, unknown>).searchQuery ??
-            "",
-        ).trim();
-        const results = await webSearch(query);
-        return Response.json(
-          { query, results, provider: "DuckDuckGo" },
-          { headers: { "cache-control": "no-store" } },
-        );
-      }
-      const cloudflare = await cloudflareAI(request, serverEnv);
-      if (cloudflare) return cloudflare;
+      const voice = await handleVoiceClone(request, env as Parameters<typeof handleVoiceClone>[1]);
+      if (voice) return voice;
+      const ai = await cloudflareAI(request, env as ServerEnv);
+      if (ai) return ai;
       const proxied = await proxyHfSpace(request);
       if (proxied) return proxied;
-      const handler = await getServerEntry();
-      const response = await handler.fetch(request, env, ctx);
-      return await normalizeCatastrophicSsrResponse(response);
+      const entry = await getServerEntry();
+      return entry.fetch(request, env, ctx);
     } catch (error) {
-      console.error(error);
-      return new Response(renderErrorPage(), {
+      const captured = consumeLastCapturedError();
+      return new Response(renderErrorPage(captured || error), {
         status: 500,
         headers: { "content-type": "text/html; charset=utf-8" },
       });
