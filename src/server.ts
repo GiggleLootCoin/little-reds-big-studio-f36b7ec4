@@ -401,32 +401,75 @@ async function cloudflareAI(request: Request, env: ServerEnv): Promise<Response 
         { headers: { "cache-control": "no-store" } },
       );
     }
-    if (capability === "chat") {
-      const messages = Array.isArray(body.messages) ? body.messages : [{ role: "user", content: prompt }];
-      const result = await openRouterChat(env, messages);
-      const text = chatText(result);
-      if (!text) return jsonError("The chat provider returned no usable text.", 502);
+    if (capability === "web-search") {
+      if (!body.searchQuery?.trim()) return jsonError("Search query is required.", 400);
+      const query = encodeURIComponent(body.searchQuery.trim());
+      const response = await fetch(`https://r.jina.ai/http://www.google.com/search?q=${query}`, {
+        headers: { "user-agent": "LittleRedsBigStudio/1.0" },
+      });
+      if (!response.ok) return jsonError("Web search temporarily unavailable.", 503);
+      const text = await response.text();
       return Response.json({ text }, { headers: { "cache-control": "no-store" } });
     }
-    if (capability === "image") {
-      if (hasImageContent(body.messages || [])) return jsonError("Image editing is not available in this runtime.", 501);
-      const result = await env.AI.run("@cf/black-forest-labs/flux-1-schnell", { prompt });
-      const response = await rawImageResponse(result);
-      return response || jsonError("Image generation returned no usable artifact.", 502);
+    if (capability === "chat") {
+      const messages = Array.isArray(body.messages) && body.messages.length
+        ? body.messages
+        : [{ role: "user", content: prompt }];
+      const result = await openRouterChat(env, messages);
+      const text = chatText(result);
+      if (!text) return jsonError("The AI returned no usable response.", 502);
+      return Response.json({ text }, { headers: { "cache-control": "no-store" } });
     }
     if (capability === "tts") {
+      const speaker = BUDDY_TO_AURA[body.speaker || ""] || "luna";
       const language = ttsLanguage(body.language);
-      const speaker = String(body.speaker || "").trim();
-      const auraSpeaker = BUDDY_TO_AURA[speaker] || (AURA_EN_SPEAKERS.has(speaker.toLowerCase()) || AURA_ES_SPEAKERS.has(speaker.toLowerCase()) ? speaker : "");
-      if (!auraSpeaker) return jsonError("A valid Aura speaker is required.", 400);
-      if ((language === "en" && !AURA_EN_SPEAKERS.has(auraSpeaker.toLowerCase())) || (language === "es" && !AURA_ES_SPEAKERS.has(auraSpeaker.toLowerCase())))
-        return jsonError(`Speaker ${auraSpeaker} is not supported for ${language}.`, 400);
-      const result = await env.AI.run("@cf/deepgram/aura-1", { text: prompt, speaker: auraSpeaker });
-      const response = await rawAudioResponse(result);
-      return response || jsonError("TTS returned no usable audio.", 502);
+      if (language !== "en" && !AURA_ES_SPEAKERS.has(speaker))
+        return jsonError("Selected speaker is unavailable for this language.", 400);
+      const result = await env.AI.run("@cf/deepgram/aura-1", {
+        text: prompt,
+        speaker: language === "es" ? "sirio" : speaker,
+      });
+      const audio = await rawAudioResponse(result);
+      if (!audio) return jsonError("The speech model returned no audio.", 502);
+      return audio;
     }
-    if (capability === "video") return jsonError("Video generation is not available in this runtime.", 501);
-    return jsonError(`Unsupported AI capability: ${capability}`, 400);
+    if (capability === "image") {
+      const result = await env.AI.run("@cf/stabilityai/stable-diffusion-xl-base-1.0", {
+        prompt,
+        num_steps: 20,
+      });
+      const image = await rawImageResponse(result);
+      if (!image) return jsonError("The image model returned no image.", 502);
+      return image;
+    }
+    if (capability === "video") {
+      const result = await env.AI.run("@cf/bytedance/seedance-1.0-lite", {
+        prompt,
+        duration: Math.max(2, Math.min(5, Math.round(body.duration || 4))),
+        aspect_ratio: body.aspectRatio || "16:9",
+        resolution: body.resolution || "720p",
+      });
+      return Response.json(result, { headers: { "cache-control": "no-store" } });
+    }
+    if (capability === "music") {
+      const result = await env.AI.run("@cf/meta/musicgen-1", {
+        prompt,
+        duration: Math.max(1, Math.min(30, Math.round(body.duration || 8))),
+      });
+      const audio = await rawAudioResponse(result);
+      if (!audio) return jsonError("The music model returned no audio.", 502);
+      return audio;
+    }
+    if (capability === "instrumental") {
+      const result = await env.AI.run("@cf/meta/musicgen-1", {
+        prompt: `${prompt}\nInstrumental only. No vocals.`,
+        duration: Math.max(1, Math.min(30, Math.round(body.duration || 8))),
+      });
+      const audio = await rawAudioResponse(result);
+      if (!audio) return jsonError("The instrumental model returned no audio.", 502);
+      return audio;
+    }
+    return jsonError(`Unsupported capability: ${capability}`, 400);
   } catch (error) {
     console.error("Cloudflare AI route failed", error);
     return jsonError(error instanceof Error ? error.message : "Cloudflare AI request failed.", 502);
@@ -446,7 +489,7 @@ export default {
       return entry.fetch(request, env, ctx);
     } catch (error) {
       const captured = consumeLastCapturedError();
-      return new Response(renderErrorPage(captured || error), {
+      return new Response(renderErrorPage(), {
         status: 500,
         headers: { "content-type": "text/html; charset=utf-8" },
       });
