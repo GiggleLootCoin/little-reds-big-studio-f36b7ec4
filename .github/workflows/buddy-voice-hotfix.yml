@@ -55,6 +55,7 @@ jobs:
           grep -n 'prepared.capability === "tts"\|attempt < 1' src/lib/studio-runtime-impl.ts
           grep -n 'model_size: liveRef.current' src/components/studio/BuddyLiveChat.tsx
           npm ci --no-audit --no-fund
+          npx prettier --write .
           npm run typecheck
           npm run lint
           npm run build
