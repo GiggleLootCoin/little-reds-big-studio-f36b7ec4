@@ -12,10 +12,10 @@ export type FreeRunner = {
 /** Free/no-key routes. Runtime validates live API and actual media artifacts. */
 export const FREE_RUNNERS: FreeRunner[] = [
   {
-    id: "cf-whisper-large-v3-turbo",
-    name: "Cloudflare Whisper Large V3 Turbo",
+    id: "cf-whisper-large-v3",
+    name: "Cloudflare Whisper Large V3",
     kind: "public",
-    description: "Primary server-side speech-to-text engine for Buddy microphone input.",
+    description: "Primary server-side speech-to-text engine for Buddy microphone input without the rejected Turbo route.",
     capabilities: ["speech-to-text", "transcription"],
     url: "/api/ai/speech-to-text",
     notes: "Server-side Workers AI Whisper route; accepts normalized PCM16 WAV audio.",
@@ -81,7 +81,7 @@ export const FREE_RUNNERS: FreeRunner[] = [
     capabilities: ["tts"],
     url: "/api/ai/tts",
     notes: "Preset speech only; clone engines are excluded from this pool.",
-    priority: 500,
+    priority: 1300,
   },
   {
     id: "hf-qwen3-tts",
@@ -93,17 +93,6 @@ export const FREE_RUNNERS: FreeRunner[] = [
     notes:
       "Uses full reference conditioning when a transcript is available and speaker-embedding mode otherwise.",
     priority: 1000,
-  },
-  {
-    id: "hf-chatterbox-turbo",
-    name: "Chatterbox Turbo",
-    kind: "public",
-    description: "Fast English zero-shot reference-voice cloning engine from Resemble AI.",
-    capabilities: ["voice-clone"],
-    url: "https://huggingface.co/spaces/oicui/chatterbox-turbo-demo",
-    notes:
-      "Dedicated Turbo-compatible Space without the current official demo's required model-state argument. Uses the supplied reference audio directly.",
-    priority: 1150,
   },
   {
     id: "hf-chatterbox",
