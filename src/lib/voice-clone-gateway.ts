@@ -122,7 +122,7 @@ async function cloneWithReferenceRefresh(space: string, referenceId: string, aud
 }
 export async function handleVoiceClone(request: Request, env: Env = {}): Promise<Response | null> {
   const pathname = new URL(request.url).pathname.replace(/\/$/, "") || "/";
-  if (pathname !== "/api/voice-clone") return null;
+  if (pathname !== "/api/voice-clone" && pathname !== "/api/ai/voice-clone") return null;
   if (request.method !== "POST") return errorResponse("POST required.", 405);
   let body: { referenceId?: string; audioBase64?: string; audioType?: string; refText?: string; text?: string; language?: string; modelSize?: "0.6B" | "1.7B" };
   try { body = (await request.json()) as typeof body; } catch { return errorResponse("The clone request was not valid JSON.", 400); }
