@@ -96,6 +96,41 @@ const defaultBytes = Buffer.from(await defaultResponse.arrayBuffer());
 if (defaultBytes.byteLength <= 4096)
   throw new Error(`returned default-Red audio is too small: ${defaultBytes.byteLength} bytes`);
 
+const presetVoices = [
+  ["Ryan", "en"],
+  ["Aiden", "en"],
+  ["Vivian", "en"],
+  ["Serena", "en"],
+  ["Uncle_Fu", "en"],
+  ["Dylan", "en"],
+  ["Eric", "en"],
+  ["Ono_Anna", "en"],
+  ["Sohee", "en"],
+];
+const presetResults = [];
+for (const [speaker, language] of presetVoices) {
+  const response = await fetch(`${base}/api/ai/tts?android_smoke=1&ts=${Date.now()}`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      speaker,
+      language,
+      text: `Hello. This is Buddy's ${speaker} preset voice test.`,
+    }),
+  });
+  if (!response.ok)
+    throw new Error(
+      `production preset ${speaker} returned HTTP ${response.status}: ${(await response.text().catch(() => "")).slice(0, 300)}`,
+    );
+  const presetContentType = response.headers.get("content-type") || "";
+  if (!/^audio\//i.test(presetContentType))
+    throw new Error(`production preset ${speaker} returned unexpected MIME: ${presetContentType}`);
+  const bytes = Buffer.from(await response.arrayBuffer());
+  if (bytes.byteLength <= 4096)
+    throw new Error(`production preset ${speaker} audio is too small: ${bytes.byteLength} bytes`);
+  presetResults.push({ speaker, bytes: bytes.byteLength, contentType: presetContentType });
+}
+
 const browser = await chromium.launch({
   headless: true,
   args: ["--autoplay-policy=no-user-gesture-required"],
@@ -204,6 +239,7 @@ try {
         transcriptCloneBytes: productionBytes.byteLength,
         defaultRedCloneBytes: defaultBytes.byteLength,
         defaultRedProvider: defaultResponse.headers.get("x-clone-provider") || "unknown",
+        presetResults,
         androidPlayback: playback,
       },
       null,
