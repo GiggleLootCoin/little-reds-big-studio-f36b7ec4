@@ -62,14 +62,14 @@ jobs:
           unzip -q cmdline-tools.zip
           rm cmdline-tools.zip
           if [ -d cmdline-tools/bin ]; then
-            mkdir -p cmdline-tools/latest
-            mv cmdline-tools/bin/* cmdline-tools/latest/ 2>/dev/null || true
-            rmdir cmdline-tools/bin 2>/dev/null || true
+            mkdir -p cmdline-tools/latest/bin
+            mv cmdline-tools/bin/* cmdline-tools/latest/bin/
+            rmdir cmdline-tools/bin
           fi
           if [ -d cmdline-tools/lib ]; then
-            mkdir -p cmdline-tools/latest
-            mv cmdline-tools/lib/* cmdline-tools/latest/ 2>/dev/null || true
-            rmdir cmdline-tools/lib 2>/dev/null || true
+            mkdir -p cmdline-tools/latest/lib
+            mv cmdline-tools/lib/* cmdline-tools/latest/lib/
+            rmdir cmdline-tools/lib
           fi
           mkdir -p "$SDK_ROOT/bin"
           ln -sf ../cmdline-tools/latest/bin/sdkmanager "$SDK_ROOT/bin/sdkmanager"
