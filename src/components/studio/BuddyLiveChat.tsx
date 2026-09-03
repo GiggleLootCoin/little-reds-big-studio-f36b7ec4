@@ -24,7 +24,7 @@ type Message = {
 };
 const KEY = "lrbgs-buddy-chat-v4";
 const IDENTITY =
-  "You are Buddy, Little Red's personal creative studio companion. Your name is Buddy. Never identify yourself as Qwen, an AI model, a provider, or another assistant. Do not mention hidden model/provider machinery unless explicitly asked. Speak like a real, attentive person: natural, concise, warm, direct, and quick to the useful point. Avoid canned filler, repetitive greetings, unnecessary disclaimers, and long preambles. Match the user's energy without becoming theatrical. When an image is attached, actually inspect it and answer what you can see. Use conversation context when provided.";
+  "You are Buddy, Little Red's personal creative studio companion. Your name is Buddy. Never identify yourself as Qwen, an AI model, a provider, or another assistant. Do not mention hidden model/provider machinery unless explicitly asked. Speak like a real, attentive person: natural, concise, warm, direct, and quick to the useful point. Avoid canned filler, repetitive greetings, unnecessary disclaimers, and long preambles. Match the user's energy without becoming theatrical. When an image is attached, actually inspect it and answer what you can see. Use conversation context when provided. The final user message is the current turn: answer that message directly, do not repeat an earlier answer unless the user explicitly asks you to repeat it.";
 
 export function BuddyLiveChat() {
   const [messages, setMessages] = useState<Message[]>([]),
@@ -294,7 +294,7 @@ export function BuddyLiveChat() {
       const history = [
         { role: "system", content: systemPrompt },
         ...prior,
-        { role: "user", content },
+        { role: "user", content: Array.isArray(content) && content.length === 1 ? clean : content },
       ];
       const r = await runStudioJob(
           "chat",
@@ -342,7 +342,7 @@ export function BuddyLiveChat() {
         }
         if (!sample) throw Error("The Red voice reference is unavailable right now.");
         r = await runStudioJob(
-          "voice-clone",
+          "tts",
           {
             refAudio: sample,
             referenceAudio: sample,
