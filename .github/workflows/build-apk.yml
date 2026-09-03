@@ -164,6 +164,10 @@ jobs:
           });
           NODE
 
+      - name: Update Bubblewrap project
+        working-directory: twa
+        run: npx bubblewrap update --skipVersionUpgrade
+
       - name: Build APK
         working-directory: twa
         env:
