@@ -401,193 +401,42 @@ async function cloudflareAI(request: Request, env: ServerEnv): Promise<Response 
         { headers: { "cache-control": "no-store" } },
       );
     }
+    if (capability === "chat") {
+      const messages = Array.isArray(body.messages) ? body.messages : [{ role: "user", content: prompt }];
+      const result = await openRouterChat(env, messages);
+      const text = chatText(result);
+      if (!text) return jsonError("The chat provider returned no usable text.", 502);
+      return Response.json({ text }, { headers: { "cache-control": "no-store" } });
+    }
     if (capability === "image") {
-      const form = new FormData();
-      form.append("prompt", prompt);
-      form.append("width", "1024");
-      form.append("height", "768");
-      const formResponse = new Response(form);
-      const result = await env.AI.run("@cf/black-forest-labs/flux-2-klein-4b", {
-        multipart: {
-          body: formResponse.body,
-          contentType: formResponse.headers.get("content-type") || "multipart/form-data",
-        },
-      });
-      const image = await rawImageResponse(result);
-      if (!image) return jsonError("Image model returned no usable image.", 502);
-      return image;
+      if (hasImageContent(body.messages || [])) return jsonError("Image editing is not available in this runtime.", 501);
+      const result = await env.AI.run("@cf/black-forest-labs/flux-1-schnell", { prompt });
+      const response = await rawImageResponse(result);
+      return response || jsonError("Image generation returned no usable artifact.", 502);
     }
     if (capability === "tts") {
-      const lang = ttsLanguage(body.language);
-      const requested = String(body.speaker || "").trim();
-      const auraSpeaker = BUDDY_TO_AURA[requested] || requested.toLowerCase();
-      let lastError: unknown;
-      if (lang === "en" && AURA_EN_SPEAKERS.has(auraSpeaker)) {
-        try {
-          const aura = await env.AI.run("@cf/deepgram/aura-2-en", {
-            text: prompt,
-            encoding: "mp3",
-            speaker: auraSpeaker,
-          });
-          const audio = await rawAudioResponse(aura);
-          if (audio) return audio;
-          lastError = new Error("Aura-2 English returned no audio");
-        } catch (error) {
-          lastError = error;
-          console.warn("Aura-2 English failed", error);
-        }
-      }
-      if (lang === "es" && AURA_ES_SPEAKERS.has(auraSpeaker)) {
-        try {
-          const aura = await env.AI.run("@cf/deepgram/aura-2-es", {
-            text: prompt,
-            encoding: "mp3",
-            speaker: auraSpeaker,
-          });
-          const audio = await rawAudioResponse(aura);
-          if (audio) return audio;
-          lastError = new Error("Aura-2 Spanish returned no audio");
-        } catch (error) {
-          lastError = error;
-          console.warn("Aura-2 Spanish failed", error);
-        }
-      }
-      try {
-        const result = await env.AI.run("@cf/myshell-ai/melotts", { prompt, lang });
-        const audio = await rawAudioResponse(result);
-        if (audio) return audio;
-        lastError = new Error("MeloTTS returned no audio");
-      } catch (error) {
-        lastError = error;
-        console.warn("MeloTTS failed", error);
-      }
-      return jsonError(
-        `TTS returned no usable audio.${isCapacityError(lastError) ? " The AI service is at capacity." : ""}`,
-        503,
-      );
+      const language = ttsLanguage(body.language);
+      const speaker = String(body.speaker || "").trim();
+      const auraSpeaker = BUDDY_TO_AURA[speaker] || (AURA_EN_SPEAKERS.has(speaker.toLowerCase()) || AURA_ES_SPEAKERS.has(speaker.toLowerCase()) ? speaker : "");
+      if (!auraSpeaker) return jsonError("A valid Aura speaker is required.", 400);
+      if ((language === "en" && !AURA_EN_SPEAKERS.has(auraSpeaker.toLowerCase())) || (language === "es" && !AURA_ES_SPEAKERS.has(auraSpeaker.toLowerCase())))
+        return jsonError(`Speaker ${auraSpeaker} is not supported for ${language}.`, 400);
+      const result = await env.AI.run("@cf/deepgram/aura-1", { text: prompt, speaker: auraSpeaker });
+      const response = await rawAudioResponse(result);
+      return response || jsonError("TTS returned no usable audio.", 502);
     }
-    if (capability === "chat") {
-      const messages =
-        Array.isArray(body.messages) && body.messages.length
-          ? body.messages
-          : [{ role: "user", content: prompt }];
-      const model = hasImageContent(messages)
-        ? "@cf/google/gemma-4-26b-a4b-it"
-        : "@cf/qwen/qwen3-30b-a3b-fp8";
-      let result: unknown;
-      const chatOptions = {
-        messages,
-        max_tokens: 640,
-        temperature: 0.6,
-        chat_template_kwargs: { enable_thinking: false },
-      };
-      try {
-        result = await env.AI.run(model, chatOptions);
-      } catch (primaryError) {
-        console.warn("Primary Buddy model failed; trying OpenRouter", primaryError);
-        try {
-          result = await openRouterChat(env, messages);
-        } catch (openRouterError) {
-          console.warn("OpenRouter fallback failed; using GPT-OSS fallback", openRouterError);
-          result = await env.AI.run("@cf/openai/gpt-oss-20b", {
-            messages,
-            max_tokens: 640,
-            temperature: 0.6,
-          });
-        }
-      }
-      const text = chatText(result);
-      if (!text) return jsonError("Buddy model returned no usable response.", 502);
-      return Response.json(
-        { response: text, text, result },
-        { headers: { "cache-control": "no-store" } },
-      );
-    }
-    if (capability === "music") {
-      const result = await env.AI.run("minimax/music-2.6", {
-        prompt: prompt.slice(0, 2000),
-        lyrics: body.lyrics?.trim() || undefined,
-        is_instrumental: Boolean(body.instrumental),
-        lyrics_optimizer: body.lyricsOptimizer ?? !body.lyrics?.trim(),
-        format: "mp3",
-      });
-      const audio = await rawAudioResponse(result);
-      if (!audio) return jsonError("MiniMax Music 2.6 returned no playable audio.", 502);
-      const headers = new Headers(audio.headers);
-      headers.set("cache-control", "no-store");
-      headers.set("x-music-provider", "MiniMax Music 2.6");
-      return new Response(audio.body, { status: 200, headers });
-    }
-    if (capability === "video") {
-      const result = await env.AI.run("bytedance/seedance-2.0-fast", {
-        prompt: prompt || "Create a cinematic short video",
-        duration: Math.min(12, Math.max(4, Number(body.duration) || 5)),
-        resolution: body.resolution || "720p",
-        aspect_ratio: body.aspectRatio || "16:9",
-        fps: 24,
-        generate_audio: true,
-        watermark: false,
-        use_virtual_avatar: false,
-        ...(body.image ? { image: body.image } : {}),
-      });
-      const video = mediaUrl(result, ["video", "url", "uri", "result", "output"]);
-      if (!video) return jsonError("Video model returned no usable video URL.", 502);
-      return Response.json(
-        { video, provider: "Seedance 2.0 Fast" },
-        { headers: { "cache-control": "no-store" } },
-      );
-    }
-    if (capability === "web-search") {
-      const query = String(body.prompt ?? body.text ?? body.searchQuery ?? "").trim();
-      if (!query) return jsonError("Search query is required.", 400);
-      const results = await webSearch(query);
-      return Response.json(
-        { query, results, provider: "DuckDuckGo" },
-        { headers: { "cache-control": "no-store" } },
-      );
-    }
-    return jsonError(`Cloudflare AI does not provide the ${capability} capability.`, 400);
+    if (capability === "video") return jsonError("Video generation is not available in this runtime.", 501);
+    return jsonError(`Unsupported AI capability: ${capability}`, 400);
   } catch (error) {
-    console.error("Workers AI generation failed", error);
-    return jsonError(error instanceof Error ? error.message : "Workers AI generation failed.");
+    console.error("Cloudflare AI route failed", error);
+    return jsonError(error instanceof Error ? error.message : "Cloudflare AI request failed.", 502);
   }
-}
-
-async function webSearch(
-  query: string,
-): Promise<{ title: string; url: string; snippet: string }[]> {
-  const url = new URL("https://duckduckgo.com/html/");
-  url.searchParams.set("q", query);
-  url.searchParams.set("kl", "us-en");
-  const response = await fetch(url, {
-    headers: {
-      "user-agent":
-        "Mozilla/5.0 (compatible; LittleRedsBigStudio/1.0; +https://gigglelootcoin.workers.dev)",
-      accept: "text/html",
-    },
-  });
-  if (!response.ok) throw new Error(`Web search failed (${response.status}).`);
-  const html = await response.text();
-  const results: { title: string; url: string; snippet: string }[] = [];
-  const itemRe = /<a[^>]+class="result__a"[^>]+href="([^"]+)"[^>]*>(.*?)<\/a>[\s\S]*?<a[^>]+class="result__snippet"[^>]*>(.*?)<\/a>/gi;
-  let match: RegExpExecArray | null;
-  while ((match = itemRe.exec(html)) && results.length < 8) {
-    const decode = (s: string) =>
-      s.replace(/<[^>]*>/g, " ")
-        .replace(/&amp;/g, "&")
-        .replace(/&quot;/g, '"')
-        .replace(/&#x27;/g, "'")
-        .replace(/\s+/g, " ")
-        .trim();
-    results.push({ title: decode(match[2]), url: match[1], snippet: decode(match[3]) });
-  }
-  return results;
 }
 
 export default {
   async fetch(request: Request, env: unknown, ctx: unknown) {
     try {
-      const voice = await handleVoiceClone(request, env as Parameters<typeof handleVoiceClone>[1]);
+      const voice = await (handleVoiceClone as unknown as (request: Request, env: unknown) => Promise<Response | null>)(request, env);
       if (voice) return voice;
       const ai = await cloudflareAI(request, env as ServerEnv);
       if (ai) return ai;
