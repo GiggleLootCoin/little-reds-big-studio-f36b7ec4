@@ -51,6 +51,56 @@ function mediaUrl(result: unknown): string | null {
   }
   return null;
 }
+
+const PRESET_SPEAKERS: Record<string, string> = {
+  Ryan: "angus",
+  Aiden: "orion",
+  Vivian: "asteria",
+  Serena: "luna",
+  Uncle_Fu: "zeus",
+  Dylan: "perseus",
+  Eric: "helios",
+  Ono_Anna: "stella",
+  Sohee: "athena",
+};
+
+async function reliablePresetTTS(request: Request, env: Env): Promise<Response> {
+  if (!env.AI) return jsonError("Cloudflare Workers AI binding is not configured.", 503);
+  let body: { text?: string; target_text?: string; prompt?: string; speaker?: string; language?: string };
+  try {
+    body = await request.json();
+  } catch {
+    return jsonError("Invalid voice request.", 400);
+  }
+  const text = String(body.text || body.target_text || body.prompt || "").trim().slice(0, 1200);
+  if (!text) return jsonError("Voice text is empty.", 400);
+  const requested = String(body.speaker || "Ryan").trim();
+  const speaker = PRESET_SPEAKERS[requested];
+  if (!speaker) return jsonError(`Unsupported Buddy preset voice: ${requested}`, 400);
+  const language = normalizeSpeechLanguage(body.language) || "en";
+  try {
+    const result = await env.AI.run(
+      "@cf/deepgram/aura-1",
+      { text, speaker, language },
+      { returnRawResponse: true },
+    );
+    if (!(result instanceof Response)) throw new Error("Aura-1 did not return an audio response.");
+    if (!result.ok) throw new Error(`Aura-1 returned HTTP ${result.status}.`);
+    const headers = new Headers(result.headers);
+    headers.set("content-type", headers.get("content-type") || "audio/mpeg");
+    headers.set("cache-control", "no-store");
+    headers.set("x-buddy-voice", requested);
+    headers.set("x-buddy-voice-engine", "Cloudflare Workers AI Deepgram Aura-1");
+    return new Response(result.body, { status: result.status, headers });
+  } catch (error) {
+    console.error("Buddy preset TTS failed", error);
+    return jsonError(
+      `Buddy preset voice generation failed. ${error instanceof Error ? error.message : String(error)}`,
+      502,
+    );
+  }
+}
+
 async function reliableSpeechToText(request: Request, env: Env): Promise<Response> {
   if (!env.AI) return jsonError("Cloudflare Workers AI binding is not configured.", 503);
   let body: { audioBase64?: string; language?: string };
@@ -188,6 +238,8 @@ export default {
           return handleProductionVoiceClone(request, env);
       } catch {}
     }
+    if (path === "/api/ai/tts" && request.method === "POST")
+      return reliablePresetTTS(request, env);
     if (path === "/api/ai/speech-to-text" && request.method === "POST")
       return reliableSpeechToText(request, env);
     if (path === "/api/ai/chat" && request.method === "POST") {
