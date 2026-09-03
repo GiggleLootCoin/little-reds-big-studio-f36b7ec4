@@ -436,7 +436,8 @@ export function getBuddyVoiceProfile(): BuddyVoiceProfile {
     ) as Partial<BuddyVoiceProfile> | null;
     const selected = parsed ?? legacyProfile();
     const migrated =
-      localStorage.getItem(RED_DEFAULT_MIGRATION_KEY) !== "1" && (selected == null || isLegacyRyanDefault(selected));
+      localStorage.getItem(RED_DEFAULT_MIGRATION_KEY) !== "1" &&
+      (selected == null || isLegacyRyanDefault(selected));
     if (migrated) {
       const redDefault: BuddyVoiceProfile = {
         ...DEFAULT_PROFILE,
