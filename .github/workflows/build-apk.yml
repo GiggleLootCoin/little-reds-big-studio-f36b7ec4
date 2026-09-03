@@ -37,8 +37,10 @@ jobs:
           node-version: 20
           cache: npm
 
-      - name: Install Bubblewrap
-        run: npm install -g @bubblewrap/cli
+      - name: Install Bubblewrap CLI + core locally
+        working-directory: twa
+        run: |
+          npm install --no-audit --no-fund --ignore-scripts @bubblewrap/cli@1.25.0 @bubblewrap/core@1.25.0
 
       - name: Prepare signing key
         env:
@@ -51,23 +53,6 @@ jobs:
             echo "::warning::TWA_SIGNING_KEY_BASE64 not set; building unsigned debug APK."
             touch twa/lrbs-release-key.jks
           fi
-
-      - name: Debug Bubblewrap installation
-        run: |
-          echo 'Bubblewrap location:'
-          which bubblewrap || echo 'not in PATH'
-          npm root -g
-          ls -la /usr/local/lib/node_modules/@bubblewrap/ 2>/dev/null || echo 'not in /usr/local'
-          ls -la /usr/lib/node_modules/@bubblewrap/ 2>/dev/null || echo 'not in /usr/lib'
-          find /usr -name '@bubblewrap' -type d 2>/dev/null | head -5
-          find /home -name '@bubblewrap' -type d 2>/dev/null | head -5
-          echo '---'
-          echo 'Bubblewrap CLI package.json:'
-          cat $(npm root -g)/@bubblewrap/cli/package.json 2>/dev/null | head -20 || echo 'not found'
-          echo '---'
-          echo 'Looking for @bubblewrap/core:'
-          find /usr -path '*/@bubblewrap/core/dist/index.js' 2>/dev/null | head -5
-          find /home -path '*/@bubblewrap/core/dist/index.js' 2>/dev/null | head -5
 
       - name: Initialize TWA project (non-interactive)
         working-directory: twa
@@ -88,40 +73,13 @@ jobs:
             console.log('Package ID:', manifestJson.packageId);
             console.log('Host:', manifestJson.host);
 
-            // Find @bubblewrap/core from globally installed bubblewrap
-            const candidatePaths = [
-              '/usr/local/lib/node_modules/@bubblewrap/core',
-              '/usr/lib/node_modules/@bubblewrap/core',
-              path.join(os.homedir(), '.npm-global', 'lib', 'node_modules', '@bubblewrap', 'core'),
-              path.join(os.homedir(), '.npm', '_npx'),
-            ];
-            let coreDir = null;
-            for (const searchPath of candidatePaths) {
-              if (fs.existsSync(searchPath)) {
-                if (searchPath.endsWith('_npx')) {
-                  // Scan npx cache for bubblewrap core
-                  for (const d of fs.readdirSync(searchPath)) {
-                    const candidate = path.join(searchPath, d, 'node_modules', '@bubblewrap', 'core');
-                    if (fs.existsSync(candidate) && fs.existsSync(path.join(candidate, 'dist', 'index.js'))) {
-                      coreDir = candidate;
-                      break;
-                    }
-                  }
-                } else {
-                  if (fs.existsSync(path.join(searchPath, 'dist', 'index.js'))) {
-                    coreDir = searchPath;
-                  }
-                }
-                if (coreDir) break;
-              }
-            }
-            if (!coreDir) {
-              console.error('@bubblewrap/core not found in npx cache');
+            // Use @bubblewrap/core installed locally in twa/node_modules
+            const corePath = path.resolve(__dirname, 'node_modules/@bubblewrap/core/dist/index.js');
+            if (!fs.existsSync(corePath)) {
+              console.error('@bubblewrap/core not found at', corePath);
               process.exit(1);
             }
-            console.log('Using @bubblewrap/core from:', coreDir);
-
-            const core = require(path.join(coreDir, 'dist', 'index.js'));
+            const core = require(corePath);
             const { TwaManifest, TwaGenerator, JdkHelper } = core;
 
             // Resolve signing key path
@@ -186,7 +144,7 @@ jobs:
           TWA_SIGNING_KEY_PASSWORD: ${{ secrets.TWA_SIGNING_KEY_PASSWORD || 'android' }}
           TWA_SIGNING_KEY_STORE_PASSWORD: ${{ secrets.TWA_SIGNING_KEY_STORE_PASSWORD || 'android' }}
         run: |
-          bubblewrap build --type=apk
+          npx bubblewrap build --type=apk
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
