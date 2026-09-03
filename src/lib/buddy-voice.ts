@@ -235,7 +235,7 @@ export const BUDDY_TONES = [
   { id: "gentle", label: "Gentle", note: "Soft and considerate" },
   { id: "professional", label: "Professional", note: "Polished and precise" },
 ] as const;
-const RED_DEFAULT_MIGRATION_KEY = "lrbgs-red-default-v1";
+const RED_DEFAULT_MIGRATION_KEY = "lrbgs-red-default-v2";
 const DEFAULT_PROFILE: BuddyVoiceProfile = {
   mode: "preset",
   speaker: "Red",
@@ -427,6 +427,9 @@ function legacyProfile(): Partial<BuddyVoiceProfile> | null {
   }
   return null;
 }
+function isLegacyRyanDefault(profile: Partial<BuddyVoiceProfile> | null): boolean {
+  return Boolean(profile && profile.mode === "preset" && (!profile.speaker || profile.speaker === "Ryan"));
+}
 export function getBuddyVoiceProfile(): BuddyVoiceProfile {
   if (typeof window === "undefined") return DEFAULT_PROFILE;
   try {
@@ -434,7 +437,7 @@ export function getBuddyVoiceProfile(): BuddyVoiceProfile {
       localStorage.getItem(BUDDY_VOICE_KEY) || "null",
     ) as Partial<BuddyVoiceProfile> | null;
     const selected = parsed ?? legacyProfile();
-    const migrated = localStorage.getItem(RED_DEFAULT_MIGRATION_KEY) !== "1";
+    const migrated = localStorage.getItem(RED_DEFAULT_MIGRATION_KEY) !== "1" && (selected == null || isLegacyRyanDefault(selected));
     if (migrated) {
       const redDefault: BuddyVoiceProfile = {
         ...DEFAULT_PROFILE,
