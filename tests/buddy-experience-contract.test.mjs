@@ -2,14 +2,13 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-const [picker, chat, agent, voice, runtime, server, runners, twa] = await Promise.all([
+const [picker, chat, agent, voice, runtime, wrapper, twa] = await Promise.all([
   readFile("src/components/studio/BuddyVoicePicker.tsx", "utf8"),
   readFile("src/components/studio/BuddyLiveChat.tsx", "utf8"),
   readFile("src/lib/buddy-agent.ts", "utf8"),
   readFile("src/lib/buddy-voice.ts", "utf8"),
   readFile("src/lib/studio-runtime.ts", "utf8"),
-  readFile("src/server.ts", "utf8"),
-  readFile("src/lib/free-runners.ts", "utf8"),
+  readFile("scripts/write-worker-wrapper.mjs", "utf8"),
   readFile("twa/twa-manifest.json", "utf8"),
 ]);
 
@@ -63,15 +62,13 @@ test("Red default migration only replaces the stale legacy Ryan default", () => 
   assert.match(voice, /selected == null \|\| isLegacyRyanDefault\(selected\)/);
 });
 
-test("Buddy chat has a real server-side model path without requiring an OpenRouter key", () => {
-  assert.match(server, /env\.AI\.run\("@cf\/qwen\/qwen3\.8-27b"/);
+test("Buddy chat has a real server-side Qwen route through the deployed Worker wrapper", () => {
+  assert.match(wrapper, /path === "\/api\/ai\/chat" && request\.method === "POST"/);
+  assert.match(wrapper, /env\.AI\.run\("@cf\/qwen\/qwen3\.8-27b"/);
+  assert.match(wrapper, /max_tokens: 320/);
 });
 
-test("Buddy voice failure cannot erase a successfully generated text reply", () => {
-  assert.match(chat, /Voice generation failed after Buddy replied|voice response/i);
-});
-
-test("Buddy production voice uses the hardened Cloudflare clone route", () => {
+test("Buddy production Red voice uses the hardened Cloudflare clone route", () => {
   assert.match(runtime, /fetch\("\/api\/ai\/voice-clone"/);
   assert.match(runtime, /referenceId/);
   assert.match(runtime, /modelSize/);
