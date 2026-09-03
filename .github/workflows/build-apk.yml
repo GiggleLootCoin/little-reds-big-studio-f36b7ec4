@@ -72,11 +72,31 @@ jobs:
             console.log('Host:', manifestJson.host);
 
             // Find @bubblewrap/core from globally installed bubblewrap
-            const globalModules = '/usr/lib/node_modules';
+            const candidatePaths = [
+              '/usr/lib/node_modules/@bubblewrap/core',
+              '/usr/local/lib/node_modules/@bubblewrap/core',
+              path.join(os.homedir(), '.npm-global', 'lib', 'node_modules', '@bubblewrap', 'core'),
+              path.join(os.homedir(), '.npm', '_npx'),
+            ];
             let coreDir = null;
-            const candidate = path.join(globalModules, '@bubblewrap/core');
-            if (fs.existsSync(candidate) && fs.existsSync(path.join(candidate, 'dist', 'index.js'))) {
-              coreDir = candidate;
+            for (const searchPath of candidatePaths) {
+              if (fs.existsSync(searchPath)) {
+                if (searchPath.endsWith('_npx')) {
+                  // Scan npx cache for bubblewrap core
+                  for (const d of fs.readdirSync(searchPath)) {
+                    const candidate = path.join(searchPath, d, 'node_modules', '@bubblewrap', 'core');
+                    if (fs.existsSync(candidate) && fs.existsSync(path.join(candidate, 'dist', 'index.js'))) {
+                      coreDir = candidate;
+                      break;
+                    }
+                  }
+                } else {
+                  if (fs.existsSync(path.join(searchPath, 'dist', 'index.js'))) {
+                    coreDir = searchPath;
+                  }
+                }
+                if (coreDir) break;
+              }
             }
             if (!coreDir) {
               console.error('@bubblewrap/core not found in npx cache');
