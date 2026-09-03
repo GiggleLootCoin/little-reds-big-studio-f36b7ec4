@@ -76,8 +76,8 @@ jobs:
           mkdir -p "$SDK_ROOT/bin"
           ln -sf ../cmdline-tools/latest/bin/sdkmanager "$SDK_ROOT/bin/sdkmanager"
           ln -sf ../cmdline-tools/latest/bin/avdmanager "$SDK_ROOT/bin/avdmanager" 2>/dev/null || true
-          yes | "$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --licenses --sdk_root="$SDK_ROOT" >/dev/null 2>&1 || true
-          yes | "$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --install "platform-tools" "build-tools;36.1.0" --sdk_root="$SDK_ROOT"
+          "$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --licenses --sdk_root="$SDK_ROOT" </dev/null >/dev/null 2>&1 || true
+          "$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --install "platform-tools" "build-tools;36.1.0" --sdk_root="$SDK_ROOT"
           echo "Android SDK installed."
 
       - name: Initialize TWA project (non-interactive)
