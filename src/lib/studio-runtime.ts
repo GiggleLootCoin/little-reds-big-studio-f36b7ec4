@@ -5,6 +5,7 @@ import { saveVoiceSample } from "./voice-profile";
 import { normalizeAndVerifyBrowserAudio } from "./audio-artifact";
 import { saveBuddyClonePreview } from "./buddy-voice";
 import { createBestFreeVoiceClone } from "./real-voice-clone-v2";
+import { buildBuddyMemoryContext, rememberUserMessage } from "./buddy-memory.mjs";
 
 export type { StudioArtifact, StudioCapability, StudioJobInput } from "./studio-runtime-impl";
 export { runtimeProviders } from "./studio-runtime-impl";
@@ -272,7 +273,33 @@ export async function runStudioJob(
       return { capability: "tts", value: result, url: result.url, provider: result.provider };
     }
   }
-  const preparedInput = capability === "speech-to-text" ? await prepareSpeechToText(input) : input;
+  let preparedInput = capability === "speech-to-text" ? await prepareSpeechToText(input) : input;
+  if (capability === "chat") {
+    const prompt = String(preparedInput.prompt ?? preparedInput.text ?? "").trim();
+    if (prompt) rememberUserMessage(prompt);
+    const memory = buildBuddyMemoryContext();
+    if (memory) {
+      const existing = Array.isArray(preparedInput.messages) ? preparedInput.messages : [];
+      const systemIndex = existing.findIndex((message) => {
+        return (
+          message &&
+          typeof message === "object" &&
+          (message as Record<string, unknown>).role === "system"
+        );
+      });
+      const messages = [...existing];
+      if (systemIndex >= 0) {
+        const current = messages[systemIndex] as Record<string, unknown>;
+        messages[systemIndex] = {
+          ...current,
+          content: `${String(current.content ?? "").trim()}\n\n${memory}`.trim(),
+        };
+      } else {
+        messages.unshift({ role: "system", content: memory });
+      }
+      preparedInput = { ...preparedInput, messages, history: messages };
+    }
+  }
   const mod = await import("./studio-runtime-impl");
   return mod.runStudioJob(capability, preparedInput, onStatus);
 }
