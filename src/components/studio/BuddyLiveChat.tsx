@@ -279,7 +279,7 @@ export function BuddyLiveChat() {
     setMessages((x) => [...x, u]);
     setInput("");
     try {
-      const prior = messages.slice(-23).map((m) => ({ role: m.role, content: m.content }));
+      const prior = messages.slice(-12).map((m) => ({ role: m.role, content: m.content }));
       const content: { type: string; text?: string; image_url?: { url: string } }[] = [
         { type: "text", text: clean },
       ];
