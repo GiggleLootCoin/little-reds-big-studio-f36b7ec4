@@ -213,8 +213,20 @@ function chatText(result: unknown): string {
   return "";
 }
 async function openRouterChat(env: ServerEnv, messages: unknown[]): Promise<unknown> {
+  if (env.AI) {
+    const model = hasImageContent(messages)
+      ? "@cf/qwen/qwen3.8-27b"
+      : "@cf/qwen/qwen3-30b-a3b-fp8";
+    const result = await env.AI.run(model, {
+      messages,
+      max_tokens: 320,
+      temperature: 0.55,
+      stream: false,
+    });
+    return result;
+  }
   const key = env.OPENROUTERAI_API_KEY?.trim();
-  if (!key) throw new Error("OpenRouter API key is not configured");
+  if (!key) throw new Error("Buddy chat engine is not configured");
   const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
     headers: {
@@ -226,7 +238,7 @@ async function openRouterChat(env: ServerEnv, messages: unknown[]): Promise<unkn
     body: JSON.stringify({
       model: "openrouter/free",
       messages,
-      max_tokens: 640,
+      max_tokens: 320,
       temperature: 0.6,
     }),
   });
@@ -428,6 +440,7 @@ async function cloudflareAI(request: Request, env: ServerEnv): Promise<Response 
       const result = await env.AI.run("@cf/deepgram/aura-1", {
         text: prompt,
         speaker: language === "es" ? "sirio" : speaker,
+        encoding: "mp3",
       });
       const audio = await rawAudioResponse(result);
       if (!audio) return jsonError("The speech model returned no audio.", 502);
