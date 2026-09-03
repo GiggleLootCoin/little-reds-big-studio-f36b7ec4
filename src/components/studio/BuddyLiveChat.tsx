@@ -355,7 +355,7 @@ export function BuddyLiveChat() {
             mood: v.mood || "natural",
             tone: v.tone || "conversational",
             use_xvector_only: !v.referenceTranscript,
-            model_size: "1.7B",
+            model_size: liveRef.current ? "0.6B" : "1.7B",
           },
           setStatus,
         );
@@ -367,6 +367,7 @@ export function BuddyLiveChat() {
             target_text: text,
             language: v.language || "English",
             speaker: v.speaker,
+            model_size: "1.7B",
             mood: v.mood || "natural",
             tone: v.tone || "conversational",
           },
