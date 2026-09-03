@@ -75,7 +75,7 @@ jobs:
           ln -sf ../cmdline-tools/latest/bin/sdkmanager "$SDK_ROOT/bin/sdkmanager"
           ln -sf ../cmdline-tools/latest/bin/avdmanager "$SDK_ROOT/bin/avdmanager" 2>/dev/null || true
           echo "y" | "$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --licenses --sdk_root="$SDK_ROOT" > /dev/null 2>&1 || true
-          echo "y" | "$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --install "platform-tools" "build-tools;36.1.0" --sdk_root="$SDK_ROOT"
+          echo "y" | "$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --no-progress --install "platform-tools" "build-tools;36.1.0" --sdk_root="$SDK_ROOT"
           echo "Android SDK installed."
           ls -la "$SDK_ROOT/bin" "$SDK_ROOT/cmdline-tools/latest/bin" "$SDK_ROOT/build-tools" "$SDK_ROOT/platform-tools" || true
 
