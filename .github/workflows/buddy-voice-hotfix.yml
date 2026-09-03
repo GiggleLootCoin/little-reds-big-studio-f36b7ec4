@@ -27,24 +27,17 @@ jobs:
           s = s.replace('id: "cf-whisper-large-v3-turbo",', 'id: "cf-whisper-large-v3",')
           s = s.replace('name: "Cloudflare Whisper Large V3 Turbo",', 'name: "Cloudflare Whisper Large V3",')
           s = s.replace('description: "Primary server-side speech-to-text engine for Buddy microphone input.",', 'description: "Primary server-side speech-to-text engine for Buddy microphone input without the rejected Turbo route.",')
-          s = s.replace('priority: 1000,\n  },\n  {\n    id: "buddy-web-search",', 'priority: 1000,\n  },\n  {\n    id: "buddy-web-search",', 1)
-          # Make the dedicated server TTS route win over public Spaces for preset voices.
-          s = s.replace('id: "cf-buddy-tts",', 'id: "cf-buddy-tts",')
           block = re.search(r'(id: "cf-buddy-tts",.*?priority:) 500,', s, re.S)
           if block:
               s = s[:block.start(1)] + block.group(1) + '1300,' + s[block.end():]
-          # Remove the rejected Chatterbox Turbo public route entirely.
           s = re.sub(r'\n  \{\n    id: "hf-chatterbox-turbo",.*?\n  \},', '', s, flags=re.S)
           p.write_text(s)
 
           p = Path('src/lib/studio-runtime-impl.ts')
           s = p.read_text()
-          # Avoid stacking 0.7/1.4/2.1 second connection sleeps on a dead public Space.
           s = s.replace('for (let attempt = 0; attempt < 3; attempt++) {', 'for (let attempt = 0; attempt < 1; attempt++) {')
           s = s.replace('await new Promise((r) => setTimeout(r, 700 * (attempt + 1)));', 'await new Promise((r) => setTimeout(r, 150));')
-          # Preset TTS must not burn two minutes before falling back.
           s = s.replace('const timeoutMs =\n    prepared.capability === "music"\n      ? 600000\n      : prepared.capability === "video"\n        ? 360000\n        : prepared.capability === "image"\n          ? 180000\n          : 120000;', 'const timeoutMs =\n    prepared.capability === "music"\n      ? 600000\n      : prepared.capability === "video"\n        ? 360000\n        : prepared.capability === "image"\n          ? 180000\n          : prepared.capability === "voice-clone"\n            ? 90000\n            : prepared.capability === "tts"\n              ? 25000\n              : prepared.capability === "chat"\n                ? 30000\n                : 120000;')
-          # Never let generic TTS probing hit Chatterbox's clone endpoint.
           marker = 'const providers = runnersFor(prepared.capability).filter((provider) => !skipped.has(provider.id));'
           replacement = 'const providers = runnersFor(prepared.capability).filter((provider) => {\n    if (skipped.has(provider.id)) return false;\n    if (prepared.capability === "tts" && ["hf-chatterbox", "hf-chatterbox-v3"].includes(provider.id)) return false;\n    return true;\n  });'
           s = s.replace(marker, replacement)
@@ -52,9 +45,7 @@ jobs:
 
           p = Path('src/components/studio/BuddyLiveChat.tsx')
           s = p.read_text()
-          # Make chat failures fail quickly rather than leaving Buddy appearing frozen.
-          s = s.replace('const r = await runStudioJob(\n          "chat",', 'const r = await runStudioJob(\n          "chat",')
-          # Ensure a preset voice request explicitly carries the selected speaker.
+          s = s.replace('model_size: "1.7B",\n          },', 'model_size: liveRef.current ? "0.6B" : "1.7B",\n          },')
           s = s.replace('speaker: v.speaker,\n            mood:', 'speaker: v.speaker,\n            model_size: "1.7B",\n            mood:')
           p.write_text(s)
           PY
@@ -62,6 +53,7 @@ jobs:
         run: |
           grep -n 'cf-buddy-tts\|cf-whisper-large-v3\|hf-chatterbox-turbo' src/lib/free-runners.ts || true
           grep -n 'prepared.capability === "tts"\|attempt < 1' src/lib/studio-runtime-impl.ts
+          grep -n 'model_size: liveRef.current' src/components/studio/BuddyLiveChat.tsx
           npm ci --no-audit --no-fund
           npm run typecheck
           npm run lint
