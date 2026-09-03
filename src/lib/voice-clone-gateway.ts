@@ -14,21 +14,14 @@ function decodeBase64(value: string): ArrayBuffer {
   const bytes = Uint8Array.from(atob(cleaned), (c) => c.charCodeAt(0));
   return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
 }
-
 function languageName(value: unknown): string {
   const raw = String(value || "English").trim();
-  const map: Record<string, string> = {
-    en: "English", es: "Spanish", fr: "French", de: "German", it: "Italian", pt: "Portuguese",
-    ru: "Russian", zh: "Chinese", ja: "Japanese", ko: "Korean", hi: "Hindi", ar: "Arabic", auto: "Auto",
-  };
+  const map: Record<string, string> = { en: "English", es: "Spanish", fr: "French", de: "German", it: "Italian", pt: "Portuguese", ru: "Russian", zh: "Chinese", ja: "Japanese", ko: "Korean", hi: "Hindi", ar: "Arabic", auto: "Auto" };
   return map[raw.toLowerCase()] || raw;
 }
 function languageCode(value: unknown): string {
   const raw = String(value || "English").trim().toLowerCase();
-  const map: Record<string, string> = {
-    english: "en", spanish: "es", french: "fr", german: "de", italian: "it", portuguese: "pt",
-    russian: "ru", chinese: "zh", japanese: "ja", korean: "ko", hindi: "hi", arabic: "ar",
-  };
+  const map: Record<string, string> = { english: "en", spanish: "es", french: "fr", german: "de", italian: "it", portuguese: "pt", russian: "ru", chinese: "zh", japanese: "ja", korean: "ko", hindi: "hi", arabic: "ar" };
   return map[raw] || raw;
 }
 function errorResponse(message: string, status = 500) {
@@ -63,7 +56,6 @@ async function referencePath(referenceId: string, audioBase64: string | undefine
   referenceCache.set(key, { path, expires: Date.now() + REFERENCE_CACHE_TTL_MS });
   return path;
 }
-
 export type QwenSSEParseResult = { kind: "audio"; payload: unknown[] } | { kind: "error"; message: string } | { kind: "none" };
 export function parseQwenSSE(stream: string): QwenSSEParseResult {
   let event = ""; let data: string[] = []; let result: QwenSSEParseResult = { kind: "none" };
@@ -71,23 +63,20 @@ export function parseQwenSSE(stream: string): QwenSSEParseResult {
     if (!data.length) return;
     const raw = data.join("\n").trim(); if (!raw) return;
     if (event === "error" || event === "cancelled") {
-      try { const parsed = JSON.parse(raw) as unknown; result = { kind: "error", message: typeof parsed === "string" ? parsed : JSON.stringify(parsed) }; }
-      catch { result = { kind: "error", message: raw }; }
+      try { const parsed = JSON.parse(raw) as unknown; result = { kind: "error", message: typeof parsed === "string" ? parsed : JSON.stringify(parsed) }; } catch { result = { kind: "error", message: raw }; }
       return;
     }
     if (event !== "complete") return;
     let parsed: unknown;
     try { parsed = JSON.parse(raw) as unknown; } catch { result = { kind: "error", message: "Qwen returned invalid completed JSON." }; return; }
     if (!Array.isArray(parsed)) return;
-    const first = parsed[0];
-    const status = typeof parsed[parsed.length - 1] === "string" ? String(parsed[parsed.length - 1]).trim() : "";
+    const first = parsed[0]; const status = typeof parsed[parsed.length - 1] === "string" ? String(parsed[parsed.length - 1]).trim() : "";
     if (!first) { result = { kind: "error", message: status || "Qwen completed without an audio artifact." }; return; }
     result = { kind: "audio", payload: parsed };
   };
   for (const line of stream.split(/\r\n|\n|\r/)) {
     if (!line.trim()) { flush(); event = ""; data = []; continue; }
-    if (line.startsWith("event:")) event = line.slice(6).trim();
-    else if (line.startsWith("data:")) data.push(line.slice(5).trim());
+    if (line.startsWith("event:")) event = line.slice(6).trim(); else if (line.startsWith("data:")) data.push(line.slice(5).trim());
   }
   flush(); return result;
 }
@@ -129,11 +118,11 @@ async function downloadAudio(url: string, env: Env, provider: string): Promise<R
 }
 async function cloneWithReferenceRefresh(space: string, referenceId: string, audioBase64: string | undefined, audioType: string, refText: string, text: string, language: string, modelSize: "0.6B" | "1.7B", env: Env, clone: (path: string) => Promise<string>): Promise<string> {
   let path = await referencePath(referenceId, audioBase64, audioType, space, env);
-  try { return await clone(path); }
-  catch (firstError) { if (!audioBase64) throw firstError; path = await referencePath(referenceId, audioBase64, audioType, space, env, true); return await clone(path); }
+  try { return await clone(path); } catch (firstError) { if (!audioBase64) throw firstError; path = await referencePath(referenceId, audioBase64, audioType, space, env, true); return await clone(path); }
 }
-
-export async function handleVoiceClone(request: Request, env: Env = {}): Promise<Response> {
+export async function handleVoiceClone(request: Request, env: Env = {}): Promise<Response | null> {
+  const pathname = new URL(request.url).pathname.replace(/\/$/, "") || "/";
+  if (pathname !== "/api/voice-clone") return null;
   if (request.method !== "POST") return errorResponse("POST required.", 405);
   let body: { referenceId?: string; audioBase64?: string; audioType?: string; refText?: string; text?: string; language?: string; modelSize?: "0.6B" | "1.7B" };
   try { body = (await request.json()) as typeof body; } catch { return errorResponse("The clone request was not valid JSON.", 400); }
