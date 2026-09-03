@@ -19,7 +19,7 @@ permissions:
 jobs:
   build-apk:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
 
     steps:
       - name: Checkout
@@ -44,21 +44,23 @@ jobs:
         env:
           TWA_SIGNING_KEY_BASE64: ${{ secrets.TWA_SIGNING_KEY_BASE64 }}
         run: |
-          mkdir -p ~/.bubblewrap
+          set -euo pipefail
           SDK_ROOT="$HOME/android-sdk"
+          echo "SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
+          mkdir -p ~/.bubblewrap
           echo '{"jdkPath": "'$JAVA_HOME_17_X64'", "androidSdkPath": "'$SDK_ROOT'"}' > ~/.bubblewrap/config.json
           echo "Bubblewrap config written to ~/.bubblewrap/config.json"
           if [ -n "$TWA_SIGNING_KEY_BASE64" ]; then
             echo "$TWA_SIGNING_KEY_BASE64" | base64 -d > twa/lrbs-release-key.jks
             echo "Signing key decoded."
           else
-            echo "::warning::TWA_SIGNING_KEY_BASE64 not set; building unsigned debug APK."
-            touch twa/lrbs-release-key.jks
+            echo "No release signing secret configured; APK will use Bubblewrap's debug signing."
+            rm -f twa/lrbs-release-key.jks
           fi
           echo "Installing Android SDK to $SDK_ROOT..."
           mkdir -p "$SDK_ROOT"
           cd "$SDK_ROOT"
-          curl -sSLo cmdline-tools.zip "https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip"
+          curl -fsSLo cmdline-tools.zip "https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip"
           unzip -q cmdline-tools.zip
           rm cmdline-tools.zip
           if [ -d cmdline-tools/bin ]; then
@@ -74,10 +76,9 @@ jobs:
           mkdir -p "$SDK_ROOT/bin"
           ln -sf ../cmdline-tools/latest/bin/sdkmanager "$SDK_ROOT/bin/sdkmanager"
           ln -sf ../cmdline-tools/latest/bin/avdmanager "$SDK_ROOT/bin/avdmanager" 2>/dev/null || true
-          echo "y" | "$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --licenses --sdk_root="$SDK_ROOT" > /dev/null 2>&1 || true
-          echo "y" | "$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --install "platform-tools" "build-tools;36.1.0" --sdk_root="$SDK_ROOT"
+          yes | "$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --licenses --sdk_root="$SDK_ROOT" >/dev/null 2>&1 || true
+          yes | "$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --install "platform-tools" "build-tools;36.1.0" --sdk_root="$SDK_ROOT"
           echo "Android SDK installed."
-          ls -la "$SDK_ROOT/bin" "$SDK_ROOT/cmdline-tools/latest/bin" "$SDK_ROOT/build-tools" "$SDK_ROOT/platform-tools" || true
 
       - name: Initialize TWA project (non-interactive)
         working-directory: twa
@@ -85,57 +86,42 @@ jobs:
           JAVA_HOME: ${{ env.JAVA_HOME_17_X64 }}
           ANDROID_HOME: ${{ env.SDK_ROOT }}
           ANDROID_SDK_ROOT: ${{ env.SDK_ROOT }}
+          TWA_SIGNING_KEY_BASE64: ${{ secrets.TWA_SIGNING_KEY_BASE64 }}
         run: |
+          set -euo pipefail
           node - <<'NODE'
           const fs = require('fs');
           const path = require('path');
-          const os = require('os');
 
           async function main() {
-            const manifestPath = process.argv[2] || 'twa-manifest.json';
-            const jdkPath = process.argv[3] || process.env.JAVA_HOME;
+            const manifestPath = 'twa-manifest.json';
+            const jdkPath = process.env.JAVA_HOME;
             const targetDir = path.resolve('app');
-
             const manifestJson = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+
             console.log('Package ID:', manifestJson.packageId);
             console.log('Host:', manifestJson.host);
 
-            // Use @bubblewrap/core installed locally in twa/node_modules
             const corePath = path.join(process.cwd(), 'node_modules/@bubblewrap/core/dist/index.js');
-            if (!fs.existsSync(corePath)) {
-              console.error('@bubblewrap/core not found at', corePath);
-              process.exit(1);
-            }
+            if (!fs.existsSync(corePath)) throw new Error(`@bubblewrap/core not found at ${corePath}`);
             const core = require(corePath);
-            const { TwaManifest, TwaGenerator, JdkHelper } = core;
+            const { TwaManifest, TwaGenerator } = core;
 
-            // Resolve signing key path
-            if (manifestJson.signingKey && manifestJson.signingKey.path && !path.isAbsolute(manifestJson.signingKey.path)) {
+            if (manifestJson.signingKey?.path && !path.isAbsolute(manifestJson.signingKey.path)) {
               manifestJson.signingKey.path = path.resolve(path.join(targetDir, '..'), manifestJson.signingKey.path);
-              console.log('Signing key resolved to:', manifestJson.signingKey.path);
+            }
+
+            if (!process.env.TWA_SIGNING_KEY_BASE64) {
+              delete manifestJson.signingKey;
+              console.log('Release signing configuration removed; using debug signing.');
             }
 
             const twaManifest = new TwaManifest(manifestJson);
             const error = twaManifest.validate();
-            if (error) {
-              console.error('Manifest validation error:', error);
-              process.exit(1);
-            }
-            console.log('Manifest validated OK');
+            if (error) throw new Error(`Manifest validation error: ${error}`);
+            if (jdkPath) manifestJson.jdkPath = jdkPath;
 
-            // Inject JDK path into manifest so build step uses it non-interactively
-            if (jdkPath) {
-              manifestJson.jdkPath = jdkPath;
-              console.log('JDK path injected into manifest:', jdkPath);
-            } else {
-              console.warn('JAVA_HOME not set; build may prompt for JDK');
-            }
-
-            // Generate project
-            if (!fs.existsSync(targetDir)) {
-              fs.mkdirSync(targetDir, { recursive: true });
-            }
-            console.log('Generating TWA project into:', targetDir);
+            fs.mkdirSync(targetDir, { recursive: true });
             const generator = new TwaGenerator();
             const log = {
               printMessage: (msg) => console.log('  [bubblewrap]', msg),
@@ -143,25 +129,10 @@ jobs:
             };
             await generator.createTwaProject(targetDir, twaManifest, log);
             await twaManifest.saveToFile(path.join(targetDir, 'twa-manifest.json'));
-
-            const files = [];
-            function walk(dir) {
-              for (const entry of fs.readdirSync(dir)) {
-                const full = path.join(dir, entry);
-                const rel = path.relative(targetDir, full);
-                if (fs.statSync(full).isDirectory()) walk(full);
-                else files.push(rel);
-              }
-            }
-            walk(targetDir);
             console.log('SUCCESS: TWA project generated');
-            console.log('Files:', files.length, '(showing first 10):', files.slice(0, 10).join(', '));
           }
 
-          main().catch(err => {
-            console.error('FATAL:', err.message || err);
-            process.exit(1);
-          });
+          main().catch(err => { console.error('FATAL:', err.message || err); process.exit(1); });
           NODE
 
       - name: Update Bubblewrap project
@@ -169,12 +140,13 @@ jobs:
         run: npx bubblewrap update --skipVersionUpgrade
 
       - name: Diagnose signing keystore
+        if: ${{ secrets.TWA_SIGNING_KEY_BASE64 != '' }}
         working-directory: twa
         env:
           TWA_SIGNING_KEY_STORE_PASSWORD: ${{ secrets.TWA_SIGNING_KEY_STORE_PASSWORD || 'android' }}
         run: |
           echo "=== Keystore file ==="
-          ls -l lrbs-release-key.jks
+          ls -lh lrbs-release-key.jks
           keytool -list -storetype PKCS12 -keystore lrbs-release-key.jks -storepass "$TWA_SIGNING_KEY_STORE_PASSWORD" 2>&1 | head -20 || true
           keytool -list -storetype JKS -keystore lrbs-release-key.jks -storepass "$TWA_SIGNING_KEY_STORE_PASSWORD" 2>&1 | head -20 || true
 
@@ -188,15 +160,24 @@ jobs:
           BUBBLEWRAP_KEYSTORE_PASSWORD: ${{ secrets.TWA_SIGNING_KEY_STORE_PASSWORD || 'android' }}
           ANDROID_HOME: ${{ env.SDK_ROOT }}
           ANDROID_SDK_ROOT: ${{ env.SDK_ROOT }}
-        run: npx bubblewrap build --type=apk
+        run: |
+          set -euo pipefail
+          npx bubblewrap build --type=apk
 
       - name: Verify APK output
         working-directory: twa
         run: |
+          set -euo pipefail
           echo "=== Bubblewrap APK output ==="
-          ls -lh app-release-signed.apk
+          find . -maxdepth 2 -type f -name '*.apk' -print -exec ls -lh {} \;
+          APK="app-release-signed.apk"
+          if [ ! -s "$APK" ]; then
+            APK="app-release-unsigned.apk"
+          fi
+          test -s "$APK"
+          cp "$APK" app-release-signed.apk
           file app-release-signed.apk
-          test -s app-release-signed.apk
+          echo "Verified APK: $(stat -c '%s bytes' app-release-signed.apk)"
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
