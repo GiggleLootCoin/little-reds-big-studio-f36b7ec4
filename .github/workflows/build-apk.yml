@@ -40,10 +40,13 @@ jobs:
       - name: Install Bubblewrap CLI + core locally
         run: npm install --no-audit --no-fund --ignore-scripts --prefix ./twa @bubblewrap/cli@1.25.0 @bubblewrap/core@1.25.0
 
-      - name: Prepare signing key
+      - name: Prepare signing key + Bubblewrap config
         env:
           TWA_SIGNING_KEY_BASE64: ${{ secrets.TWA_SIGNING_KEY_BASE64 }}
         run: |
+          mkdir -p ~/.bubblewrap
+          echo '{"jdkPath": "${{ env.JAVA_HOME_17_X64 }}", "androidSdkPath": ""}' > ~/.bubblewrap/config.json
+          echo 'Bubblewrap config written to ~/.bubblewrap/config.json'
           if [ -n "$TWA_SIGNING_KEY_BASE64" ]; then
             echo "$TWA_SIGNING_KEY_BASE64" | base64 -d > twa/lrbs-release-key.jks
             echo "Signing key decoded."
@@ -94,12 +97,12 @@ jobs:
             }
             console.log('Manifest validated OK');
 
-            // Set up JDK helper (skip interactive validation)
+            // Inject JDK path into manifest so build step uses it non-interactively
             if (jdkPath) {
-              const jdkHelper = new JdkHelper(process, { jdkPath });
-              console.log('JDK configured:', jdkPath);
+              manifestJson.jdkPath = jdkPath;
+              console.log('JDK path injected into manifest:', jdkPath);
             } else {
-              console.warn('JAVA_HOME not set; proceeding without JDK validation');
+              console.warn('JAVA_HOME not set; build may prompt for JDK');
             }
 
             // Generate project
