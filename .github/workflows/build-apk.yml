@@ -25,11 +25,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up JDK 21
-        uses: actions/setup-java@v4
+      - name: Set up JDK 17 (required by Bubblewrap)
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
-          java-version: 21
+          java-version: 17
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -52,10 +52,16 @@ jobs:
             touch twa/lrbs-release-key.jks
           fi
 
-      - name: Initialize TWA project
+      - name: Initialize TWA project (non-interactive)
         working-directory: twa
+        env:
+          JAVA_HOME: ${{ env.JAVA_HOME_17_X64 }}
         run: |
-          bubblewrap init --manifest=twa-manifest.json --skipServiceAccount --quiet
+          bubblewrap init \
+            --manifest=twa-manifest.json \
+            --jdkPath="$JAVA_HOME" \
+            --non-interactive \
+            --quiet
 
       - name: Build APK
         working-directory: twa
