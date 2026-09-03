@@ -3,7 +3,7 @@
 **Last updated:** 2026-09-03
 **Authoritative repository:** `GiggleLootCoin/little-reds-big-studio-f36b7ec4`
 **Branch:** `main`
-**Current main commit:** `d16a30e9f5a52a53050676a954864fc6f054d47e`
+**Current main commit:** `42818f18775907193c672905050e1c72ddee64ee` (hotfix automation added; voice-runtime patch is the next automated commit)
 **Production:** `https://little-reds-big-studio-f36b7ec4.gigglelootcoin.workers.dev`
 **Hosting:** Cloudflare Workers
 **Product:** Buddy-first, Android-first, free/open-first creative studio for musicians and YouTubers.
@@ -30,10 +30,10 @@
 - The Studio runtime automatically applies the saved Buddy voice/language to TTS jobs; a saved personal sample routes TTS through the voice-clone capability rather than silently substituting another voice.
 - Buddy persistent memory is injected into chat while remaining separate from engineering memory.
 - Buddy chat uses direct Cloudflare Workers AI when the binding is available, with Qwen3 text and Qwen 3.8 vision routing and a bounded OpenRouter fallback.
-- The rejected Whisper Turbo dependency was removed from the Buddy speech path; standard Cloudflare Whisper is now used with a bounded binary-input fallback.
+- The rejected Whisper Turbo dependency is being removed from the runtime registry; the next hotfix removes the Turbo runner entry as well as the public Chatterbox Turbo route.
 - Red Buddy voice now defaults to the verified 1.7B path instead of accidentally selecting 0.6B from the live-chat client.
 - The Red clone gateway now accepts both `/api/voice-clone` and the `/api/ai/voice-clone` path used by the live client, fixing the client/gateway route mismatch.
-- Preset Voice Lab tests route directly to real preset TTS when no clone reference is required.
+- Preset Voice Lab tests route directly to real preset TTS when no clone reference is required; the next hotfix moves the dedicated server TTS route ahead of public Spaces and prevents clone-only Chatterbox probing for preset TTS.
 - The user's real Studio logo asset `1784996969001.png` is the live React StudioLogo source.
 - APK build scaffold is present and rebuilds from `main` with monotonically increasing Android version codes.
 
@@ -44,17 +44,31 @@
 - Artifact extraction and validation before reporting media success.
 - Supabase authentication and server-authoritative entitlement logic.
 - Cloudflare production deployment configuration with Workers AI binding.
-- Security & Quality Gate run `33782967577` for the current fixes passed all checks.
-- The earlier APK run from parent commit `4b75df397a5dca91f66c155657782aa1a924cb1f` also built and signed successfully, but is not treated as the final APK because it predates commit `d16a30e9f5a52a53050676a954864fc6f054d47e`.
+- Security & Quality Gate run `33782967577` for the prior fixes passed all checks.
+- Fresh APK artifact from commit `8dcb6df` was built and signed, but user testing exposed severe latency and missing audio, so it is not considered a functional final release.
+
+## Current bug investigation
+
+User-reported on Android APK: Buddy responses are extremely slow, Buddy gives generic responses, Buddy produces no audio, and none of the preset voice test buttons produce sound.
+
+Root causes found in code inspection:
+1. Preset TTS providers are sorted with public Qwen3-TTS (priority 1000) before the dedicated `/api/ai/tts` server route (priority 500), so the app can spend substantial time on a public Space before reaching the fast server path.
+2. Generic TTS provider probing can reach Chatterbox routes even though those routes are clone-oriented, wasting time and failing without playable preset audio.
+3. Gradio connection code retries a failed public Space three times with 0.7/1.4/2.1 second sleeps, adding avoidable latency.
+4. TTS and chat have a 120-second generic timeout, so a dead provider can make Buddy appear frozen.
+5. The runtime registry still contains the explicitly rejected Whisper Turbo entry and a Chatterbox Turbo entry, despite the product decision to avoid Turbo routes.
+
+Hotfix automation has been added to apply these changes and run typecheck/lint/build before committing them. No Lovable or Pocket TTS changes are part of this fix.
 
 ## Current known verification gaps
 
-1. A fresh APK build from the current `main` commit must finish successfully before the APK is called final.
-2. The real Android/browser runtime still needs a device-level smoke test for microphone permission, selected input, Live Chat turn-taking and one real generation artifact.
-3. Real public free-provider execution remains conditional on queue/availability; each exposed capability must be tested with a returned artifact before being called verified.
-4. Live verification of the Buy Me a Coffee membership webhook secret/production membership flow is still required before calling membership fully production-verified.
-5. RVC/voice-swap still requires a real authorized model/reference input and a live converted artifact test; repository route metadata alone is not proof of execution.
-6. Whole-app UI translation is not yet a complete localization layer; the Buddy voice/language preference is implemented first.
+1. The hotfix commit and its production deployment must pass before it is called fixed.
+2. A fresh APK must be rebuilt from the hotfix commit and installed on the Android device.
+3. Real Android verification must confirm fast Buddy text response, non-generic context-aware answers, audible preset voices, audible Red voice, microphone turn-taking, and no browser fallback.
+4. Real public free-provider execution remains conditional on queue/availability; each exposed capability must be tested with a returned artifact before being called verified.
+5. Live verification of the Buy Me a Coffee membership webhook secret/production membership flow is still required before calling membership fully production-verified.
+6. RVC/voice-swap still requires a real authorized model/reference input and a live converted artifact test.
+7. Whole-app UI translation is not yet a complete localization layer; the Buddy voice/language preference is implemented first.
 
 ## Migration artifacts
 
@@ -75,7 +89,7 @@
 
 ## Immediate next action
 
-Finish a fresh APK build from the current `main`, verify its artifact and signature, then perform real Android/runtime and public-provider artifact tests. Do not claim full production completion until those gates have evidence.
+Let the automated Buddy voice hotfix commit, pass quality gates, deploy, rebuild the APK, and then verify the resulting APK artifact before asking for another install test.
 
 ## Handoff rule
 
