@@ -393,13 +393,13 @@ async function cloudflareAI(request: Request, env: ServerEnv): Promise<Response 
       };
       let result: unknown;
       try {
-        result = await env.AI.run("@cf/openai/whisper-large-v3-turbo", input);
+        result = await env.AI.run("@cf/openai/whisper", input);
       } catch (primaryError) {
-        console.warn("Whisper Turbo failed; trying standard Whisper", primaryError);
+        console.warn("Standard Whisper failed; retrying with its binary-input form", primaryError);
         try {
           result = await env.AI.run("@cf/openai/whisper", audio);
         } catch (secondaryError) {
-          console.warn("Standard Whisper failed", secondaryError);
+          console.warn("Standard Whisper binary request failed", secondaryError);
           return jsonError(
             `Speech recognition temporarily unavailable. ${isCapacityError(primaryError) || isCapacityError(secondaryError) ? "The AI service is at capacity." : "The audio request was rejected."}`,
             503,
