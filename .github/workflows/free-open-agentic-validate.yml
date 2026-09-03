@@ -34,6 +34,9 @@ jobs:
       - name: Type-check application
         run: npx tsc --noEmit
 
+      - name: Normalize application formatting
+        run: npx prettier --write .
+
       - name: Check application formatting
         run: npx prettier --check .
 
