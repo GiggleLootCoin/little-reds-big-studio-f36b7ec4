@@ -73,8 +73,8 @@ jobs:
 
             // Find @bubblewrap/core from globally installed bubblewrap
             const candidatePaths = [
-              '/usr/lib/node_modules/@bubblewrap/core',
               '/usr/local/lib/node_modules/@bubblewrap/core',
+              '/usr/lib/node_modules/@bubblewrap/core',
               path.join(os.homedir(), '.npm-global', 'lib', 'node_modules', '@bubblewrap', 'core'),
               path.join(os.homedir(), '.npm', '_npx'),
             ];
