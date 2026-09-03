@@ -168,6 +168,16 @@ jobs:
         working-directory: twa
         run: npx bubblewrap update --skipVersionUpgrade
 
+      - name: Diagnose signing keystore
+        working-directory: twa
+        env:
+          TWA_SIGNING_KEY_STORE_PASSWORD: ${{ secrets.TWA_SIGNING_KEY_STORE_PASSWORD || 'android' }}
+        run: |
+          echo "=== Keystore file ==="
+          ls -l lrbs-release-key.jks
+          keytool -list -storetype PKCS12 -keystore lrbs-release-key.jks -storepass "$TWA_SIGNING_KEY_STORE_PASSWORD" 2>&1 | head -20 || true
+          keytool -list -storetype JKS -keystore lrbs-release-key.jks -storepass "$TWA_SIGNING_KEY_STORE_PASSWORD" 2>&1 | head -20 || true
+
       - name: Build APK
         working-directory: twa
         env:
