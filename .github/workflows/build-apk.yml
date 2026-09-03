@@ -190,10 +190,19 @@ jobs:
           ANDROID_SDK_ROOT: ${{ env.SDK_ROOT }}
         run: npx bubblewrap build --type=apk
 
+      - name: Verify APK output
+        working-directory: twa
+        run: |
+          echo "=== Bubblewrap APK output ==="
+          ls -lh app-release-signed.apk
+          file app-release-signed.apk
+          test -s app-release-signed.apk
+
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: little-reds-big-studio-apk
-          path: twa/app/build/outputs/apk/*.apk
+          path: twa/app-release-signed.apk
+          if-no-files-found: error
           retention-days: 30
           compression-level: 9
