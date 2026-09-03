@@ -170,6 +170,8 @@ jobs:
           TWA_SIGNING_KEY_ALIAS: key0
           TWA_SIGNING_KEY_PASSWORD: ${{ secrets.TWA_SIGNING_KEY_PASSWORD || 'android' }}
           TWA_SIGNING_KEY_STORE_PASSWORD: ${{ secrets.TWA_SIGNING_KEY_STORE_PASSWORD || 'android' }}
+          BUBBLEWRAP_KEY_PASSWORD: ${{ secrets.TWA_SIGNING_KEY_PASSWORD || 'android' }}
+          BUBBLEWRAP_KEYSTORE_PASSWORD: ${{ secrets.TWA_SIGNING_KEY_STORE_PASSWORD || 'android' }}
           ANDROID_HOME: ${{ env.SDK_ROOT }}
           ANDROID_SDK_ROOT: ${{ env.SDK_ROOT }}
         run: npx bubblewrap build --type=apk
