@@ -52,6 +52,23 @@ jobs:
             touch twa/lrbs-release-key.jks
           fi
 
+      - name: Debug Bubblewrap installation
+        run: |
+          echo 'Bubblewrap location:'
+          which bubblewrap || echo 'not in PATH'
+          npm root -g
+          ls -la /usr/local/lib/node_modules/@bubblewrap/ 2>/dev/null || echo 'not in /usr/local'
+          ls -la /usr/lib/node_modules/@bubblewrap/ 2>/dev/null || echo 'not in /usr/lib'
+          find /usr -name '@bubblewrap' -type d 2>/dev/null | head -5
+          find /home -name '@bubblewrap' -type d 2>/dev/null | head -5
+          echo '---'
+          echo 'Bubblewrap CLI package.json:'
+          cat $(npm root -g)/@bubblewrap/cli/package.json 2>/dev/null | head -20 || echo 'not found'
+          echo '---'
+          echo 'Looking for @bubblewrap/core:'
+          find /usr -path '*/@bubblewrap/core/dist/index.js' 2>/dev/null | head -5
+          find /home -path '*/@bubblewrap/core/dist/index.js' 2>/dev/null | head -5
+
       - name: Initialize TWA project (non-interactive)
         working-directory: twa
         env:
