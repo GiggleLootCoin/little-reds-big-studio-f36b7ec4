@@ -72,13 +72,11 @@ jobs:
             console.log('Host:', manifestJson.host);
 
             // Find @bubblewrap/core from globally installed bubblewrap
-            const globalModules = path.join(os.homedir(), '.npm', '_npx');
+            const globalModules = '/usr/lib/node_modules';
             let coreDir = null;
-            for (const d of fs.readdirSync(globalModules)) {
-              const candidate = path.join(globalModules, d, 'node_modules/@bubblewrap/core');
-              if (fs.existsSync(candidate) && fs.existsSync(path.join(candidate, 'dist', 'index.js'))) {
-                coreDir = candidate;
-              }
+            const candidate = path.join(globalModules, '@bubblewrap/core');
+            if (fs.existsSync(candidate) && fs.existsSync(path.join(candidate, 'dist', 'index.js'))) {
+              coreDir = candidate;
             }
             if (!coreDir) {
               console.error('@bubblewrap/core not found in npx cache');
