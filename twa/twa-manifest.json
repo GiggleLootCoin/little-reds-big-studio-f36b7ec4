@@ -11,8 +11,12 @@
   "fallbackType": "customtabs",
   "splashScreenFadeOutDuration": 300,
   "signingKey": {
-    "path": "twa/lrbs-release-key.jks",
+    "path": "lrbs-release-key.jks",
     "alias": "key0"
   },
-  "stackPackages": []
+  "stackPackages": [],
+  "startUrl": "/",
+  "name": "Little Reds Big Studio",
+  "iconUrl": "launcher-icon.svg",
+  "enableNotifications": false
 }

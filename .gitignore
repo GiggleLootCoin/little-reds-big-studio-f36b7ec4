@@ -20,6 +20,16 @@ dist-ssr
 .wrangler/
 .dev.vars
 
+# TWA / APK build artifacts
+twa/app/.gradle/
+twa/app/build/
+twa/app/app/build/
+twa/app/*.log
+twa/node_modules/
+twa/package.json
+twa/package-lock.json
+twa/twa-init-*
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

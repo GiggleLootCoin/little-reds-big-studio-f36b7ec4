@@ -40,7 +40,7 @@ jobs:
       - name: Install Bubblewrap
         run: npm install -g @bubblewrap/cli
 
-      - name: Decode signing key
+      - name: Prepare signing key
         env:
           TWA_SIGNING_KEY_BASE64: ${{ secrets.TWA_SIGNING_KEY_BASE64 }}
         run: |
@@ -57,11 +57,92 @@ jobs:
         env:
           JAVA_HOME: ${{ env.JAVA_HOME_17_X64 }}
         run: |
-          bubblewrap init \
-            --manifest=twa-manifest.json \
-            --jdkPath="$JAVA_HOME" \
-            --non-interactive \
-            --quiet
+          node - <<'NODE'
+          const fs = require('fs');
+          const path = require('path');
+          const os = require('os');
+
+          async function main() {
+            const manifestPath = process.argv[2] || 'twa-manifest.json';
+            const jdkPath = process.argv[3] || process.env.JAVA_HOME;
+            const targetDir = path.resolve('app');
+
+            const manifestJson = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+            console.log('Package ID:', manifestJson.packageId);
+            console.log('Host:', manifestJson.host);
+
+            // Find @bubblewrap/core from globally installed bubblewrap
+            const globalModules = path.join(os.homedir(), '.npm', '_npx');
+            let coreDir = null;
+            for (const d of fs.readdirSync(globalModules)) {
+              const candidate = path.join(globalModules, d, 'node_modules/@bubblewrap/core');
+              if (fs.existsSync(candidate) && fs.existsSync(path.join(candidate, 'dist', 'index.js'))) {
+                coreDir = candidate;
+              }
+            }
+            if (!coreDir) {
+              console.error('@bubblewrap/core not found in npx cache');
+              process.exit(1);
+            }
+            console.log('Using @bubblewrap/core from:', coreDir);
+
+            const core = require(path.join(coreDir, 'dist', 'index.js'));
+            const { TwaManifest, TwaGenerator, JdkHelper } = core;
+
+            // Resolve signing key path
+            if (manifestJson.signingKey && manifestJson.signingKey.path && !path.isAbsolute(manifestJson.signingKey.path)) {
+              manifestJson.signingKey.path = path.resolve(path.join(targetDir, '..'), manifestJson.signingKey.path);
+              console.log('Signing key resolved to:', manifestJson.signingKey.path);
+            }
+
+            const twaManifest = new TwaManifest(manifestJson);
+            const error = twaManifest.validate();
+            if (error) {
+              console.error('Manifest validation error:', error);
+              process.exit(1);
+            }
+            console.log('Manifest validated OK');
+
+            // Set up JDK helper (skip interactive validation)
+            if (jdkPath) {
+              const jdkHelper = new JdkHelper(process, { jdkPath });
+              console.log('JDK configured:', jdkPath);
+            } else {
+              console.warn('JAVA_HOME not set; proceeding without JDK validation');
+            }
+
+            // Generate project
+            if (!fs.existsSync(targetDir)) {
+              fs.mkdirSync(targetDir, { recursive: true });
+            }
+            console.log('Generating TWA project into:', targetDir);
+            const generator = new TwaGenerator();
+            const log = {
+              printMessage: (msg) => console.log('  [bubblewrap]', msg),
+              printError: (msg) => console.error('  [bubblewrap:ERROR]', msg),
+            };
+            await generator.createTwaProject(targetDir, twaManifest, log);
+            await twaManifest.saveToFile(path.join(targetDir, 'twa-manifest.json'));
+
+            const files = [];
+            function walk(dir) {
+              for (const entry of fs.readdirSync(dir)) {
+                const full = path.join(dir, entry);
+                const rel = path.relative(targetDir, full);
+                if (fs.isDirectory(full)) walk(full);
+                else files.push(rel);
+              }
+            }
+            walk(targetDir);
+            console.log('SUCCESS: TWA project generated');
+            console.log('Files:', files.length, '(showing first 10):', files.slice(0, 10).join(', '));
+          }
+
+          main().catch(err => {
+            console.error('FATAL:', err.message || err);
+            process.exit(1);
+          });
+          NODE
 
       - name: Build APK
         working-directory: twa
