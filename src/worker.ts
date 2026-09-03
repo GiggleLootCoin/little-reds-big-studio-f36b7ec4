@@ -2,7 +2,7 @@ import studioServer from "./server";
 import { handleProductionVoiceClone, voiceCloneHealth } from "./lib/production-voice-clone";
 import { normalizeSpeechLanguage } from "./lib/speech-language.mjs";
 
-type WorkersAIResult = Record<string, unknown> | string | unknown[] | null;
+type WorkersAIResult = Record<string, unknown> | string | unknown[] | Response | null;
 type WorkersAI = {
   run: (model: string, input: unknown, options?: unknown) => Promise<WorkersAIResult>;
 };
@@ -23,7 +23,7 @@ function jsonError(message: string, status = 500) {
 }
 function chatText(result: WorkersAIResult): string {
   if (typeof result === "string") return result.trim();
-  if (!result || typeof result !== "object" || Array.isArray(result)) return "";
+  if (!result || typeof result !== "object" || result instanceof Response || Array.isArray(result)) return "";
   const record = result as Record<string, unknown>;
   for (const key of ["response", "text", "generated_text", "output", "content"]) {
     if (typeof record[key] === "string" && record[key].trim()) return record[key].trim();
