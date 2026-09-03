@@ -17,5 +17,6 @@
   "stackPackages": [],
   "startUrl": "/",
   "name": "Little Reds Big Studio",
-  "enableNotifications": false
+  "enableNotifications": false,
+  "iconUrl": "https://raw.githubusercontent.com/GiggleLootCoin/little-reds-big-studio-f36b7ec4/main/twa/launcher-icon.svg"
 }
