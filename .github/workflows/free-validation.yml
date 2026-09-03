@@ -1,5 +1,6 @@
 name: Free Open Validation
 
+# Includes the persistent Buddy-memory regression suite.
 on:
   push:
     branches: [main, production-integration]
