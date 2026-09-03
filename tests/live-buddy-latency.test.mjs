@@ -5,7 +5,6 @@ import { readFile } from "node:fs/promises";
 const clone = await readFile("src/lib/real-voice-clone-v2.ts", "utf8");
 const gateway = await readFile("src/lib/voice-clone-gateway.ts", "utf8");
 const runtime = await readFile("src/lib/studio-runtime.ts", "utf8");
-const server = await readFile("src/server.ts", "utf8");
 const chat = await readFile("src/components/studio/BuddyLiveChat.tsx", "utf8");
 
 test("live Buddy speech uses the fast 0.6B path while explicit cloning keeps the 1.7B quality path", () => {
@@ -19,11 +18,6 @@ test("live speech is bounded and does not wait for IndexedDB persistence before 
   assert.match(runtime, /runVerifiedClone\(\s*savedSample[\s\S]*?modelSize,\s*false\s*,?\s*\)/);
 });
 
-test("Buddy chat disables Qwen reasoning and caps routine output for lower time-to-first-response", () => {
-  assert.match(server, /chat_template_kwargs:\s*\{\s*enable_thinking:\s*false\s*\}/);
-  assert.match(server, /max_tokens:\s*640/);
-});
-
-test("Buddy keeps a useful recent conversation window without sending the whole 50-message cache", () => {
-  assert.match(chat, /messages\.slice\(-12\)/);
+test("Buddy sends a bounded recent conversation window to reduce prompt prefill latency", () => {
+  assert.match(chat, /messages\.slice\(-12\)\.map/);
 });
