@@ -3,7 +3,7 @@
 **Last updated:** 2026-09-03
 **Authoritative repository:** `GiggleLootCoin/little-reds-big-studio-f36b7ec4`
 **Branch:** `main`
-**Current main commit:** `91f8d31`
+**Current main commit:** `a378136d944a57467024f3ce4efcc1e70baaf43e`
 **Production:** `https://little-reds-big-studio-f36b7ec4.gigglelootcoin.workers.dev`
 **Hosting:** Cloudflare Workers
 **Product:** Buddy-first, Android-first, free/open-first creative studio for musicians and YouTubers.
@@ -29,10 +29,14 @@
 - Buddy visual motion was upgraded with breathing/floating, listening, thinking, speaking, success glow, eye-light, heart, music-note, headphone and shoe-light effects, with reduced-motion support.
 - Dedicated Buddy voice profile UI with natural speaker choices, multilingual language selection, upload/record-your-own-voice workflow, local voice-sample persistence, and verified voice-preview action.
 - The Studio runtime automatically applies the saved Buddy voice/language to TTS jobs; a saved personal sample routes TTS through the voice-clone capability rather than silently substituting another voice.
-- The user's real Studio logo asset `1784996969001.png` is now the live React StudioLogo source. The exact requested visual assets are present in the repository: `file_00000000eb3881f49ec122117aff8aa7.png` (Red's Little Buddy Concept Sheet, 1,169,388 bytes), `1784996969001.png` (489,027 bytes), and `352ec815-8531-4e33-b671-f9c0bb390bb7.png` (755,306 bytes).
-- Added `docs/AI-RUNTIME-MANIFEST.md` to distinguish real upstream models/routes from merely declared metadata.
+- Buddy persistent memory is injected into chat while remaining separate from engineering memory.
+- Buddy chat uses direct Cloudflare Workers AI when the binding is available, with Qwen3 text and Qwen 3.8 vision routing and a bounded OpenRouter fallback.
+- The rejected Whisper Turbo dependency was removed from the Buddy speech path; standard Cloudflare Whisper is now used with a bounded binary-input fallback.
+- Red Buddy voice now defaults to the verified 1.7B path instead of accidentally selecting 0.6B from the live-chat client.
+- Preset Voice Lab tests route directly to real preset TTS when no clone reference is required.
+- The user's real Studio logo asset `1784996969001.png` is now the live React StudioLogo source. The exact requested visual assets are present in the repository.
 - Self-contained Studio branding and stale asset-metadata imports that broke CI were removed.
-- Production finish plan saved at `docs/superpowers/plans/2026-08-12-production-finish.md`.
+- APK build scaffold is present and rebuilds from `main` with monotonically increasing Android version codes.
 
 ## Verified foundations
 
@@ -40,19 +44,19 @@
 - Production-oriented Buddy orchestration and live Gradio schema discovery/provider fallback.
 - Artifact extraction and validation before reporting media success.
 - Supabase authentication and server-authoritative entitlement logic.
-- Cloudflare production deployment configuration.
-- Public Hugging Face route registry contains Qwen3-TTS, MOSS-TTS, Chatterbox, Seed-VC, Applio/RVC, ACE-Step, DiffRhythm, Qwen Image, Qwen Image Edit, LTX, Wan and ASR fallback families.
-- Current upstream checks confirm live public Spaces for ACE-Step 1.5, Qwen3-TTS, Qwen3-ASR, ApplioX, LTX 2.3, Qwen Image and Qwen Image Edit.
+- Cloudflare production deployment configuration with Workers AI binding.
+- Public route registry and provider fallbacks.
+- Latest pre-fix `Security & Quality Gate` run `33780912932` for `02f65404bd9965932bcd8027c3f346306f58edf5` passed all jobs.
 
 ## Current known verification gaps
 
-1. Fresh CI/deployment verification for current main is in progress; do not claim the live Worker has the newest commit until the deployment run and production smoke test pass.
+1. CI/deployment for `a378136d944a57467024f3ce4efcc1e70baaf43e` must finish successfully before the latest fixes are called production-verified.
 2. The real Android/browser runtime still needs a device-level smoke test for microphone permission, selected input, Live Chat turn-taking and one real generation artifact.
 3. Real public free-provider execution remains conditional on queue/availability; each exposed capability must be tested with a returned artifact before being called verified.
 4. Live verification of the Buy Me a Coffee membership webhook secret/production membership flow is still required before calling membership fully production-verified.
 5. RVC/voice-swap still requires a real authorized model/reference input and a live converted artifact test; repository route metadata alone is not proof of execution.
 6. Whole-app UI translation is not yet a complete localization layer; the Buddy voice/language preference is implemented first.
-7. APK build has not yet run in CI; Bubblewrap scaffold is in place but unverified.
+7. The APK scaffold must be verified on CI from the latest `main` commit and then installed/tested on the Android device.
 
 ## Migration artifacts
 
@@ -69,11 +73,11 @@
 - Stems: Demucs.
 - Artwork: Qwen Image / Qwen Image Edit / Z Image Turbo / SDXL fallbacks.
 - Video: LTX 2.3 / Wan 2.2 fallbacks.
-- Speech recognition: Qwen3-ASR / Whisper fallbacks.
+- Speech recognition: Cloudflare Whisper with browser/provider fallbacks.
 
 ## Immediate next action
 
-Finish the current CI/deployment run, then perform real Android/runtime and public-provider artifact tests. Do not claim full production completion until those gates have evidence.
+Finish CI/deployment and APK verification for the latest `main`, then perform real Android/runtime and public-provider artifact tests. Do not claim full production completion until those gates have evidence.
 
 ## Handoff rule
 
