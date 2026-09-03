@@ -241,7 +241,7 @@ export async function runStudioJob(
       String(input.target_text ?? input.text ?? input.prompt ?? DEFAULT_CLONE_TEXT).trim() ||
       DEFAULT_CLONE_TEXT;
     const language = String(input.language ?? cloneProfile().language ?? "English");
-    const modelSize = input.model_size === "1.7B" ? "1.7B" : "0.6B";
+    const modelSize = input.model_size === "0.6B" ? "0.6B" : "1.7B";
     onStatus?.("Using Buddy's Red voice mode…");
     const result = await runVerifiedClone(
       sample,
@@ -259,7 +259,7 @@ export async function runStudioJob(
     const text = String(input.text ?? input.target_text ?? input.prompt ?? "").trim();
     if (!text) throw new Error("Voice text is empty.");
     const language = String(input.language ?? profile.language ?? "English");
-    const modelSize = input.model_size === "1.7B" ? "1.7B" : "0.6B";
+    const modelSize = input.model_size === "0.6B" ? "0.6B" : "1.7B";
     const wantsRedVoice =
       profile.mode === "clone" || profile.speaker === "Red" || input.speaker === "Red";
     if (wantsRedVoice) {
