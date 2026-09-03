@@ -1,5 +1,6 @@
 name: Build Little Red's Big Studio APK
 
+# Final production APK build: triggered on main so every verified source fix gets a fresh installable artifact.
 on:
   push:
     branches: [main]
@@ -90,18 +91,13 @@ jobs:
             const jdkPath = process.env.JAVA_HOME;
             const targetDir = path.resolve('app');
             const manifestJson = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
-
-            // Ensure each build has a newer Android versionCode so the APK can
-            // be installed as an update instead of being rejected as a downgrade.
             const timestampVersion = Math.floor(Date.now() / 1000);
             manifestJson.appVersionCode = timestampVersion;
             manifestJson.appVersionName = `1.0.${timestampVersion}`;
-
             console.log('Package ID:', manifestJson.packageId);
             console.log('Host:', manifestJson.host);
             console.log('APK versionCode:', manifestJson.appVersionCode);
             console.log('APK versionName:', manifestJson.appVersionName);
-
             const corePath = path.join(process.cwd(), 'node_modules/@bubblewrap/core/dist/index.js');
             if (!fs.existsSync(corePath)) throw new Error(`@bubblewrap/core not found at ${corePath}`);
             const core = require(corePath);
@@ -109,20 +105,14 @@ jobs:
             if (manifestJson.signingKey?.path && !path.isAbsolute(manifestJson.signingKey.path)) {
               manifestJson.signingKey.path = path.resolve(path.join(targetDir, '..'), manifestJson.signingKey.path);
             }
-            if (!process.env.TWA_SIGNING_KEY_BASE64) {
-              delete manifestJson.signingKey;
-              console.log('Release signing configuration removed; using debug signing.');
-            }
+            if (!process.env.TWA_SIGNING_KEY_BASE64) delete manifestJson.signingKey;
             const twaManifest = new TwaManifest(manifestJson);
             const error = twaManifest.validate();
             if (error) throw new Error(`Manifest validation error: ${error}`);
             if (jdkPath) manifestJson.jdkPath = jdkPath;
             fs.mkdirSync(targetDir, { recursive: true });
             const generator = new TwaGenerator();
-            const log = {
-              printMessage: (msg) => console.log('  [bubblewrap]', msg),
-              printError: (msg) => console.error('  [bubblewrap:ERROR]', msg),
-            };
+            const log = { printMessage: (msg) => console.log('  [bubblewrap]', msg), printError: (msg) => console.error('  [bubblewrap:ERROR]', msg) };
             await generator.createTwaProject(targetDir, twaManifest, log);
             await twaManifest.saveToFile(path.join(targetDir, 'twa-manifest.json'));
             console.log('SUCCESS: TWA project generated');
