@@ -173,12 +173,12 @@ async function connect(space: string) {
   const promise = (async () => {
     let last: unknown;
     for (const source of sources)
-      for (let attempt = 0; attempt < 3; attempt++) {
+      for (let attempt = 0; attempt < 1; attempt++) {
         try {
           return await Client.connect(source, { status_callback: () => undefined });
         } catch (e) {
           last = e;
-          await new Promise((r) => setTimeout(r, 700 * (attempt + 1)));
+          await new Promise((r) => setTimeout(r, 150));
         }
       }
     throw last instanceof Error ? last : new Error(`Could not connect to ${id}`);
@@ -441,7 +441,11 @@ export async function runStudioJob(
       ? prepared.input._skipProviders.map((value) => String(value))
       : [],
   );
-  const providers = runnersFor(prepared.capability).filter((provider) => !skipped.has(provider.id));
+  const providers = runnersFor(prepared.capability).filter((provider) => {
+    if (skipped.has(provider.id)) return false;
+    if (prepared.capability === "tts" && ["hf-chatterbox", "hf-chatterbox-v3"].includes(provider.id)) return false;
+    return true;
+  });
   const failures: string[] = [];
   const timeoutMs =
     prepared.capability === "music"
@@ -450,7 +454,13 @@ export async function runStudioJob(
         ? 360000
         : prepared.capability === "image"
           ? 180000
-          : 120000;
+          : prepared.capability === "voice-clone"
+            ? 90000
+            : prepared.capability === "tts"
+              ? 25000
+              : prepared.capability === "chat"
+                ? 30000
+                : 120000;
   for (const provider of providers) {
     try {
       onStatus?.(`Working with ${provider.name}…`);
