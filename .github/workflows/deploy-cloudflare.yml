@@ -19,6 +19,7 @@ jobs:
     timeout-minutes: 45
     steps:
       # Production deploy: full voice and chat smoke remain mandatory after every main push.
+      # Human-authored trigger commit keeps production verification running after bot hotfix commits.
       # Keep this workflow push-triggered so every production wrapper fix is actually deployed.
       - name: Checkout
         uses: actions/checkout@v4
