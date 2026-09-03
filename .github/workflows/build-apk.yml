@@ -68,9 +68,16 @@ jobs:
           ln -sf ../cmdline-tools/latest/bin/avdmanager "$SDK_ROOT/bin/avdmanager" 2>/dev/null || true
           SDKMANAGER="$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
           echo "Accepting Android SDK licenses..."
-          yes | "$SDKMANAGER" --licenses --sdk_root="$SDK_ROOT" >/dev/null 2>&1 || true
+          for i in $(seq 1 100); do printf 'y\n'; done | "$SDKMANAGER" --licenses --sdk_root="$SDK_ROOT" >/tmp/sdk-licenses.log 2>&1 || true
+          if ! grep -q 'All SDK package licenses accepted' /tmp/sdk-licenses.log; then
+            echo "SDK license acceptance output:"
+            tail -40 /tmp/sdk-licenses.log
+            exit 1
+          fi
           echo "Installing required Android SDK packages..."
-          yes | "$SDKMANAGER" --install "platform-tools" "build-tools;35.0.0" "platforms;android-36" --sdk_root="$SDK_ROOT" >/dev/null
+          "$SDKMANAGER" --install "platform-tools" "build-tools;35.0.0" "platforms;android-36" --sdk_root="$SDK_ROOT" >/tmp/sdk-install.log 2>&1
+          test -d "$SDK_ROOT/build-tools/35.0.0"
+          test -d "$SDK_ROOT/platforms/android-36"
           echo "Android SDK installed and licenses accepted."
 
       - name: Initialize TWA project (non-interactive)
@@ -160,6 +167,9 @@ jobs:
           APK="app-release-signed.apk"
           if [ ! -s "$APK" ]; then APK="app-release-unsigned.apk"; fi
           test -s "$APK"
+          if [ -x "$SDK_ROOT/build-tools/35.0.0/apksigner" ]; then
+            "$SDK_ROOT/build-tools/35.0.0/apksigner" verify --verbose "$APK"
+          fi
           cp "$APK" app-release-signed.apk
           file app-release-signed.apk
           echo "Verified APK: $(stat -c '%s bytes' app-release-signed.apk)"
