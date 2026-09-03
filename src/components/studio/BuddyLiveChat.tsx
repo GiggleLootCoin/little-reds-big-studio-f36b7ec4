@@ -355,7 +355,7 @@ export function BuddyLiveChat() {
             mood: v.mood || "natural",
             tone: v.tone || "conversational",
             use_xvector_only: !v.referenceTranscript,
-            model_size: "0.6B",
+            model_size: "1.7B",
           },
           setStatus,
         );
