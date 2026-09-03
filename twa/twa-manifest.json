@@ -2,7 +2,7 @@
   "packageId": "com.littleredbigstudio.app",
   "launcherName": "Little Red's Big Studio",
   "host": "little-reds-big-studio-f36b7ec4.gigglelootcoin.workers.dev",
-  "launcherIcon": "launcher-icon-square.svg",
+  "launcherIcon": "../1784996969001.png",
   "enableCache": true,
   "display": "standalone",
   "themeColor": "#d71932",
@@ -18,5 +18,5 @@
   "startUrl": "/",
   "name": "Little Reds Big Studio",
   "enableNotifications": false,
-  "iconUrl": "https://raw.githubusercontent.com/GiggleLootCoin/little-reds-big-studio-f36b7ec4/main/twa/launcher-icon-square.svg"
+  "iconUrl": "https://raw.githubusercontent.com/GiggleLootCoin/little-reds-big-studio-f36b7ec4/main/1784996969001.png"
 }
