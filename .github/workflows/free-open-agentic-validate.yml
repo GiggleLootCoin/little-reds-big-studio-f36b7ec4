@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   validate:
@@ -25,22 +25,6 @@ jobs:
           node-version: 22
           cache: npm
 
-      - name: Regenerate dependency lockfile
-        run: npm install --package-lock-only --ignore-scripts --legacy-peer-deps
-
-      - name: Commit regenerated lockfile when needed
-        run: |
-          if git diff --quiet -- package-lock.json; then
-            echo "package-lock.json is already synchronized with package.json"
-            exit 0
-          fi
-
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add package-lock.json
-          git commit -m "Regenerate dependency lockfile [skip ci]"
-          git push
-
       - name: Install exactly from lockfile
         run: npm ci --ignore-scripts --legacy-peer-deps
 
@@ -50,21 +34,8 @@ jobs:
       - name: Type-check application
         run: npx tsc --noEmit
 
-      - name: Format application
-        run: npm run format
-
-      - name: Commit formatting fixes when needed
-        run: |
-          if git diff --quiet; then
-            echo "Formatting is already clean"
-            exit 0
-          fi
-
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add .
-          git commit -m "Apply repository formatting [skip ci]"
-          git push
+      - name: Check application formatting
+        run: npx prettier --check .
 
       - name: Lint application
         run: npm run lint
