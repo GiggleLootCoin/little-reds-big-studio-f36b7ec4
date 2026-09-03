@@ -165,14 +165,18 @@ jobs:
           echo "=== Bubblewrap APK output ==="
           find . -maxdepth 2 -type f -name '*.apk' -print -exec ls -lh {} \;
           APK="app-release-signed.apk"
-          if [ ! -s "$APK" ]; then APK="app-release-unsigned.apk"; fi
-          test -s "$APK"
-          if [ -x "$SDK_ROOT/build-tools/35.0.0/apksigner" ]; then
-            "$SDK_ROOT/build-tools/35.0.0/apksigner" verify --verbose "$APK"
+          if [ ! -s "$APK" ]; then
+            echo "ERROR: Bubblewrap did not produce app-release-signed.apk"
+            exit 1
           fi
-          cp "$APK" app-release-signed.apk
-          file app-release-signed.apk
-          echo "Verified APK: $(stat -c '%s bytes' app-release-signed.apk)"
+          test -s "$APK"
+          if [ ! -x "$SDK_ROOT/build-tools/35.0.0/apksigner" ]; then
+            echo "ERROR: apksigner is missing"
+            exit 1
+          fi
+          "$SDK_ROOT/build-tools/35.0.0/apksigner" verify --verbose "$APK"
+          file "$APK"
+          echo "Verified release APK: $(stat -c '%s bytes' "$APK")"
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
