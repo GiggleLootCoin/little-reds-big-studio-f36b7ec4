@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
-      # Production deploy: full voice smoke remains mandatory after every main push.
+      # Production deploy: full voice and chat smoke remain mandatory after every main push.
       - name: Checkout
         uses: actions/checkout@v4
       - name: Setup Node
@@ -70,6 +70,10 @@ jobs:
           done
           cat /tmp/studio.html 2>/dev/null || true
           exit 1
+      - name: Production Buddy chat smoke
+        env:
+          PRODUCTION_URL: https://little-reds-big-studio-f36b7ec4.gigglelootcoin.workers.dev
+        run: node scripts/live-buddy-chat-smoke.mjs
       - name: Install ffmpeg for production voice smoke
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
       - name: Install Playwright for production voice smoke
