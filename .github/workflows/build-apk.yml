@@ -38,9 +38,7 @@ jobs:
           cache: npm
 
       - name: Install Bubblewrap CLI + core locally
-        working-directory: twa
-        run: |
-          npm install --no-audit --no-fund --ignore-scripts @bubblewrap/cli@1.25.0 @bubblewrap/core@1.25.0
+        run: npm install --no-audit --no-fund --ignore-scripts --prefix ./twa @bubblewrap/cli@1.25.0 @bubblewrap/core@1.25.0
 
       - name: Prepare signing key
         env:
