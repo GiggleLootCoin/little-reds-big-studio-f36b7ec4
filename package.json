@@ -15,7 +15,8 @@
     "preview:worker": "npm run build && wrangler dev",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
-    "format": "prettier --write ."
+    "format": "prettier --write .",
+    "prebuild": "node scripts/ensure-red-default.mjs"
   },
   "dependencies": {
     "@gradio/client": "^2.4.0",
