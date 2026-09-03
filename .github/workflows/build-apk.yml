@@ -61,10 +61,12 @@ jobs:
           curl -sSLo cmdline-tools.zip "https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip"
           unzip -q cmdline-tools.zip
           rm cmdline-tools.zip
-          mkdir -p cmdline-tools/latest
-          shopt -s nullglob
-          mv cmdline-tools/* cmdline-tools/latest/
-          shopt -u nullglob
+          actual_dir=$(find cmdline-tools -mindepth 1 -maxdepth 1 -type d | head -n 1 || true)
+          if [ -n "$actual_dir" ] && [ "$actual_dir" != "cmdline-tools/latest" ]; then
+            mkdir -p cmdline-tools/latest
+            mv "$actual_dir"/* cmdline-tools/latest/
+            rm -rf "$actual_dir"
+          fi
           echo "y" | "$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --licenses --sdk_root="$SDK_ROOT" > /dev/null 2>&1 || true
           echo "y" | "$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --no-progress --install "platform-tools" "build-tools;36.1.0" --sdk_root="$SDK_ROOT"
           echo "Android SDK installed."
