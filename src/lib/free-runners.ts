@@ -15,7 +15,8 @@ export const FREE_RUNNERS: FreeRunner[] = [
     id: "cf-whisper-large-v3",
     name: "Cloudflare Whisper Large V3",
     kind: "public",
-    description: "Primary server-side speech-to-text engine for Buddy microphone input without the rejected Turbo route.",
+    description:
+      "Primary server-side speech-to-text engine for Buddy microphone input without the rejected Turbo route.",
     capabilities: ["speech-to-text", "transcription"],
     url: "/api/ai/speech-to-text",
     notes: "Server-side Workers AI Whisper route; accepts normalized PCM16 WAV audio.",
@@ -147,7 +148,7 @@ export const FREE_RUNNERS: FreeRunner[] = [
     url: "https://huggingface.co/spaces/IAHispano/ApplioX",
     notes:
       "Fallback conversion engine; not used to claim a custom clone without a verified reference.",
-    priority: 500,
+    priority: 1300,
   },
   {
     id: "hf-minimax-music3-upsampler",

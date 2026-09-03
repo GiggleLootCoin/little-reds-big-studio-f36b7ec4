@@ -443,7 +443,11 @@ export async function runStudioJob(
   );
   const providers = runnersFor(prepared.capability).filter((provider) => {
     if (skipped.has(provider.id)) return false;
-    if (prepared.capability === "tts" && ["hf-chatterbox", "hf-chatterbox-v3"].includes(provider.id)) return false;
+    if (
+      prepared.capability === "tts" &&
+      ["hf-chatterbox", "hf-chatterbox-v3"].includes(provider.id)
+    )
+      return false;
     return true;
   });
   const failures: string[] = [];
