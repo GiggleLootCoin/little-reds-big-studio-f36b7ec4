@@ -1,9 +1,9 @@
 # Little Red's Big Studio — CURRENT STATE
 
-**Last updated:** 2026-08-12
+**Last updated:** 2026-09-03
 **Authoritative repository:** `GiggleLootCoin/little-reds-big-studio-f36b7ec4`
 **Branch:** `main`
-**Current main commit:** `b22249114a79c790bf5cf70210f7e6cdf847e05a`
+**Current main commit:** `91f8d31`
 **Production:** `https://little-reds-big-studio-f36b7ec4.gigglelootcoin.workers.dev`
 **Hosting:** Cloudflare Workers
 **Product:** Buddy-first, Android-first, free/open-first creative studio for musicians and YouTubers.
@@ -52,6 +52,14 @@
 4. Live verification of the Buy Me a Coffee membership webhook secret/production membership flow is still required before calling membership fully production-verified.
 5. RVC/voice-swap still requires a real authorized model/reference input and a live converted artifact test; repository route metadata alone is not proof of execution.
 6. Whole-app UI translation is not yet a complete localization layer; the Buddy voice/language preference is implemented first.
+7. APK build has not yet run in CI; Bubblewrap scaffold is in place but unverified.
+
+## Migration artifacts
+
+- Hermes installation backup: `/storage/emulated/0/HermesBackup-2026-09-03-030731` (646 files, 37 MB, sha256-verified).
+- Hermes engineering knowledge: `.studio-memory/HERMES_KNOWLEDGE_MIGRATION.md`.
+- APK build scaffold: `.github/workflows/build-apk.yml` + `twa/twa-manifest.json`.
+- Backup verification method: sha256sum of 7 critical files (`.hermes_history`, `MEMORY.md`, `USER.md`, `config.yaml`, `auth.json`, `SOUL.md`, `jobs.json`); all matched originals.
 
 ## Current route families
 
