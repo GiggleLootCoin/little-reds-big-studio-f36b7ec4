@@ -21,12 +21,13 @@ test("persists memories in localStorage and exposes them as model context", () =
     localStorage: {
       getItem: (key) => store.get(key) ?? null,
       setItem: (key, value) => store.set(key, value),
+      removeItem: (key) => store.delete(key),
     },
   };
   rememberUserMessage("Call me Red.");
   rememberUserMessage("I like making music.");
   const context = buildBuddyMemoryContext();
-  assert.match(context, /Call me Red/i);
+  assert.match(context, /Name: Red/i);
   assert.match(context, /I like making music/i);
   delete globalThis.window;
 });
