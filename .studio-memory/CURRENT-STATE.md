@@ -3,7 +3,7 @@
 **Last updated:** 2026-09-03
 **Authoritative repository:** `GiggleLootCoin/little-reds-big-studio-f36b7ec4`
 **Branch:** `main`
-**Current main commit:** `4b75df397a5dca91f66c155657782aa1a924cb1f`
+**Current main commit:** `d16a30e9f5a52a53050676a954864fc6f054d47e`
 **Production:** `https://little-reds-big-studio-f36b7ec4.gigglelootcoin.workers.dev`
 **Hosting:** Cloudflare Workers
 **Product:** Buddy-first, Android-first, free/open-first creative studio for musicians and YouTubers.
@@ -44,18 +44,17 @@
 - Artifact extraction and validation before reporting media success.
 - Supabase authentication and server-authoritative entitlement logic.
 - Cloudflare production deployment configuration with Workers AI binding.
-- Latest pre-route-fix `Security & Quality Gate` run `33780912932` for `02f65404bd9965932bcd8027c3f346306f58edf5` passed all jobs.
-- Latest fixes have been pushed to `main`; their CI/deployment/APK runs are required evidence before calling them production-verified.
+- Security & Quality Gate run `33782967577` for the current fixes passed all checks.
+- The earlier APK run from parent commit `4b75df397a5dca91f66c155657782aa1a924cb1f` also built and signed successfully, but is not treated as the final APK because it predates commit `d16a30e9f5a52a53050676a954864fc6f054d47e`.
 
 ## Current known verification gaps
 
-1. CI/deployment for the current `main` commit must finish successfully before the latest fixes are called production-verified.
+1. A fresh APK build from the current `main` commit must finish successfully before the APK is called final.
 2. The real Android/browser runtime still needs a device-level smoke test for microphone permission, selected input, Live Chat turn-taking and one real generation artifact.
 3. Real public free-provider execution remains conditional on queue/availability; each exposed capability must be tested with a returned artifact before being called verified.
 4. Live verification of the Buy Me a Coffee membership webhook secret/production membership flow is still required before calling membership fully production-verified.
 5. RVC/voice-swap still requires a real authorized model/reference input and a live converted artifact test; repository route metadata alone is not proof of execution.
 6. Whole-app UI translation is not yet a complete localization layer; the Buddy voice/language preference is implemented first.
-7. The APK build must be verified from the latest `main` commit and then installed/tested on the Android device.
 
 ## Migration artifacts
 
@@ -76,7 +75,7 @@
 
 ## Immediate next action
 
-Finish CI/deployment and APK verification for the current `main`, then perform real Android/runtime and public-provider artifact tests. Do not claim full production completion until those gates have evidence.
+Finish a fresh APK build from the current `main`, verify its artifact and signature, then perform real Android/runtime and public-provider artifact tests. Do not claim full production completion until those gates have evidence.
 
 ## Handoff rule
 
