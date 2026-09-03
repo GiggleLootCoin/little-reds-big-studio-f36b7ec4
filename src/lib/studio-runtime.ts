@@ -62,6 +62,7 @@ async function runProductionRedClone(
   text: string,
   language: string,
   onStatus?: (s: string) => void,
+  modelSize: "0.6B" | "1.7B" = "1.7B",
 ) {
   onStatus?.("Generating Buddy's Red voice…");
   const referenceId = await redReferenceId(sample);
@@ -78,6 +79,7 @@ async function runProductionRedClone(
     text: text.trim().slice(0, 220),
     language,
     refText: refText.trim(),
+    modelSize,
   });
   let response = await fetch("/api/ai/voice-clone", {
     method: "POST",
@@ -122,7 +124,7 @@ async function runVerifiedClone(
   persist = true,
 ) {
   if (cloneProfile().speaker === "Red") {
-    const result = await runProductionRedClone(sample, refText, text, language, onStatus);
+    const result = await runProductionRedClone(sample, refText, text, language, onStatus, modelSize);
     if (persist) {
       await saveVoiceSample(sample, refText);
       await markBuddyCloneVerified(
@@ -212,8 +214,22 @@ export async function runStudioJob(
 ): Promise<StudioArtifact> {
   if (capability === "voice-clone") {
     const sample = input.refAudio ?? input.referenceAudio ?? input.audio;
-    if (!(sample instanceof Blob))
+    // The Voice Lab uses the voice-clone action for both real clones and preset
+    // test buttons. Presets do not need reference audio; route them directly to
+    // the real preset TTS engine instead of incorrectly demanding a clone sample.
+    if (!(sample instanceof Blob)) {
+      const speaker = String(input.speaker ?? "").trim();
+      if (speaker && speaker !== "Red") {
+        const runtime = await import("./studio-runtime-impl");
+        const presetInput = {
+          ...input,
+          text: String(input.text ?? input.target_text ?? input.prompt ?? DEFAULT_CLONE_TEXT).trim(),
+          speaker,
+        };
+        return runtime.runStudioJob("tts", presetInput, onStatus);
+      }
       throw new Error("A reference voice recording is required for a real clone.");
+    }
     const refText = String(
       input.refText ??
         input.referenceText ??
