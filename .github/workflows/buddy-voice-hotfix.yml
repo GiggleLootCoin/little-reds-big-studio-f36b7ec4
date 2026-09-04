@@ -45,7 +45,7 @@ jobs:
 
           p = Path('src/components/studio/BuddyLiveChat.tsx')
           s = p.read_text()
-          s = s.replace('model_size: "1.7B",\n          },', 'model_size: liveRef.current ? "0.6B" : "1.7B",\n          },')
+          s = s.replace('model_size: liveRef.current ? "0.6B" : "1.7B",', 'model_size: "1.7B",')
           s = s.replace('speaker: v.speaker,\n            mood:', 'speaker: v.speaker,\n            model_size: "1.7B",\n            mood:')
           p.write_text(s)
           PY
@@ -53,7 +53,7 @@ jobs:
         run: |
           grep -n 'cf-buddy-tts\|cf-whisper-large-v3\|hf-chatterbox-turbo' src/lib/free-runners.ts || true
           grep -n 'prepared.capability === "tts"\|attempt < 1' src/lib/studio-runtime-impl.ts
-          grep -n 'model_size: liveRef.current' src/components/studio/BuddyLiveChat.tsx
+          grep -n 'model_size:' src/components/studio/BuddyLiveChat.tsx
           npm ci --no-audit --no-fund
           npx prettier --write .
           npm run typecheck
