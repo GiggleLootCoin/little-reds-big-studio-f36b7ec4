@@ -9,11 +9,12 @@ const required = [
   ["browser clone safety boundary", clone, /normalizeAndVerifyBrowserAudio/],
   ["actual reference Blob reaches clone", clone, /sample:\s*Blob[\s\S]*blobBase64\(sample\)/],
   ["production clone endpoint", clone, /fetch\("\/api\/ai\/voice-clone"/],
-  ["Qwen production handler", gateway, /export async function handleVoiceClone/],
-  ["Qwen clone operation", gateway, /generate_voice_clone/],
-  ["Qwen reference upload", gateway, /gradio_api\/upload/],
-  ["free Qwen fallback", gateway, /QWEN_TTS_FALLBACK_SPACE_URL/],
+  ["VoxCPM production handler", gateway, /export async function handleVoiceClone/],
+  ["VoxCPM reference clone operation", gateway, /gradio_api\/call\/generate/],
+  ["VoxCPM reference upload", gateway, /gradio_api\/upload/],
+  ["verified VoxCPM2 provider", gateway, /openbmb-voxcpm-demo\.hf\.space/],
   ["provider response marker", gateway, /x-clone-provider/],
+  ["no silent alternate-provider fallback", gateway, /failed on the verified VoxCPM2 reference-clone route/],
   ["runtime production clone", runtime, /createBestFreeVoiceClone/],
   [
     "voice capability has no legacy fallback",
@@ -32,11 +33,14 @@ for (const forbidden of [
   "spacekaren",
   "/api/voice-clone",
   "OPENROUTERAI_API_KEY",
+  "generate_voice_clone",
+  "QWEN_TTS_FALLBACK_SPACE_URL",
+  "QWEN_TTS_SPACE_URL",
 ]) {
-  if (clone.includes(forbidden) || runtime.includes(forbidden))
+  if (clone.includes(forbidden) || runtime.includes(forbidden) || gateway.includes(forbidden))
     throw new Error(`Forbidden legacy production dependency: ${forbidden}`);
 }
 
 console.log(
-  "Buddy production voice path verified: browser reference Blob -> /api/ai/voice-clone -> Qwen3-TTS Base clone -> free fallback -> validated browser audio.",
+  "Buddy production voice path verified: browser reference Blob -> /api/ai/voice-clone -> VoxCPM2 reference clone -> validated browser audio.",
 );
