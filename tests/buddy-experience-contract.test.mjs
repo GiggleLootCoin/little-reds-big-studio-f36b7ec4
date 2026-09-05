@@ -20,8 +20,9 @@ test("Red personal voice is a visible preset choice and remains clone-routed", (
 
 test("saved Red voice is selected without hiding the preset voice list", () => {
   assert.match(voice, /speaker: "Red"/);
-  assert.match(picker, /onChange=\{\(e\) =>/);
-  assert.match(picker, /e\.target\.value === "Red"/);
+  assert.match(picker, /presetCandidate/);
+  assert.match(picker, /setPresetCandidate\(e\.target\.value\)/);
+  assert.match(picker, /setPresetCandidate\(next\.speaker\)/);
   assert.match(picker, /mode: "preset"/);
 });
 
