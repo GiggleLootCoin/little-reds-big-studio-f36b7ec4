@@ -36,8 +36,9 @@ test("Red production generation is optimized to avoid re-uploading the same refe
 test("Red production never silently substitutes another voice provider", () => {
   assert.match(gateway, /failed on the verified VoxCPM2 reference-clone route/);
   assert.doesNotMatch(gateway, /Qwen3-TTS Voice Clone Base/);
-  assert.match(production, /fallback: "Qwen3-TTS Voice Clone Base"/);
-  assert.doesNotMatch(production, /handleVoiceClone\([\s\S]*Qwen/);
+  assert.match(production, /primary: "VoxCPM2 persistent GPU reference clone"/);
+  assert.match(production, /fallback: "none"/);
+  assert.doesNotMatch(production, /QWEN_TTS_SPACE_URL|handleVoiceClone\([\s\S]*Qwen/);
 });
 
 test("the browser reuses the Red reference and only resends it when the production cache asks for a refresh", () => {
