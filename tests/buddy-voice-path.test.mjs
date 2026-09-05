@@ -2,13 +2,14 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-const [production, runtime, local, worker, voice, picker, gateway] = await Promise.all([
+const [production, runtime, local, worker, voice, picker, chat, gateway] = await Promise.all([
   readFile("src/lib/production-voice-clone.ts", "utf8"),
   readFile("src/lib/studio-runtime.ts", "utf8"),
   readFile("src/lib/local-chatterbox.ts", "utf8"),
   readFile("src/workers/chatterbox-local.worker.ts", "utf8"),
   readFile("src/lib/buddy-voice.ts", "utf8"),
   readFile("src/components/studio/BuddyVoicePicker.tsx", "utf8"),
+  readFile("src/components/studio/BuddyLiveChat.tsx", "utf8"),
   readFile("src/lib/voice-clone-gateway.ts", "utf8"),
 ]);
 
@@ -55,6 +56,11 @@ test("preset voices expose a real generated audio preview before selection", () 
   assert.match(picker, /setGeneratedAudio\(result\.url\)/);
   assert.match(picker, /Preview Voice/);
   assert.match(picker, /audio[^\n]*controls/);
+});
+
+test("preset playback never silently switches to browser speech synthesis", () => {
+  assert.doesNotMatch(chat, /if \(\"speechSynthesis\" in window\)/);
+  assert.match(chat, /Voice playback failed/);
 });
 
 test("the local Chatterbox implementation contains the supported Transformers.js loading contract", () => {
