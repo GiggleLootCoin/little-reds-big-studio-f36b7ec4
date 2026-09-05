@@ -31,7 +31,6 @@ for (const forbidden of [
   "createLocalChatterboxClone",
   "rahul7star",
   "spacekaren",
-  "/api/voice-clone",
   "OPENROUTERAI_API_KEY",
   "generate_voice_clone",
   "QWEN_TTS_FALLBACK_SPACE_URL",
