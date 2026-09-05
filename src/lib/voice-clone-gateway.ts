@@ -1,4 +1,4 @@
-type Env = { HF_TOKEN?: string; VOXCPM_SPACE_URL?: string; QWEN_TTS_SPACE_URL?: string };
+type Env = { HF_TOKEN?: string; VOXCPM_SPACE_URL?: string };
 
 type Body = {
   referenceId?: string;
@@ -12,15 +12,11 @@ type Body = {
 
 export const RED_VOICE_PROVIDER = "VoxCPM2 reference clone";
 const PRIMARY_SPACE = "https://openbmb-voxcpm-demo.hf.space";
-const FALLBACK_SPACE = "https://qwen-qwen3-tts.hf.space";
 const REFERENCE_CACHE_TTL_MS = 15 * 60_000;
 const cache = new Map<string, { path: string; expires: number }>();
 
-function spaces(env: Env) {
-  const primary = (env.VOXCPM_SPACE_URL?.trim() || PRIMARY_SPACE).replace(/\/$/, "");
-  return [primary, FALLBACK_SPACE].filter(
-    (value, index, values) => values.indexOf(value) === index,
-  );
+function primarySpace(env: Env) {
+  return (env.VOXCPM_SPACE_URL?.trim() || PRIMARY_SPACE).replace(/\/$/, "");
 }
 
 function auth(env: Env): HeadersInit {
@@ -274,18 +270,6 @@ async function generate(
   return new Response(audio.body, { status: 200, headers });
 }
 
-async function generateFromSpace(
-  space: string,
-  body: Body,
-  env: Env,
-  refresh = false,
-): Promise<Response> {
-  const id = body.referenceId!.trim();
-  const type = String(body.audioType || "audio/wav");
-  const path = await upload(space, id, body.audioBase64!, type, env, refresh);
-  return generate(space, path, type, body, env);
-}
-
 export async function handleVoiceClone(request: Request, env: Env): Promise<Response> {
   if (request.method !== "POST")
     return Response.json({ ok: false, error: "POST required." }, { status: 405 });
@@ -310,40 +294,50 @@ export async function handleVoiceClone(request: Request, env: Env): Promise<Resp
     return Response.json({ ok: false, error: "Target text is required." }, { status: 400 });
   }
 
-  const candidates = spaces(env);
+  const space = primarySpace(env);
   let lastError: unknown = null;
 
-  for (const space of candidates) {
+  try {
+    return await generateFromSpace(space, body, env);
+  } catch (firstError) {
+    lastError = firstError;
+    console.warn(
+      `[voice-clone] ${space} failed: ${firstError instanceof Error ? firstError.message : String(firstError)}`,
+    );
     try {
-      return await generateFromSpace(space, body, env);
-    } catch (firstError) {
-      lastError = firstError;
+      return await generateFromSpace(space, body, env, true);
+    } catch (refreshError) {
+      lastError = refreshError;
       console.warn(
-        `[voice-clone] ${space} failed: ${firstError instanceof Error ? firstError.message : String(firstError)}`,
+        `[voice-clone] ${space} reference refresh failed: ${
+          refreshError instanceof Error ? refreshError.message : String(refreshError)
+        }`,
       );
-      try {
-        return await generateFromSpace(space, body, env, true);
-      } catch (refreshError) {
-        lastError = refreshError;
-        console.warn(
-          `[voice-clone] ${space} reference refresh failed: ${
-            refreshError instanceof Error ? refreshError.message : String(refreshError)
-          }`,
-        );
-      }
     }
   }
 
   return Response.json(
     {
       ok: false,
-      error: `Red voice cloning failed on all configured reference-clone spaces: ${
+      error: `Red voice cloning failed on the verified VoxCPM2 reference-clone route. ${
         lastError instanceof Error ? lastError.message : String(lastError)
       }`,
     },
     {
       status: 502,
-      headers: { "cache-control": "no-store", "x-red-voice-route": "reference-clone" },
+      headers: { "cache-control": "no-store", "x-red-voice-route": "voxcpm2-reference-clone" },
     },
   );
+}
+
+async function generateFromSpace(
+  space: string,
+  body: Body,
+  env: Env,
+  refresh = false,
+): Promise<Response> {
+  const id = body.referenceId!.trim();
+  const type = String(body.audioType || "audio/wav");
+  const path = await upload(space, id, body.audioBase64!, type, env, refresh);
+  return generate(space, path, type, body, env);
 }
