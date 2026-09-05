@@ -48,6 +48,15 @@ test("the browser reuses the Red reference and only resends it when the producti
   assert.match(runtime, /makeBody\(!alreadyEncoded\)/);
 });
 
+test("preset voices expose a real generated audio preview before selection", () => {
+  assert.match(picker, /const \[previewVoice, setPreviewVoice\] = useState<string \| null>\(null\)/);
+  assert.match(picker, /const previewPreset = async/);
+  assert.match(picker, /runStudioJob\(\s*"tts"/);
+  assert.match(picker, /setGeneratedAudio\(result\.url\)/);
+  assert.match(picker, /Preview Voice/);
+  assert.match(picker, /audio[^\n]*controls/);
+});
+
 test("the local Chatterbox implementation contains the supported Transformers.js loading contract", () => {
   assert.match(worker, /AutoProcessor/);
   assert.match(worker, /q4f16/);
