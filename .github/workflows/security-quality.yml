@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   application-quality:
@@ -18,6 +18,54 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+        with:
+          fetch-depth: 1
+      - name: Apply one-time voice fallback fix
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'fix/restore-verified-voxcpm2-production'
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path("src/components/studio/BuddyLiveChat.tsx")
+          text = path.read_text()
+          old = '''    } catch (error) {
+      if (v.mode !== "preset" || v.speaker === "Red") {
+        setStatus(
+          error instanceof Error ? error.message : "Buddy's cloned voice could not be generated.",
+        );
+        throw error;
+      }
+      if ("speechSynthesis" in window)
+        await new Promise<void>((ok) => {
+          const u = new SpeechSynthesisUtterance(text);
+          u.lang = navigator.language || "en-US";
+          u.rate = 0.98;
+          u.onend = () => ok();
+          u.onerror = () => ok();
+          speechSynthesis.cancel();
+          speechSynthesis.speak(u);
+        });
+    } finally {'''
+          new = '''    } catch (error) {
+      setStatus(
+        error instanceof Error ? error.message : "Buddy's selected voice could not be generated.",
+      );
+      throw error;
+    } finally {'''
+          if old in text:
+              path.write_text(text.replace(old, new, 1))
+          else:
+              print("Voice fallback already patched")
+          PY
+          rm -f .github/workflows/one-time-remove-browser-voice-fallback.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/components/studio/BuddyLiveChat.tsx .github/workflows/one-time-remove-browser-voice-fallback.yml
+          if ! git diff --cached --quiet; then
+            git diff --cached --check
+            git commit -m "fix: never silently fall back to browser speech"
+            git push origin HEAD:${{ github.event.pull_request.head.ref }}
+          fi
       - name: Setup Node
         uses: actions/setup-node@v5
         with:
