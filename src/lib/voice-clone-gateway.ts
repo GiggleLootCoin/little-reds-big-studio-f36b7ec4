@@ -1,157 +1,349 @@
-type Env = {
-  HF_TOKEN?: string;
-  QWEN_TTS_SPACE_URL?: string;
-  QWEN_TTS_FALLBACK_SPACE_URL?: string;
-  CHATTERBOX_SPACE_URL?: string;
+type Env = { HF_TOKEN?: string; VOXCPM_SPACE_URL?: string; QWEN_TTS_SPACE_URL?: string };
+
+type Body = {
+  referenceId?: string;
+  audioBase64?: string;
+  audioType?: string;
+  refText?: string;
+  text?: string;
+  language?: string;
+  modelSize?: "0.6B" | "1.7B";
 };
 
-type CachedReference = { path: string; expires: number };
-const referenceCache = new Map<string, CachedReference>();
-const REFERENCE_CACHE_TTL_MS = 15 * 60 * 1000;
+export const RED_VOICE_PROVIDER = "VoxCPM2 reference clone";
+const PRIMARY_SPACE = "https://openbmb-voxcpm-demo.hf.space";
+const FALLBACK_SPACE = "https://qwen-qwen3-tts.hf.space";
+const REFERENCE_CACHE_TTL_MS = 15 * 60_000;
+const cache = new Map<string, { path: string; expires: number }>();
 
-function decodeBase64(value: string): ArrayBuffer {
-  const cleaned = value.replace(/^data:[^,]+,/, "").replace(/\s/g, "");
-  const bytes = Uint8Array.from(atob(cleaned), (c) => c.charCodeAt(0));
+function spaces(env: Env) {
+  const primary = (env.VOXCPM_SPACE_URL?.trim() || PRIMARY_SPACE).replace(/\/$/, "");
+  return [primary, FALLBACK_SPACE].filter(
+    (value, index, values) => values.indexOf(value) === index,
+  );
+}
+
+function auth(env: Env): HeadersInit {
+  return env.HF_TOKEN?.trim() ? { Authorization: `Bearer ${env.HF_TOKEN.trim()}` } : {};
+}
+
+function ext(type: string) {
+  const t = type.toLowerCase();
+  if (t.includes("webm")) return "webm";
+  if (t.includes("mpeg")) return "mp3";
+  if (t.includes("ogg")) return "ogg";
+  if (t.includes("flac")) return "flac";
+  return "wav";
+}
+
+function decode(value: string) {
+  const s = value.replace(/^data:[^,]+,/, "").replace(/\s/g, "");
+  let binary: string;
+  try {
+    binary = atob(s);
+  } catch {
+    throw new Error("The Red voice reference is not valid base64 audio.");
+  }
+  const bytes = Uint8Array.from(binary, (c) => c.charCodeAt(0));
   return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
 }
-function languageName(value: unknown): string {
-  const raw = String(value || "English").trim();
-  const map: Record<string, string> = { en: "English", es: "Spanish", fr: "French", de: "German", it: "Italian", pt: "Portuguese", ru: "Russian", zh: "Chinese", ja: "Japanese", ko: "Korean", hi: "Hindi", ar: "Arabic", auto: "Auto" };
-  return map[raw.toLowerCase()] || raw;
-}
-function languageCode(value: unknown): string {
-  const raw = String(value || "English").trim().toLowerCase();
-  const map: Record<string, string> = { english: "en", spanish: "es", french: "fr", german: "de", italian: "it", portuguese: "pt", russian: "ru", chinese: "zh", japanese: "ja", korean: "ko", hindi: "hi", arabic: "ar" };
-  return map[raw] || raw;
-}
-function errorResponse(message: string, status = 500) {
-  return Response.json({ ok: false, error: message }, { status, headers: { "cache-control": "no-store" } });
-}
-function authHeaders(env: Env): HeadersInit { return env.HF_TOKEN ? { Authorization: `Bearer ${env.HF_TOKEN}` } : {}; }
-function audioExtension(type: string): string {
-  const normalized = type.toLowerCase();
-  if (normalized.includes("webm")) return "webm";
-  if (normalized.includes("mpeg")) return "mp3";
-  if (normalized.includes("ogg")) return "ogg";
-  if (normalized.includes("wav")) return "wav";
-  return "audio";
-}
-async function uploadReference(space: string, audio: Blob, env: Env): Promise<string> {
+
+async function upload(
+  space: string,
+  id: string,
+  base64: string,
+  type: string,
+  env: Env,
+  refresh = false,
+) {
+  const key = `${space}|${id}`;
+  const old = cache.get(key);
+  if (!refresh && old && old.expires > Date.now()) return old.path;
+
   const form = new FormData();
-  form.append("files", audio, `reference.${audioExtension(audio.type)}`);
-  const response = await fetch(`${space}/gradio_api/upload`, { method: "POST", headers: authHeaders(env), body: form });
-  if (!response.ok) throw new Error(`Reference upload failed (${response.status}). ${(await response.text()).slice(0, 240)}`);
-  const files = (await response.json()) as unknown;
-  if (Array.isArray(files) && typeof files[0] === "string") return files[0];
-  throw new Error("Provider returned no uploaded reference path.");
-}
-async function referencePath(referenceId: string, audioBase64: string | undefined, audioType: string, space: string, env: Env, forceRefresh = false): Promise<string> {
-  const key = `${space}|${referenceId}`;
-  if (!forceRefresh) {
-    const cached = referenceCache.get(key);
-    if (cached && cached.expires > Date.now()) return cached.path;
-  } else referenceCache.delete(key);
-  if (!audioBase64) throw new Error("REFERENCE_REFRESH_REQUIRED");
-  const path = await uploadReference(space, new Blob([decodeBase64(audioBase64)], { type: audioType }), env);
-  referenceCache.set(key, { path, expires: Date.now() + REFERENCE_CACHE_TTL_MS });
+  form.append("files", new Blob([decode(base64)], { type }), `red-reference.${ext(type)}`);
+
+  const response = await fetch(`${space}/gradio_api/upload`, {
+    method: "POST",
+    headers: auth(env),
+    body: form,
+  });
+  if (!response.ok) {
+    const detail = (await response.text().catch(() => "")).slice(0, 240);
+    throw new Error(`VoxCPM reference upload failed (${response.status}). ${detail}`.trim());
+  }
+
+  const payload = (await response.json()) as unknown;
+  const path = Array.isArray(payload) ? String(payload[0] || "") : "";
+  if (!path) throw new Error("VoxCPM returned no reference-file path.");
+
+  cache.set(key, { path, expires: Date.now() + REFERENCE_CACHE_TTL_MS });
   return path;
 }
-export type QwenSSEParseResult = { kind: "audio"; payload: unknown[] } | { kind: "error"; message: string } | { kind: "none" };
-export function parseQwenSSE(stream: string): QwenSSEParseResult {
-  let event = ""; let data: string[] = []; let result: QwenSSEParseResult = { kind: "none" };
+
+export type VoxCPMSSEParseResult =
+  | { kind: "audio"; payload: unknown[] }
+  | { kind: "error"; message: string }
+  | { kind: "none" };
+
+export function parseVoxCPMSSE(stream: string): VoxCPMSSEParseResult {
+  let event = "";
+  let data: string[] = [];
+  let result: VoxCPMSSEParseResult = { kind: "none" };
+
   const flush = () => {
     if (!data.length) return;
-    const raw = data.join("\n").trim(); if (!raw) return;
+    const raw = data.join("\n").trim();
+    if (!raw) return;
+
     if (event === "error" || event === "cancelled") {
-      try { const parsed = JSON.parse(raw) as unknown; result = { kind: "error", message: typeof parsed === "string" ? parsed : JSON.stringify(parsed) }; } catch { result = { kind: "error", message: raw }; }
+      try {
+        const payload = JSON.parse(raw) as unknown;
+        result = {
+          kind: "error",
+          message: typeof payload === "string" ? payload : JSON.stringify(payload),
+        };
+      } catch {
+        result = { kind: "error", message: raw };
+      }
       return;
     }
+
     if (event !== "complete") return;
-    let parsed: unknown;
-    try { parsed = JSON.parse(raw) as unknown; } catch { result = { kind: "error", message: "Qwen returned invalid completed JSON." }; return; }
-    if (!Array.isArray(parsed)) return;
-    const first = parsed[0]; const status = typeof parsed[parsed.length - 1] === "string" ? String(parsed[parsed.length - 1]).trim() : "";
-    if (!first) { result = { kind: "error", message: status || "Qwen completed without an audio artifact." }; return; }
-    result = { kind: "audio", payload: parsed };
+    try {
+      const payload = JSON.parse(raw) as unknown;
+      if (Array.isArray(payload) && payload.length > 0) {
+        if (payload[0] == null && typeof payload[1] === "string" && payload[1].trim()) {
+          result = { kind: "error", message: payload[1].trim() };
+        } else {
+          result = { kind: "audio", payload };
+        }
+      }
+    } catch {
+      result = { kind: "error", message: "VoxCPM returned invalid completed JSON." };
+    }
   };
+
   for (const line of stream.split(/\r\n|\n|\r/)) {
-    if (!line.trim()) { flush(); event = ""; data = []; continue; }
-    if (line.startsWith("event:")) event = line.slice(6).trim(); else if (line.startsWith("data:")) data.push(line.slice(5).trim());
+    if (!line.trim()) {
+      flush();
+      event = "";
+      data = [];
+    } else if (line.startsWith("event:")) {
+      event = line.slice(6).trim();
+    } else if (line.startsWith("data:")) {
+      data.push(line.slice(5).trim());
+    }
   }
-  flush(); return result;
+  flush();
+  return result;
 }
-function audioUrl(space: string, value: unknown): string {
-  if (typeof value === "string" && value) return value.startsWith("http") ? value : `${space}${value}`;
-  if (!value || typeof value !== "object") throw new Error("Provider returned no downloadable audio artifact.");
-  const item = value as Record<string, unknown>;
-  if (typeof item.url === "string" && item.url) return item.url.startsWith("http") ? item.url : `${space}${item.url}`;
-  if (typeof item.path === "string" && item.path) return `${space}/gradio_api/file=${item.path.replace(/^\//, "")}`;
-  throw new Error("Provider returned an audio object without a downloadable URL or path.");
+
+function fileData(path: string, type: string) {
+  return {
+    path,
+    orig_name: `red-reference.${ext(type)}`,
+    mime_type: type,
+    meta: { _type: "gradio.FileData" },
+  };
 }
-async function startAndPoll(space: string, endpoint: string, data: unknown[], env: Env): Promise<unknown[]> {
-  const start = await fetch(`${space}/gradio_api/call/${endpoint}`, { method: "POST", headers: { ...authHeaders(env), "content-type": "application/json" }, body: JSON.stringify({ data }) });
-  if (!start.ok) throw new Error(`${endpoint} start failed (${start.status}). ${(await start.text()).slice(0, 300)}`);
-  const started = (await start.json()) as { event_id?: string };
-  if (!started.event_id) throw new Error("Provider returned no job ID.");
-  const result = await fetch(`${space}/gradio_api/call/${endpoint}/${encodeURIComponent(started.event_id)}`, { headers: { ...authHeaders(env), Accept: "text/event-stream" } });
-  if (!result.ok) throw new Error(`${endpoint} job failed (${result.status}). ${(await result.text()).slice(0, 300)}`);
-  const parsed = parseQwenSSE(await result.text());
-  if (parsed.kind === "error") throw new Error(`${endpoint}: ${parsed.message.slice(0, 600)}`);
-  if (parsed.kind !== "audio") throw new Error(`${endpoint}: no completed audio.`);
-  return parsed.payload;
+
+function toWav(value: unknown): ArrayBuffer | null {
+  if (
+    !Array.isArray(value) ||
+    typeof value[0] !== "number" ||
+    !Array.isArray(value[1]) ||
+    value[1].length === 0
+  ) {
+    return null;
+  }
+
+  const sampleRate = Math.round(value[0]);
+  const samples = value[1] as unknown[];
+  const pcm = new Int16Array(samples.length);
+  for (let i = 0; i < samples.length; i++) {
+    const n = Math.max(-1, Math.min(1, Number(samples[i]) || 0));
+    pcm[i] = n < 0 ? n * 0x8000 : n * 0x7fff;
+  }
+
+  const output = new ArrayBuffer(44 + pcm.byteLength);
+  const view = new DataView(output);
+  const put = (offset: number, text: string) => {
+    for (let i = 0; i < text.length; i++) view.setUint8(offset + i, text.charCodeAt(i));
+  };
+  put(0, "RIFF");
+  view.setUint32(4, 36 + pcm.byteLength, true);
+  put(8, "WAVE");
+  put(12, "fmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * 2, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);
+  put(36, "data");
+  view.setUint32(40, pcm.byteLength, true);
+  new Uint8Array(output, 44).set(new Uint8Array(pcm.buffer));
+  return output;
 }
-async function officialClone(space: string, path: string, audioType: string, refText: string, text: string, language: string, modelSize: "0.6B" | "1.7B", env: Env, xvectorOnly = false): Promise<string> {
-  const file = { path, orig_name: `reference.${audioExtension(audioType)}`, mime_type: audioType, meta: { _type: "gradio.FileData" } };
-  const payload = await startAndPoll(space, "generate_voice_clone", [file, refText, text, languageName(language), xvectorOnly, modelSize], env);
-  return audioUrl(space, payload[0]);
-}
-async function chatterboxClone(space: string, path: string, audioType: string, text: string, language: string, env: Env): Promise<string> {
-  const file = { path, orig_name: `reference.${audioExtension(audioType)}`, mime_type: audioType, meta: { _type: "gradio.FileData" } };
-  const payload = await startAndPoll(space, "generate_tts_audio", [text, file, languageCode(language), 0.5, 0.8, 0, 0.5], env);
-  return audioUrl(space, payload[0]);
-}
-async function downloadAudio(url: string, env: Env, provider: string): Promise<Response> {
-  const response = await fetch(url, { headers: authHeaders(env) });
-  if (!response.ok || !response.body) throw new Error(`Generated audio download failed (${response.status}).`);
-  const headers = new Headers(response.headers); headers.set("cache-control", "no-store"); headers.set("x-clone-provider", provider); headers.delete("x-clone-verified");
-  return new Response(response.body, { status: 200, headers });
-}
-async function cloneWithReferenceRefresh(space: string, referenceId: string, audioBase64: string | undefined, audioType: string, refText: string, text: string, language: string, modelSize: "0.6B" | "1.7B", env: Env, clone: (path: string) => Promise<string>): Promise<string> {
-  let path = await referencePath(referenceId, audioBase64, audioType, space, env);
-  try { return await clone(path); } catch (firstError) { if (!audioBase64) throw firstError; path = await referencePath(referenceId, audioBase64, audioType, space, env, true); return await clone(path); }
-}
-export async function handleVoiceClone(request: Request, env: Env = {}): Promise<Response | null> {
-  const pathname = new URL(request.url).pathname.replace(/\/$/, "") || "/";
-  if (pathname !== "/api/voice-clone" && pathname !== "/api/ai/voice-clone") return null;
-  if (request.method !== "POST") return errorResponse("POST required.", 405);
-  let body: { referenceId?: string; audioBase64?: string; audioType?: string; refText?: string; text?: string; language?: string; modelSize?: "0.6B" | "1.7B" };
-  try { body = (await request.json()) as typeof body; } catch { return errorResponse("The clone request was not valid JSON.", 400); }
-  if (!body.referenceId?.trim()) return errorResponse("A voice reference ID is required.", 400);
-  if (!body.text?.trim()) return errorResponse("Target text is required.", 400);
-  const primary = String(env.QWEN_TTS_SPACE_URL || "https://qwen-qwen3-tts.hf.space").replace(/\/$/, "");
-  const fallback = String(env.QWEN_TTS_FALLBACK_SPACE_URL || "https://wordercom-qwen3-tts.hf.space").replace(/\/$/, "");
-  const chatterbox = String(env.CHATTERBOX_SPACE_URL || "https://resembleai-chatterbox-multilingual-tts-v3.hf.space").replace(/\/$/, "");
-  const audioType = String(body.audioType || "audio/wav");
-  const text = body.text.trim().replace(/\s+/g, " ").slice(0, 220);
-  const language = String(body.language || "English");
-  const requested = body.modelSize === "0.6B" ? "0.6B" : "1.7B";
-  const referenceId = body.referenceId.trim();
+
+async function generate(
+  space: string,
+  path: string,
+  type: string,
+  body: Body,
+  env: Env,
+): Promise<Response> {
   const refText = body.refText?.trim() || "";
-  const xvectorOnly = !refText;
-  const failures: string[] = [];
-  const tryChatterboxV3 = async () => downloadAudio(await cloneWithReferenceRefresh(chatterbox, referenceId, body.audioBase64, audioType, refText, text, language, requested, env, (path) => chatterboxClone(chatterbox, path, audioType, text, language, env)), env, "Chatterbox Multilingual TTS V3 reference clone");
-  if (xvectorOnly) {
-    try { return await tryChatterboxV3(); } catch (error) { failures.push(error instanceof Error ? error.message : String(error)); }
+  const targetText = body.text?.trim().replace(/\s+/g, " ").slice(0, 220) || "";
+  if (!targetText) throw new Error("Target text is required.");
+
+  const usePromptText = Boolean(refText);
+  const start = await fetch(`${space}/gradio_api/call/generate`, {
+    method: "POST",
+    headers: { ...auth(env), "content-type": "application/json" },
+    body: JSON.stringify({
+      data: [
+        targetText,
+        "",
+        fileData(path, type),
+        usePromptText,
+        refText,
+        2.0,
+        true,
+        false,
+      ],
+    }),
+  });
+  if (!start.ok) {
+    const detail = (await start.text().catch(() => "")).slice(0, 300);
+    throw new Error(`VoxCPM clone start failed (${start.status}). ${detail}`.trim());
   }
-  try {
-    return await downloadAudio(await cloneWithReferenceRefresh(primary, referenceId, body.audioBase64, audioType, refText, text, language, requested, env, (path) => officialClone(primary, path, audioType, refText, text, language, requested, env, xvectorOnly)), env, `Qwen3-TTS ${requested} Base ${xvectorOnly ? "speaker-embedding" : "full-reference"}`);
-  } catch (error) { failures.push(error instanceof Error ? error.message : String(error)); }
-  try {
-    return await downloadAudio(await cloneWithReferenceRefresh(fallback, referenceId, body.audioBase64, audioType, refText, text, language, requested, env, (path) => officialClone(fallback, path, audioType, refText, text, language, requested, env, xvectorOnly)), env, `Qwen3-TTS fallback ${requested} Base ${xvectorOnly ? "speaker-embedding" : "full-reference"}`);
-  } catch (error) { failures.push(error instanceof Error ? error.message : String(error)); }
-  if (!xvectorOnly) {
-    try { return await tryChatterboxV3(); } catch (error) { failures.push(error instanceof Error ? error.message : String(error)); }
+
+  const job = (await start.json()) as { event_id?: string };
+  if (!job.event_id) throw new Error("VoxCPM returned no clone job ID.");
+
+  const result = await fetch(
+    `${space}/gradio_api/call/generate/${encodeURIComponent(job.event_id)}`,
+    { headers: { ...auth(env), Accept: "text/event-stream" } },
+  );
+  if (!result.ok) {
+    const detail = (await result.text().catch(() => "")).slice(0, 300);
+    throw new Error(`VoxCPM clone job failed (${result.status}). ${detail}`.trim());
   }
-  if (failures.every((message) => message === "REFERENCE_REFRESH_REQUIRED")) return errorResponse("The saved voice reference expired from the warm server. Please retry once to refresh it.", 428);
-  return errorResponse(`Voice cloning failed after bounded independent attempts. ${failures.join(" | ")}`, 502);
+
+  const parsed = parseVoxCPMSSE(await result.text());
+  if (parsed.kind === "error") throw new Error(`VoxCPM clone: ${parsed.message.slice(0, 500)}`);
+  if (parsed.kind !== "audio") throw new Error("VoxCPM completed without cloned audio.");
+
+  const wav = toWav(parsed.payload[0]);
+  const provider = RED_VOICE_PROVIDER;
+  if (wav) {
+    return new Response(wav, {
+      status: 200,
+      headers: {
+        "content-type": "audio/wav",
+        "cache-control": "no-store",
+        "x-clone-provider": provider,
+        "x-red-voice-route": "voxcpm2-reference-clone",
+      },
+    });
+  }
+
+  const first = parsed.payload[0];
+  const item = first && typeof first === "object" ? (first as Record<string, unknown>) : null;
+  const artifact =
+    typeof first === "string"
+      ? first
+      : item && typeof item.url === "string"
+        ? item.url
+        : item && typeof item.path === "string"
+          ? `${space}/gradio_api/file=${String(item.path).replace(/^\//, "")}`
+          : "";
+  if (!artifact) throw new Error("VoxCPM returned no playable cloned audio artifact.");
+
+  const audio = await fetch(artifact.startsWith("http") ? artifact : `${space}${artifact}`, {
+    headers: auth(env),
+  });
+  if (!audio.ok || !audio.body) throw new Error(`VoxCPM audio download failed (${audio.status}).`);
+  const headers = new Headers(audio.headers);
+  headers.set("cache-control", "no-store");
+  headers.set("x-clone-provider", provider);
+  headers.set("x-red-voice-route", "voxcpm2-reference-clone");
+  return new Response(audio.body, { status: 200, headers });
+}
+
+async function generateFromSpace(
+  space: string,
+  body: Body,
+  env: Env,
+  refresh = false,
+): Promise<Response> {
+  const id = body.referenceId!.trim();
+  const type = String(body.audioType || "audio/wav");
+  const path = await upload(space, id, body.audioBase64!, type, env, refresh);
+  return generate(space, path, type, body, env);
+}
+
+export async function handleVoiceClone(request: Request, env: Env): Promise<Response> {
+  if (request.method !== "POST")
+    return Response.json({ ok: false, error: "POST required." }, { status: 405 });
+
+  let body: Body;
+  try {
+    body = (await request.json()) as Body;
+  } catch {
+    return Response.json(
+      { ok: false, error: "The clone request was not valid JSON." },
+      { status: 400 },
+    );
+  }
+
+  if (!body.referenceId?.trim() || !body.audioBase64) {
+    return Response.json(
+      { ok: false, error: "A Red voice reference is required." },
+      { status: 400 },
+    );
+  }
+  if (!body.text?.trim()) {
+    return Response.json({ ok: false, error: "Target text is required." }, { status: 400 });
+  }
+
+  const candidates = spaces(env);
+  let lastError: unknown = null;
+
+  for (const space of candidates) {
+    try {
+      return await generateFromSpace(space, body, env);
+    } catch (firstError) {
+      lastError = firstError;
+      console.warn(
+        `[voice-clone] ${space} failed: ${firstError instanceof Error ? firstError.message : String(firstError)}`,
+      );
+      try {
+        return await generateFromSpace(space, body, env, true);
+      } catch (refreshError) {
+        lastError = refreshError;
+        console.warn(
+          `[voice-clone] ${space} reference refresh failed: ${
+            refreshError instanceof Error ? refreshError.message : String(refreshError)
+          }`,
+        );
+      }
+    }
+  }
+
+  return Response.json(
+    {
+      ok: false,
+      error: `Red voice cloning failed on all configured reference-clone spaces: ${
+        lastError instanceof Error ? lastError.message : String(lastError)
+      }`,
+    },
+    {
+      status: 502,
+      headers: { "cache-control": "no-store", "x-red-voice-route": "reference-clone" },
+    },
+  );
 }
