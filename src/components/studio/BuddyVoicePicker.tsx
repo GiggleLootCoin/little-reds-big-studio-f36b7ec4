@@ -17,12 +17,15 @@ const CLONE_TEXT =
   "Hello. This is your cloned voice sample. Would you like to use this voice for Buddy now, or would you like to record again?";
 const REFERENCE_TRANSCRIPT = CLONE_TEXT;
 const FAILURE = "Buddy couldn't create the voice clone yet.";
+const PREVIEW_TEXT = "Hello. This is Buddy. This is a real voice preview, so you can listen before choosing this voice.";
 
 export function BuddyVoicePicker() {
   const [profile, setProfile] = useState(getBuddyVoiceProfile());
   const [busy, setBusy] = useState(false);
   const [recording, setRecording] = useState(false);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  const [presetCandidate, setPresetCandidate] = useState(profile.speaker);
+  const [previewVoice, setPreviewVoice] = useState<string | null>(null);
   const [status, setStatus] = useState(
     "Choose a preset, or upload/record a voice sample to create a real clone.",
   );
@@ -59,6 +62,8 @@ export function BuddyVoicePicker() {
   const update = (patch: Partial<typeof profile>) => {
     const next = { ...getBuddyVoiceProfile(), ...patch };
     setProfile(next);
+    setPresetCandidate(next.speaker);
+    setPreviewVoice(null);
     saveBuddyVoiceProfile(next);
     const voice = allVoices.find((v) => v.id === next.speaker);
     setStatus(
@@ -155,6 +160,38 @@ export function BuddyVoicePicker() {
     recorderRef.current.stop();
     recorderRef.current = null;
     setRecording(false);
+  };
+
+  const previewPreset = async () => {
+    const speaker = String(presetCandidate || "").trim();
+    if (!speaker) {
+      setStatus("Choose a preset voice to preview.");
+      return;
+    }
+    setBusy(true);
+    setPreviewVoice(speaker);
+    setStatus(`Generating a real preview for ${allVoices.find((v) => v.id === speaker)?.label || speaker}…`);
+    try {
+      const result = await runStudioJob(
+        "tts",
+        {
+          speaker,
+          language: profile.language || "English",
+          text: PREVIEW_TEXT,
+          target_text: PREVIEW_TEXT,
+        },
+        setStatus,
+      );
+      if (!result.url) throw new Error("The selected voice returned no playable audio.");
+      setGeneratedAudio(result.url);
+      setStatus("✓ Real preset preview ready — press Play below, then use this voice if you like it.");
+    } catch (error) {
+      setStatus(
+        `Voice preview failed. ${error instanceof Error ? error.message : "The voice engine failed."}`,
+      );
+    } finally {
+      setBusy(false);
+    }
   };
 
   const test = async () => {
@@ -259,29 +296,63 @@ export function BuddyVoicePicker() {
         </button>
       </div>
       {profile.mode === "preset" ? (
-        <select
-          value={profile.speaker}
-          onChange={(e) =>
-            e.target.value === "Red"
-              ? update({ mode: "preset", speaker: "Red" })
-              : update({ mode: "preset", speaker: e.target.value })
-          }
-          className="mt-2 w-full rounded-xl border border-border bg-background/70 px-3 py-2 text-xs"
-        >
-          {["Red — Your Voice", "Buddy Originals", "Aura Studio — 40 distinct English voices"].map(
-            (family) => (
-              <optgroup key={family} label={family}>
-                {allVoices
-                  .filter((v) => v.family === family)
-                  .map((voice) => (
-                    <option key={voice.id} value={voice.id}>
-                      {voice.label} — {voice.note}
-                    </option>
-                  ))}
-              </optgroup>
-            ),
+        <div className="mt-2 rounded-xl border border-border bg-background/40 p-2">
+          <select
+            value={presetCandidate}
+            onChange={(e) => {
+              setPresetCandidate(e.target.value);
+              setPreviewVoice(null);
+              setStatus("Preset selected for preview — it is not committed until you use this voice.");
+            }}
+            className="w-full rounded-xl border border-border bg-background/70 px-3 py-2 text-xs"
+          >
+            {["Red — Your Voice", "Buddy Originals", "Aura Studio — 40 distinct English voices"].map(
+              (family) => (
+                <optgroup key={family} label={family}>
+                  {allVoices
+                    .filter((v) => v.family === family)
+                    .map((voice) => (
+                      <option key={voice.id} value={voice.id}>
+                        {voice.label} — {voice.note}
+                      </option>
+                    ))}
+                </optgroup>
+              ),
+            )}
+          </select>
+          <div className="mt-2 grid grid-cols-2 gap-2">
+            <StudioButton
+              type="button"
+              className="w-full justify-center"
+              onClick={() => void previewPreset()}
+              disabled={busy}
+              aria-busy={busy && previewVoice === presetCandidate}
+            >
+              <Volume2 className="size-4" /> {busy && previewVoice === presetCandidate ? "Previewing…" : "Preview Voice"}
+            </StudioButton>
+            <button
+              type="button"
+              onClick={() => update({ mode: "preset", speaker: presetCandidate })}
+              disabled={busy}
+              className="rounded-xl border border-primary bg-primary/10 px-3 py-2 text-xs font-semibold"
+            >
+              <CheckCircle2 className="mr-1 inline size-4" /> Use This Voice
+            </button>
+          </div>
+          {audioUrl && previewVoice === presetCandidate && (
+            <div className="mt-2 rounded-xl border border-primary/30 bg-background/70 p-2">
+              <p className="mb-2 text-[10px] font-semibold text-primary">Preset voice preview</p>
+              <audio className="w-full" controls preload="metadata" src={audioUrl} />
+            </div>
           )}
-        </select>
+          <p
+            role="status"
+            aria-live="polite"
+            className="mt-2 rounded-xl border border-border/70 bg-background/50 px-3 py-2 text-[10px] leading-relaxed text-muted-foreground"
+          >
+            {status}
+          </p>
+        </div>
       ) : (
         <div className="mt-2 rounded-xl border border-primary/30 bg-background/60 p-3">
           <div className="flex items-center gap-2 text-sm font-semibold">
