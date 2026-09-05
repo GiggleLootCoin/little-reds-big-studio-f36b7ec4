@@ -31,8 +31,8 @@ test("the live voice path limits conversational speech length to keep replies re
   assert.match(clone, /slice\(0, 220\)/);
 });
 
-test("the server only delegates the canonical clone request and does not expose the HF token", () => {
+test("the server delegates voice requests through the gateway without exposing the HF token", () => {
   assert.match(server, /handleVoiceClone/);
-  assert.match(server, /\/api\/ai\/voice-clone/);
+  assert.match(server, /AI_PREFIX = "\/api\/ai\/"/);
   assert.doesNotMatch(server, /HF_TOKEN.*window/);
 });
