@@ -60,7 +60,7 @@ test("preset voices expose a real generated audio preview before selection", () 
 
 test("preset playback never silently switches to browser speech synthesis", () => {
   assert.doesNotMatch(chat, /if \(\"speechSynthesis\" in window\)/);
-  assert.match(chat, /Voice playback failed/);
+  assert.match(chat, /Audio playback failed/);
 });
 
 test("the local Chatterbox implementation contains the supported Transformers.js loading contract", () => {
