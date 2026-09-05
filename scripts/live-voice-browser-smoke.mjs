@@ -41,10 +41,6 @@ async function cloneRequest(extra = {}) {
   });
 }
 
-function assertCloneResponse(response, label) {
-  if (!response.ok) throw new Error(`${label} returned HTTP ${response.status}: ${(response._errorText || "").slice(0, 300)}`);
-}
-
 async function readClone(response, label) {
   if (!response.ok) throw new Error(`${label} returned HTTP ${response.status}: ${(await response.text().catch(() => "")).slice(0, 300)}`);
   const contentType = response.headers.get("content-type") || "";
