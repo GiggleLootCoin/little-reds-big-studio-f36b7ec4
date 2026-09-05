@@ -3,7 +3,6 @@ import { handleVoiceClone } from "./voice-clone-gateway";
 type CloneEnv = {
   HF_TOKEN?: string;
   VOXCPM_SPACE_URL?: string;
-  QWEN_TTS_SPACE_URL?: string;
 };
 
 const BACKEND = "voxcpm2-reference-clone";
@@ -81,7 +80,7 @@ export function voiceCloneHealth(_env?: CloneEnv) {
       version: VERSION,
       transcriptRequired: false,
       primary: "VoxCPM2 persistent GPU reference clone",
-      fallback: "Qwen3-TTS Voice Clone Base",
+      fallback: "none",
       outputFormat: "PCM16 WAV",
       verification: ["reference upload", "clone provider header", "non-empty audio", "browser playback"],
     },
