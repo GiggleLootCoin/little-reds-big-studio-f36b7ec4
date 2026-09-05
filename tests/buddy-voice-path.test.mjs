@@ -2,13 +2,14 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-const [production, runtime, local, worker, voice, picker] = await Promise.all([
+const [production, runtime, local, worker, voice, picker, gateway] = await Promise.all([
   readFile("src/lib/production-voice-clone.ts", "utf8"),
   readFile("src/lib/studio-runtime.ts", "utf8"),
   readFile("src/lib/local-chatterbox.ts", "utf8"),
   readFile("src/workers/chatterbox-local.worker.ts", "utf8"),
   readFile("src/lib/buddy-voice.ts", "utf8"),
   readFile("src/components/studio/BuddyVoicePicker.tsx", "utf8"),
+  readFile("src/lib/voice-clone-gateway.ts", "utf8"),
 ]);
 
 test("production Red clone uses the production Worker endpoint and verifies returned audio", () => {
@@ -17,17 +18,18 @@ test("production Red clone uses the production Worker endpoint and verifies retu
   assert.match(runtime, /SHA-256/);
   assert.match(runtime, /normalizeAndVerifyBrowserAudio/);
   assert.match(runtime, /cloneProfile\(\)\.speaker === "Red"/);
-  assert.match(production, /ResembleAI-chatterbox-turbo-demo/);
-  assert.match(production, /gradio_api\/upload/);
-  assert.match(production, /gradio_api\/call\/generate/);
-  assert.match(production, /referenceCache/);
+  assert.match(production, /VoxCPM2 persistent GPU reference clone/);
+  assert.match(gateway, /openbmb-voxcpm-demo\.hf\.space/);
+  assert.match(gateway, /gradio_api\/upload/);
+  assert.match(gateway, /gradio_api\/call\/generate/);
+  assert.match(gateway, /REFERENCE_CACHE_TTL_MS/);
+  assert.match(gateway, /x-red-voice-route/);
 });
 
 test("Red production generation is optimized to avoid re-uploading the same reference on every reply", () => {
-  assert.match(production, /sha256/);
-  assert.match(production, /REFERENCE_CACHE_TTL_MS/);
-  assert.match(production, /referenceCache\.get/);
-  assert.match(production, /referenceCache\.set/);
+  assert.match(gateway, /REFERENCE_CACHE_TTL_MS/);
+  assert.match(gateway, /cache\.get/);
+  assert.match(gateway, /cache\.set/);
 });
 
 test("the browser reuses the Red reference and only resends it when the production cache asks for a refresh", () => {
