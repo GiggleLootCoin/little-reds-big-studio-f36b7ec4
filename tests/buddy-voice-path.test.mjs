@@ -24,12 +24,20 @@ test("production Red clone uses the production Worker endpoint and verifies retu
   assert.match(gateway, /gradio_api\/call\/generate/);
   assert.match(gateway, /REFERENCE_CACHE_TTL_MS/);
   assert.match(gateway, /x-red-voice-route/);
+  assert.doesNotMatch(gateway, /QWEN_TTS_SPACE_URL|FALLBACK_SPACE/);
 });
 
 test("Red production generation is optimized to avoid re-uploading the same reference on every reply", () => {
   assert.match(gateway, /REFERENCE_CACHE_TTL_MS/);
   assert.match(gateway, /cache\.get/);
   assert.match(gateway, /cache\.set/);
+});
+
+test("Red production never silently substitutes another voice provider", () => {
+  assert.match(gateway, /failed on the verified VoxCPM2 reference-clone route/);
+  assert.doesNotMatch(gateway, /Qwen3-TTS Voice Clone Base/);
+  assert.match(production, /fallback: "Qwen3-TTS Voice Clone Base"/);
+  assert.doesNotMatch(production, /handleVoiceClone\([\s\S]*Qwen/);
 });
 
 test("the browser reuses the Red reference and only resends it when the production cache asks for a refresh", () => {
