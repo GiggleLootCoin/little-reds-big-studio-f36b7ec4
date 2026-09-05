@@ -426,7 +426,11 @@ async function prepareVoice(capability: StudioCapability, input: StudioJobInput)
     next.referenceTranscript = profile.referenceTranscript ?? "";
     return { capability: "voice-clone" as StudioCapability, input: next };
   }
-  next.speaker = profile.speaker;
+  // Preserve an explicit speaker supplied by the caller (especially the
+  // uncommitted preview selection). Falling back to the saved profile keeps
+  // normal Buddy TTS behaviour unchanged.
+  const requestedSpeaker = String(input.speaker ?? "").trim();
+  next.speaker = requestedSpeaker || profile.speaker;
   next.text = input.text ?? input.target_text ?? input.prompt ?? "";
   return { capability, input: next };
 }

@@ -36,12 +36,12 @@ export function BuddyVoicePicker() {
     () => [
       {
         id: "Red",
-        label: "Red — My Voice",
+        label: "Red — The Original Voice of Buddy",
         note: "Your real verified personal voice clone",
         nativeLanguage: "English",
         languages: ["English"],
         character: "Little Red’s own voice — the required Buddy voice.",
-        family: "Red — Your Voice",
+        family: "Buddy's Original Voice",
       },
       ...BUDDY_VOICE_PRESETS.map((v) => ({ ...v, family: "Buddy Originals" })),
       ...BUDDY_EXPANDED_VOICES.map((v) => ({
@@ -306,7 +306,7 @@ export function BuddyVoicePicker() {
             }}
             className="w-full rounded-xl border border-border bg-background/70 px-3 py-2 text-xs"
           >
-            {["Red — Your Voice", "Buddy Originals", "Aura Studio — 40 distinct English voices"].map(
+            {["Buddy's Original Voice", "Buddy Originals", "Aura Studio — 40 distinct English voices"].map(
               (family) => (
                 <optgroup key={family} label={family}>
                   {allVoices
