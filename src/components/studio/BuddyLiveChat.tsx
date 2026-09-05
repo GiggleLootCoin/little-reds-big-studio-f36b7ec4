@@ -384,22 +384,10 @@ export function BuddyLiveChat() {
         void a.play().catch(no);
       });
     } catch (error) {
-      if (v.mode !== "preset" || v.speaker === "Red") {
-        setStatus(
-          error instanceof Error ? error.message : "Buddy's cloned voice could not be generated.",
-        );
-        throw error;
-      }
-      if ("speechSynthesis" in window)
-        await new Promise<void>((ok) => {
-          const u = new SpeechSynthesisUtterance(text);
-          u.lang = navigator.language || "en-US";
-          u.rate = 0.98;
-          u.onend = () => ok();
-          u.onerror = () => ok();
-          speechSynthesis.cancel();
-          speechSynthesis.speak(u);
-        });
+      setStatus(
+        error instanceof Error ? error.message : "Buddy's selected voice could not be generated.",
+      );
+      throw error;
     } finally {
       speakingRef.current = false;
       setBuddyStatus("idle");
