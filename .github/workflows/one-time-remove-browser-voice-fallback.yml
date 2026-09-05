@@ -1,0 +1,66 @@
+name: One-time voice fallback fix
+
+on:
+  push:
+    branches:
+      - fix/restore-verified-voxcpm2-production
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor == 'GiggleLootCoin'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 1
+      - name: Remove silent browser speech fallback
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path("src/components/studio/BuddyLiveChat.tsx")
+          text = path.read_text()
+          old = '''    } catch (error) {
+      if (v.mode !== "preset" || v.speaker === "Red") {
+        setStatus(
+          error instanceof Error ? error.message : "Buddy's cloned voice could not be generated.",
+        );
+        throw error;
+      }
+      if ("speechSynthesis" in window)
+        await new Promise<void>((ok) => {
+          const u = new SpeechSynthesisUtterance(text);
+          u.lang = navigator.language || "en-US";
+          u.rate = 0.98;
+          u.onend = () => ok();
+          u.onerror = () => ok();
+          speechSynthesis.cancel();
+          speechSynthesis.speak(u);
+        });
+    } finally {'''
+          new = '''    } catch (error) {
+      setStatus(
+        error instanceof Error ? error.message : "Buddy's selected voice could not be generated.",
+      );
+      throw error;
+    } finally {'''
+          if old not in text:
+              raise SystemExit("Expected browser speech fallback block was not found")
+          path.write_text(text.replace(old, new, 1))
+          PY
+      - name: Remove this one-time workflow
+        shell: bash
+        run: rm -f .github/workflows/one-time-remove-browser-voice-fallback.yml
+      - name: Commit and push exact patch
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/components/studio/BuddyLiveChat.tsx .github/workflows/one-time-remove-browser-voice-fallback.yml
+          git diff --cached --check
+          git diff --cached -- src/components/studio/BuddyLiveChat.tsx
+          git commit -m "fix: never silently fall back to browser speech"
+          git push origin HEAD:fix/restore-verified-voxcpm2-production
