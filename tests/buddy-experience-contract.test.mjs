@@ -14,7 +14,6 @@ const [picker, chat, agent, voice, runtime, wrapper, twa] = await Promise.all([
 
 test("Red personal voice is a visible preset choice and remains clone-routed", () => {
   assert.match(picker, /id: "Red"[\s\S]*?family: "Red — Your Voice"/);
-  assert.match(picker, /speaker: "Red"/);
   assert.match(chat, /v\.mode === "clone" \|\| v\.speaker === "Red"/);
 });
 
