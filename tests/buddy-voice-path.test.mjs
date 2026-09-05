@@ -94,7 +94,8 @@ test("loading the saved sample cannot override an intentionally selected preset"
     picker,
     /useEffect\(\(\) => \{[\s\S]*getBuddyVoiceSample\(\)[\s\S]*setProfile\(next\)/,
   );
-  assert.match(picker, /e\.target\.value === "Red"/);
+  assert.match(picker, /setPresetCandidate\(e\.target\.value\)/);
+  assert.match(picker, /Use This Voice/);
 });
 
 test("Red voice generation is not allowed to fall back to browser speech synthesis", () => {
