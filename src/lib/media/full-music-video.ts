@@ -92,7 +92,8 @@ async function generateChunk(
     1000 + chunk.index,
     false,
   ]);
-  return outputBlob(response.data?.[0]);
+  const data = response.data as unknown[];
+  return outputBlob(data?.[0]);
 }
 
 function chooseMimeType(): string {
