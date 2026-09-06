@@ -13,6 +13,13 @@ function auth(env: Env): HeadersInit { return env.HF_TOKEN?.trim() ? { Authoriza
 function ext(type: string) { const t = type.toLowerCase(); if (t.includes("webm")) return "webm"; if (t.includes("mpeg")) return "mp3"; if (t.includes("ogg")) return "ogg"; if (t.includes("flac")) return "flac"; return "wav"; }
 function decode(value: string) { const s = value.replace(/^data:[^,]+,/, "").replace(/\s/g, ""); let binary: string; try { binary = atob(s); } catch { throw new Error("The Red voice reference is not valid base64 audio."); } const bytes = Uint8Array.from(binary, (c) => c.charCodeAt(0)); return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength); }
 
+const QWEN_LANGUAGE_NAMES: Record<string, string> = {
+  auto: "Auto", zh: "Chinese", "zh-cn": "Chinese", "zh-hans": "Chinese",
+  en: "English", "en-us": "English", "en-gb": "English", ja: "Japanese", ko: "Korean",
+  fr: "French", de: "German", es: "Spanish", pt: "Portuguese", "pt-br": "Portuguese", ru: "Russian",
+};
+function normalizeQwenLanguage(value?: string) { const trimmed = value?.trim() || "English"; return QWEN_LANGUAGE_NAMES[trimmed.toLowerCase()] || trimmed; }
+
 async function upload(space: string, id: string, base64: string, type: string, env: Env) {
   const key = `${space}|${id}`; const old = cache.get(key); if (old && old.expires > Date.now()) return old.path;
   const form = new FormData(); form.append("files", new Blob([decode(base64)], { type }), `red-reference.${ext(type)}`);
@@ -47,7 +54,7 @@ function artifactUrl(space: string, value: unknown) { if (typeof value === "stri
 
 async function generate(space: string, path: string, type: string, body: Body, env: Env): Promise<Response> {
   const refText = body.refText?.trim() || ""; const targetText = body.text?.trim().replace(/\s+/g, " ").slice(0, 220) || ""; if (!targetText) throw new Error("Target text is required.");
-  const start = await fetch(`${space}/gradio_api/call/generate_voice_clone`, { method: "POST", headers: { ...auth(env), "content-type": "application/json" }, body: JSON.stringify({ data: [fileData(path, type), refText, targetText, body.language?.trim() || "English", !refText, body.modelSize === "0.6B" ? "0.6B" : "1.7B"] }) });
+  const start = await fetch(`${space}/gradio_api/call/generate_voice_clone`, { method: "POST", headers: { ...auth(env), "content-type": "application/json" }, body: JSON.stringify({ data: [fileData(path, type), refText, targetText, normalizeQwenLanguage(body.language), !refText, body.modelSize === "0.6B" ? "0.6B" : "1.7B"] }) });
   if (!start.ok) { const detail = (await start.text().catch(() => "")).slice(0, 300); throw new Error(`Qwen3-TTS clone start failed (${start.status}). ${detail}`.trim()); }
   const job = (await start.json()) as { event_id?: string }; if (!job.event_id) throw new Error("Qwen3-TTS returned no clone job ID.");
   const result = await fetch(`${space}/gradio_api/call/generate_voice_clone/${encodeURIComponent(job.event_id)}`, { headers: { ...auth(env), Accept: "text/event-stream" } });
