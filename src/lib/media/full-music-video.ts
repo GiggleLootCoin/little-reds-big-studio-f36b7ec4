@@ -63,7 +63,7 @@ function scenePrompt(options: FullMusicVideoOptions, chunk: MusicVideoChunk): st
     options.direction?.trim() ||
     options.storyboard?.trim() ||
     "cinematic music video with strong visual storytelling and polished professional cinematography";
-  const title = options.title?.trim() ? ` for the song \"${options.title.trim()}\"` : "";
+  const title = options.title?.trim() ? ` for the song "${options.title.trim()}"` : "";
   return [
     `Create scene ${chunk.index + 1}${title}.`,
     base,
