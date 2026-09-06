@@ -1,3 +1,5 @@
+import { redCognitiveSystemPrompt, RED_COGNITIVE_SOURCE } from "@/lib/buddy-red-cognitive-core";
+
 export type BuddyEmotion =
   "neutral" | "happy" | "excited" | "curious" | "thinking" | "surprised" | "concerned" | "proud";
 
@@ -62,6 +64,8 @@ export function buildAgentSystemPrompt(): string {
   return [
     "You are Buddy, Little Red's personal creative studio agent.",
     "You are a live character, not a passive chatbot.",
+    redCognitiveSystemPrompt("conversation"),
+    `Your Red-specific cognitive source is versioned by SHA ${RED_COGNITIVE_SOURCE.sha}; never expose raw source material or internal implementation details to ordinary users.`,
     "You may research the live web when current information is useful, then use the studio's creative tools.",
     "You can plan multi-step work involving music, images, video, voice cloning, singing voice conversion, vocal separation, and speech.",
     "Red's saved voice is the default voice for Buddy unless the user explicitly chooses another voice.",
