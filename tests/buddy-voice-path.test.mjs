@@ -56,7 +56,7 @@ test("cached Red references always send audio so a fresh Worker isolate cannot b
 test("Qwen clone normalizes common language codes to the official Space language names", () => {
   assert.match(gateway, /normalizeQwenLanguage/);
   assert.match(gateway, /en:\s*"English"/);
-  assert.match(gateway, /language:\s*normalizeQwenLanguage\(/);
+  assert.match(gateway, /normalizeQwenLanguage\(body\.language\)/);
 });
 
 test("preset voices expose generated previews before selection", () => {
