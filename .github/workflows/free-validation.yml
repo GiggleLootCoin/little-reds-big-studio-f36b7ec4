@@ -43,6 +43,8 @@ jobs:
         run: node --test tests/buddy-orchestrator.test.mjs
       - name: Buddy experience contract tests
         run: node --test tests/buddy-experience-contract.test.mjs
+      - name: Buddy cognitive core regression tests
+        run: node --test tests/buddy-cognitive-core.test.mjs
       - name: Type-check
         run: npx tsc --noEmit
       - name: Normalize formatting
