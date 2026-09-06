@@ -13,6 +13,7 @@ type Body = {
 export const RED_VOICE_PROVIDER = "VoxCPM2 reference clone";
 const PRIMARY_SPACE = "https://openbmb-voxcpm-demo.hf.space";
 const REFERENCE_CACHE_TTL_MS = 15 * 60_000;
+const VOXCPM_INFERENCE_TIMESTEPS = 10;
 const cache = new Map<string, { path: string; expires: number }>();
 
 function primarySpace(env: Env) {
@@ -143,7 +144,19 @@ async function generate(space: string, path: string, type: string, body: Body, e
   const start = await fetch(`${space}/gradio_api/call/generate`, {
     method: "POST",
     headers: { ...auth(env), "content-type": "application/json" },
-    body: JSON.stringify({ data: [targetText, "", fileData(path, type), Boolean(refText), refText, 2.0, true, false] }),
+    body: JSON.stringify({
+      data: [
+        targetText,
+        "",
+        fileData(path, type),
+        Boolean(refText),
+        refText,
+        2.0,
+        true,
+        false,
+        VOXCPM_INFERENCE_TIMESTEPS,
+      ],
+    }),
   });
   if (!start.ok) {
     const detail = (await start.text().catch(() => "")).slice(0, 300);
