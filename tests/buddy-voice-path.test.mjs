@@ -53,6 +53,12 @@ test("cached Red references always send audio so a fresh Worker isolate cannot b
   assert.doesNotMatch(runtime, /\.\.\.\(includeAudio \? \{ audioBase64: cachedRedReferenceBase64 \} : \{\}\)/);
 });
 
+test("Qwen clone normalizes common language codes to the official Space language names", () => {
+  assert.match(gateway, /normalizeQwenLanguage/);
+  assert.match(gateway, /en:\s*"English"/);
+  assert.match(gateway, /language:\s*normalizeQwenLanguage\(/);
+});
+
 test("preset voices expose generated previews before selection", () => {
   assert.match(picker, /const previewPreset = async/);
   assert.match(picker, /runStudioJob\(\s*"tts"/);
