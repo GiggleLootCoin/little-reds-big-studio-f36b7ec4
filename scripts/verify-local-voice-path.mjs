@@ -15,7 +15,11 @@ const required = [
   ["verified Qwen3-TTS provider", gateway, /qwen-qwen3-tts\.hf\.space/],
   ["provider response marker", gateway, /x-clone-provider/],
   ["verified provider route marker", gateway, /x-red-voice-route.*qwen3-tts-reference-clone/],
-  ["queue saturation is surfaced as temporary unavailability", gateway, /queueFull \? 503 : 502/],
+  [
+    "queue saturation is surfaced as temporary unavailability",
+    gateway,
+    /const retryable = isRetryableQueueError\(error\)[\s\S]*status: retryable \? 503 : 502[\s\S]*retry-after.*10/,
+  ],
   ["runtime production clone", runtime, /createBestFreeVoiceClone/],
   [
     "voice capability has no legacy fallback",
