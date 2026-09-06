@@ -1,4 +1,4 @@
-const BUILT_IN_RED_VOICE_URL = "/red_voice_mic_device10_20s_D.wav";
+const BUILT_IN_RED_VOICE_URL = "/red_voice_mic_device10_30s_C.wav";
 
 let cachedSample: Blob | null = null;
 let loadingSample: Promise<Blob | null> | null = null;

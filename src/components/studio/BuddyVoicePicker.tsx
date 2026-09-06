@@ -77,7 +77,7 @@ export function BuddyVoicePicker() {
 
   const saveReference = async (file: File) => {
     if (!file.type.startsWith("audio/")) throw new Error("Please choose an audio recording.");
-    if (file.size > 3_500_000) throw new Error("Use a clear 3–30 second recording under 3.5 MB.");
+    if (file.size > 5_000_000) throw new Error("Use a clear 30–60 second recording under 5 MB.");
     const dataUrl = await new Promise<string>((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = () => resolve(String(reader.result));
@@ -91,8 +91,8 @@ export function BuddyVoicePicker() {
       audio.onerror = () => reject(new Error("The recording could not be read."));
       audio.src = dataUrl;
     });
-    if (!Number.isFinite(duration) || duration < 3 || duration > 30)
-      throw new Error("Use a clear voice recording between 3 and 30 seconds.");
+    if (!Number.isFinite(duration) || duration < 25 || duration > 65)
+      throw new Error("Use a clear voice recording between about 30 and 60 seconds.");
     await saveLocalBuddyVoiceReference(file);
     const next = {
       ...getBuddyVoiceProfile(),
@@ -372,7 +372,7 @@ export function BuddyVoicePicker() {
             <label className="cursor-pointer rounded-xl border border-border bg-background/50 px-3 py-3 text-center text-xs font-semibold">
               <Volume2 className="mx-auto mb-1 size-5 text-primary" /> Upload Sample
               <span className="mt-1 block text-[9px] font-normal text-muted-foreground">
-                3–30 seconds
+                30–60 seconds
               </span>
               <input
                 className="sr-only"
