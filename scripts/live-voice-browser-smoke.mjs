@@ -48,8 +48,8 @@ async function readClone(response, label) {
     throw new Error(`unexpected ${label} MIME: ${contentType}`);
   const provider = response.headers.get("x-clone-provider") || "";
   const route = response.headers.get("x-red-voice-route") || "";
-  if (provider !== "VoxCPM2 reference clone") throw new Error(`${label} used unexpected provider: ${provider || "missing"}`);
-  if (route !== "voxcpm2-reference-clone") throw new Error(`${label} used unexpected route: ${route || "missing"}`);
+  if (provider !== "Qwen3-TTS reference clone") throw new Error(`${label} used unexpected provider: ${provider || "missing"}`);
+  if (route !== "qwen3-tts-reference-clone") throw new Error(`${label} used unexpected route: ${route || "missing"}`);
   const bytes = Buffer.from(await response.arrayBuffer());
   if (bytes.byteLength <= 4096) throw new Error(`${label} audio is too small: ${bytes.byteLength} bytes`);
   return { bytes, contentType, provider, route };
