@@ -1,8 +1,9 @@
 import { runnersFor, type FreeRunner } from "@/lib/free-runners";
-import { BUDDY_KNOWLEDGE_POLICY, buddyKnowledgeContext } from "@/lib/buddy-knowledge";
+import { redCognitiveSystemPrompt } from "@/lib/buddy-red-cognitive-core";
 import { setBuddyStatus } from "@/lib/buddy-presence";
 
 export type BuddyTask = "writing" | "voice" | "music" | "stems" | "artwork" | "video";
+export type BuddyCognitiveMode = "creative" | "conversation" | "research";
 
 export type BuddyPlan = {
   task: BuddyTask;
@@ -11,11 +12,11 @@ export type BuddyPlan = {
   runner: FreeRunner | null;
   fallbacks: FreeRunner[];
   reason: string;
-  knowledgePolicy: string;
+  cognitiveMode: BuddyCognitiveMode;
+  cognitivePrompt: string;
+  requiresArtifactValidation: true;
 };
 
-// Translate user-facing outcomes into the actual runtime capability pool.
-// Writing is chat/reasoning; voice is TTS. Provider names stay backstage.
 const CAPABILITY: Record<BuddyTask, string> = {
   writing: "chat",
   voice: "tts",
@@ -34,13 +35,16 @@ function rankFreeRoutes(task: BuddyTask): FreeRunner[] {
 }
 
 /**
- * Users request outcomes, never model names. Buddy selects the first route
- * and keeps the rest as silent fallbacks for the orchestration layer.
+ * Buddy plans from the desired outcome first. Technical routes are selected
+ * behind the scenes and a real artifact is required before success is reported.
  */
-export function buddyPlan(task: BuddyTask): BuddyPlan {
-  const knowledgePolicy = BUDDY_KNOWLEDGE_POLICY;
+export function buddyPlan(
+  task: BuddyTask,
+  cognitiveMode: BuddyCognitiveMode = task === "writing" ? "conversation" : "creative",
+): BuddyPlan {
   const routes = rankFreeRoutes(task);
   const runner = routes[0] ?? null;
+  const cognitivePrompt = redCognitiveSystemPrompt(cognitiveMode);
 
   if (localCapability(task)) {
     return {
@@ -50,7 +54,9 @@ export function buddyPlan(task: BuddyTask): BuddyPlan {
       runner: null,
       fallbacks: [],
       reason: "Buddy can complete this part of the workflow locally.",
-      knowledgePolicy,
+      cognitiveMode,
+      cognitivePrompt,
+      requiresArtifactValidation: true,
     };
   }
 
@@ -62,7 +68,9 @@ export function buddyPlan(task: BuddyTask): BuddyPlan {
       runner,
       fallbacks: routes.slice(1),
       reason: "Buddy selected the strongest configured free/open route and keeps fallbacks ready.",
-      knowledgePolicy,
+      cognitiveMode,
+      cognitivePrompt,
+      requiresArtifactValidation: true,
     };
   }
 
@@ -73,18 +81,20 @@ export function buddyPlan(task: BuddyTask): BuddyPlan {
     runner: null,
     fallbacks: [],
     reason: "No suitable local or free/open route is configured for this task.",
-    knowledgePolicy,
+    cognitiveMode,
+    cognitivePrompt,
+    requiresArtifactValidation: true,
   };
 }
 
-export function buddyKnowledge(mode: "reference" | "fact-check" | "creative" = "reference") {
-  return buddyKnowledgeContext(mode);
+export function buddyKnowledge(mode: BuddyCognitiveMode = "conversation") {
+  return redCognitiveSystemPrompt(mode);
 }
 
 /**
- * A browser cannot submit or monitor a third-party Space as if it were our
- * own backend. Buddy therefore opens only the selected route and never claims
- * the Studio completed an external generation it did not perform.
+ * Compatibility helper for older UI entry points. It reports orchestration
+ * state but deliberately does not claim that merely opening a provider page
+ * completed the requested creative operation.
  */
 export function openBuddyRoute(task: BuddyTask) {
   const plan = buddyPlan(task);
