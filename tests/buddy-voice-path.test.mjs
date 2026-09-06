@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-const [production, runtime, local, worker, voice, picker, chat, gateway] = await Promise.all([
+const [production, runtime, local, worker, voice, picker, chat, gateway, server] = await Promise.all([
   readFile("src/lib/production-voice-clone.ts", "utf8"),
   readFile("src/lib/studio-runtime.ts", "utf8"),
   readFile("src/lib/local-chatterbox.ts", "utf8"),
@@ -11,6 +11,7 @@ const [production, runtime, local, worker, voice, picker, chat, gateway] = await
   readFile("src/components/studio/BuddyVoicePicker.tsx", "utf8"),
   readFile("src/components/studio/BuddyLiveChat.tsx", "utf8"),
   readFile("src/lib/voice-clone-gateway.ts", "utf8"),
+  readFile("src/server.ts", "utf8"),
 ]);
 
 test("production Red clone uses the production Worker endpoint and verifies returned audio", () => {
@@ -102,4 +103,16 @@ test("Red voice generation is not allowed to fall back to browser speech synthes
   assert.match(runtime, /wantsRedVoice/);
   assert.match(runtime, /runVerifiedClone/);
   assert.match(runtime, /runProductionRedClone/);
+});
+
+test("Buddy presets use Aura-2 English and never the incompatible Aura-1 speaker catalog", () => {
+  assert.match(server, /@cf\/deepgram\/aura-2-en/);
+  assert.doesNotMatch(server, /@cf\/deepgram\/aura-1/);
+  for (const speaker of ["luna", "orpheus", "athena", "asteria", "atlas", "juno", "zeus", "phoebe", "delia"])
+    assert.match(server, new RegExp(`\\b${speaker}\\b`));
+});
+
+test("VoxCPM2 clone calls the current generate signature including inference timesteps", () => {
+  assert.match(gateway, /inference_timesteps/);
+  assert.match(gateway, /data:\s*\[targetText, "", fileData\(path, type\), Boolean\(refText\), refText, 2\.0, true, true, 10\]/);
 });
