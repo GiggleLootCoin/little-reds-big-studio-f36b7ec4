@@ -20,13 +20,13 @@ test("production Red clone uses the production Worker endpoint and verifies retu
   assert.match(runtime, /SHA-256/);
   assert.match(runtime, /normalizeAndVerifyBrowserAudio/);
   assert.match(runtime, /cloneProfile\(\)\.speaker === "Red"/);
-  assert.match(production, /VoxCPM2 persistent GPU reference clone/);
-  assert.match(gateway, /openbmb-voxcpm-demo\.hf\.space/);
+  assert.match(gateway, /Qwen3-TTS reference clone/);
+  assert.match(gateway, /qwen-qwen3-tts\.hf\.space/);
   assert.match(gateway, /gradio_api\/upload/);
-  assert.match(gateway, /gradio_api\/call\/generate/);
+  assert.match(gateway, /gradio_api\/call\/generate_voice_clone/);
   assert.match(gateway, /REFERENCE_CACHE_TTL_MS/);
-  assert.match(gateway, /x-red-voice-route/);
-  assert.doesNotMatch(gateway, /QWEN_TTS_SPACE_URL|FALLBACK_SPACE/);
+  assert.match(gateway, /x-red-voice-route.*qwen3-tts-reference-clone/);
+  assert.doesNotMatch(gateway, /openbmb-voxcpm-demo\.hf\.space/);
 });
 
 test("Red production generation is optimized to avoid re-uploading the same reference on every reply", () => {
@@ -36,11 +36,17 @@ test("Red production generation is optimized to avoid re-uploading the same refe
 });
 
 test("Red production never silently substitutes another voice provider", () => {
-  assert.match(gateway, /failed on the verified VoxCPM2 reference-clone route/);
-  assert.doesNotMatch(gateway, /Qwen3-TTS Voice Clone Base/);
-  assert.match(production, /primary: "VoxCPM2 persistent GPU reference clone"/);
-  assert.match(production, /fallback: "none"/);
-  assert.doesNotMatch(production, /QWEN_TTS_SPACE_URL|handleVoiceClone\([\s\S]*Qwen/);
+  assert.match(gateway, /Qwen3-TTS reference clone/);
+  assert.match(gateway, /PRIMARY_SPACE = "https:\/\/qwen-qwen3-tts\.hf\.space"/);
+  assert.doesNotMatch(gateway, /openbmb-voxcpm-demo\.hf\.space/);
+  assert.doesNotMatch(gateway, /speechSynthesis|browser speech/);
+});
+
+test("the Qwen clone call uses reference text when available and x-vector-only mode when it is not", () => {
+  assert.match(gateway, /Boolean\(!refText\)/);
+  assert.match(gateway, /refText/);
+  assert.match(gateway, /1\.7B/);
+  assert.match(gateway, /generate_voice_clone/);
 });
 
 test("the browser reuses the Red reference and only resends it when the production cache asks for a refresh", () => {
@@ -60,7 +66,7 @@ test("preset voices expose a real generated audio preview before selection", () 
 });
 
 test("preset playback never silently switches to browser speech synthesis", () => {
-  assert.doesNotMatch(chat, /if \(\"speechSynthesis\" in window\)/);
+  assert.doesNotMatch(chat, /if \("speechSynthesis" in window\)/);
   assert.match(chat, /Audio playback failed/);
 });
 
@@ -110,9 +116,4 @@ test("Buddy presets use Aura-2 English and never the incompatible Aura-1 speaker
   assert.doesNotMatch(server, /@cf\/deepgram\/aura-1/);
   for (const speaker of ["luna", "orpheus", "athena", "asteria", "atlas", "juno", "zeus", "phoebe", "delia"])
     assert.match(server, new RegExp(`\\b${speaker}\\b`));
-});
-
-test("VoxCPM2 clone calls the current generate signature including inference timesteps", () => {
-  assert.match(gateway, /VOXCPM_INFERENCE_TIMESTEPS = 10/);
-  assert.match(gateway, /fileData\(path, type\),\s*Boolean\(refText\),\s*refText,\s*2\.0,\s*true,\s*false,\s*VOXCPM_INFERENCE_TIMESTEPS/);
 });
