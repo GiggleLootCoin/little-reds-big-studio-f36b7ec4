@@ -14,7 +14,8 @@ const required = [
   ["VoxCPM reference upload", gateway, /gradio_api\/upload/],
   ["verified VoxCPM2 provider", gateway, /openbmb-voxcpm-demo\.hf\.space/],
   ["provider response marker", gateway, /x-clone-provider/],
-  ["no silent alternate-provider fallback", gateway, /failed on the verified VoxCPM2 reference-clone route/],
+  ["verified provider route marker", gateway, /x-red-voice-route.*voxcpm2-reference-clone/],
+  ["queue saturation is surfaced as temporary unavailability", gateway, /queueFull \? 503 : 502/],
   ["runtime production clone", runtime, /createBestFreeVoiceClone/],
   [
     "voice capability has no legacy fallback",
