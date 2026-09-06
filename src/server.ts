@@ -1,84 +1,302 @@
+import "./lib/error-capture";
+import { consumeLastCapturedError } from "./lib/error-capture";
+import { renderErrorPage } from "./lib/error-page";
 import { handleVoiceClone } from "./lib/voice-clone-gateway";
-import { getServerEntry } from "./server-entry";
-import { consumeLastCapturedError, renderErrorPage } from "./lib/error-capture";
 
-const AI_PREFIX = "/api/ai";
-
-function jsonError(message: string, status = 400) {
-  return Response.json({ ok: false, error: message }, { status, headers: { "cache-control": "no-store" } });
+type WorkersAI = { run: (model: string, input: unknown, options?: unknown) => Promise<unknown> };
+type ServerEnv = {
+  AI?: WorkersAI;
+  OPENROUTERAI_API_KEY?: string;
+  HF_TOKEN?: string;
+  QWEN_TTS_SPACE_URL?: string;
+};
+type ServerEntry = {
+  fetch: (request: Request, env: unknown, ctx: unknown) => Promise<Response> | Response;
+};
+let serverEntryPromise: Promise<ServerEntry> | undefined;
+async function getServerEntry(): Promise<ServerEntry> {
+  if (!serverEntryPromise)
+    serverEntryPromise = import("@tanstack/react-start/server-entry").then(
+      (m) => (m.default ?? m) as ServerEntry,
+    );
+  return serverEntryPromise;
 }
-
+const HF_PROXY_PREFIX = "/api/hf-space/";
+const AI_PREFIX = "/api/ai/";
+const VOICE_CLONE_PATH = "/api/voice-clone";
+const HF_SPACE_RE = /^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/;
+const WEB_SEARCH_PATH = "/api/ai/web-search/";
+function decodeSpaceToken(token: string) {
+  try {
+    return decodeURIComponent(token);
+  } catch {
+    return "";
+  }
+}
+async function proxyHfSpace(request: Request): Promise<Response | null> {
+  const url = new URL(request.url);
+  if (!url.pathname.startsWith(HF_PROXY_PREFIX)) return null;
+  const rest = url.pathname.slice(HF_PROXY_PREFIX.length);
+  const slash = rest.indexOf("/");
+  if (slash < 1) return new Response("Missing Space", { status: 400 });
+  const space = decodeSpaceToken(rest.slice(0, slash));
+  if (!HF_SPACE_RE.test(space)) return new Response("Invalid Space", { status: 400 });
+  const upstreamPath = rest.slice(slash) || "/";
+  const upstream = new URL(`https://${space.replace("/", "-")}.hf.space${upstreamPath}`);
+  upstream.search = url.search;
+  const headers = new Headers();
+  for (const name of [
+    "accept",
+    "accept-language",
+    "authorization",
+    "content-type",
+    "cookie",
+    "origin",
+    "range",
+    "referer",
+    "user-agent",
+    "x-ip-token",
+    "x-requested-with",
+    "upgrade",
+    "connection",
+    "sec-websocket-key",
+    "sec-websocket-version",
+    "sec-websocket-protocol",
+    "sec-websocket-extensions",
+  ]) {
+    const value = request.headers.get(name);
+    if (value) headers.set(name, value);
+  }
+  const upstreamResponse = await fetch(upstream, {
+    method: request.method,
+    headers,
+    body: request.method === "GET" || request.method === "HEAD" ? undefined : request.body,
+    redirect: "follow",
+  });
+  const responseHeaders = new Headers(upstreamResponse.headers);
+  responseHeaders.delete("content-security-policy");
+  responseHeaders.delete("content-encoding");
+  responseHeaders.set("cache-control", "no-store");
+  responseHeaders.set("x-studio-upstream", space);
+  return new Response(upstreamResponse.body, {
+    status: upstreamResponse.status,
+    statusText: upstreamResponse.statusText,
+    headers: responseHeaders,
+  });
+}
+function jsonError(message: string, status = 500) {
+  return Response.json(
+    { ok: false, error: message },
+    { status, headers: { "cache-control": "no-store" } },
+  );
+}
+function asBase64(value: unknown): string | null {
+  if (typeof value === "string" && !/^https?:\/\//i.test(value)) return value;
+  if (value instanceof Uint8Array) {
+    let binary = "";
+    for (let i = 0; i < value.length; i += 0x8000)
+      binary += String.fromCharCode(...value.subarray(i, i + 0x8000));
+    return btoa(binary);
+  }
+  if (value && typeof value === "object")
+    for (const key of ["image", "audio", "data", "result", "output", "image_b64"]) {
+      const found = asBase64((value as Record<string, unknown>)[key]);
+      if (found) return found;
+    }
+  return null;
+}
+function mediaUrl(value: unknown, keys: string[]): string | null {
+  if (typeof value === "string" && /^https?:\/\//i.test(value)) return value;
+  if (value && typeof value === "object")
+    for (const key of keys) {
+      const found = mediaUrl((value as Record<string, unknown>)[key], keys);
+      if (found) return found;
+    }
+  return null;
+}
+function fromBase64(value: string): ArrayBuffer {
+  const bytes = Uint8Array.from(atob(value), (c) => c.charCodeAt(0));
+  return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+}
+function isCapacityError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  return (
+    message.includes("3040") ||
+    message.toLowerCase().includes("capacity temporarily exceeded") ||
+    message.toLowerCase().includes("out of capacity")
+  );
+}
+async function rawAudioResponse(result: unknown): Promise<Response | null> {
+  if (result instanceof Response) {
+    if (!result.ok) return result;
+    const headers = new Headers(result.headers);
+    headers.set("cache-control", "no-store");
+    if (!headers.get("content-type")) headers.set("content-type", "audio/mpeg");
+    return new Response(result.body, { status: result.status, headers });
+  }
+  if (result instanceof ReadableStream)
+    return new Response(result, {
+      headers: { "content-type": "audio/mpeg", "cache-control": "no-store" },
+    });
+  if (typeof result === "string" && /^https?:\/\//i.test(result)) {
+    const upstream = await fetch(result);
+    if (!upstream.ok) return null;
+    const headers = new Headers(upstream.headers);
+    headers.set("cache-control", "no-store");
+    if (!headers.get("content-type")) headers.set("content-type", "audio/mpeg");
+    return new Response(upstream.body, { status: upstream.status, headers });
+  }
+  if (result && typeof result === "object")
+    for (const key of ["audio", "url", "uri", "result", "output"]) {
+      const response = await rawAudioResponse((result as Record<string, unknown>)[key]);
+      if (response) return response;
+    }
+  const base64 = asBase64(result);
+  if (!base64) return null;
+  return new Response(fromBase64(base64), {
+    headers: { "content-type": "audio/mpeg", "cache-control": "no-store" },
+  });
+}
+async function rawImageResponse(result: unknown): Promise<Response | null> {
+  if (result instanceof Response) {
+    if (!result.ok) return result;
+    const headers = new Headers(result.headers);
+    headers.set("content-type", headers.get("content-type") || "image/png");
+    headers.set("cache-control", "no-store");
+    return new Response(result.body, { status: result.status, headers });
+  }
+  if (result instanceof ReadableStream)
+    return new Response(result, {
+      headers: { "content-type": "image/png", "cache-control": "no-store" },
+    });
+  if (
+    result &&
+    typeof result === "object" &&
+    typeof (result as Record<string, unknown>).image === "string"
+  )
+    return new Response(fromBase64(String((result as Record<string, unknown>).image)), {
+      headers: { "content-type": "image/png", "cache-control": "no-store" },
+    });
+  const base64 = asBase64(result);
+  if (!base64) return null;
+  return new Response(fromBase64(base64), {
+    headers: { "content-type": "image/png", "cache-control": "no-store" },
+  });
+}
+function hasImageContent(messages: unknown[]) {
+  return messages.some(
+    (message) =>
+      Array.isArray((message as { content?: unknown })?.content) &&
+      (message as { content: unknown[] }).content.some(
+        (part) => (part as { type?: string })?.type === "image_url",
+      ),
+  );
+}
 function chatText(result: unknown): string {
   if (typeof result === "string") return result.trim();
-  if (!result || typeof result !== "object") return "";
-  const value = result as Record<string, unknown>;
-  const direct = [value.response, value.text, value.output_text, value.content];
-  for (const item of direct) if (typeof item === "string" && item.trim()) return item.trim();
-  const choices = Array.isArray(value.choices) ? value.choices : [];
-  for (const choice of choices) {
-    if (!choice || typeof choice !== "object") continue;
-    const message = (choice as Record<string, unknown>).message;
-    if (message && typeof message === "object") {
-      const content = (message as Record<string, unknown>).content;
-      if (typeof content === "string" && content.trim()) return content.trim();
+  if (result && typeof result === "object") {
+    for (const key of ["response", "text", "generated_text", "output", "content"]) {
+      const value = (result as Record<string, unknown>)[key];
+      if (typeof value === "string" && value.trim()) return value.trim();
     }
-    const text = (choice as Record<string, unknown>).text;
-    if (typeof text === "string" && text.trim()) return text.trim();
+    const choices = (result as Record<string, unknown>).choices;
+    if (Array.isArray(choices)) {
+      const content = (choices[0] as Record<string, unknown> | undefined)?.message;
+      if (
+        content &&
+        typeof content === "object" &&
+        typeof (content as Record<string, unknown>).content === "string"
+      )
+        return String((content as Record<string, unknown>).content).trim();
+    }
   }
   return "";
 }
-
-function isCapacityError(error: unknown): boolean {
-  const message = error instanceof Error ? error.message : String(error);
-  return /capacity|rate.?limit|too many requests|overloaded|queue is full|service unavailable/i.test(message);
-}
-
-async function openRouterChat(env: ServerEnv, messages: unknown[]) {
-  const token = env.OPENROUTER_API_KEY?.trim();
-  if (!token) throw new Error("OpenRouter fallback is not configured.");
+async function openRouterChat(env: ServerEnv, messages: unknown[]): Promise<unknown> {
+  if (env.AI) {
+    const model = hasImageContent(messages)
+      ? "@cf/qwen/qwen3.8-27b"
+      : "@cf/qwen/qwen3-30b-a3b-fp8";
+    const result = await env.AI.run(model, {
+      messages,
+      max_tokens: 320,
+      temperature: 0.55,
+      stream: false,
+    });
+    return result;
+  }
+  const key = env.OPENROUTERAI_API_KEY?.trim();
+  if (!key) throw new Error("Buddy chat engine is not configured");
   const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${token}`,
+      Authorization: `Bearer ${key}`,
       "Content-Type": "application/json",
-      "HTTP-Referer": "https://little-reds-big-studio-f36b7ec4.gigglelootcoin.workers.dev",
-      "X-Title": "Little Red's Big Studio",
+      "HTTP-Referer": "https://little-reds-big-studio-f36b7ec4.workers.dev",
+      "X-Title": "Buddy AI",
     },
-    body: JSON.stringify({ model: "qwen/qwen3-30b-a3b:free", messages }),
+    body: JSON.stringify({
+      model: "openrouter/free",
+      messages,
+      max_tokens: 320,
+      temperature: 0.6,
+    }),
   });
+  const payload: unknown = await response.json().catch(() => null);
   if (!response.ok) {
-    const detail = (await response.text().catch(() => "")).slice(0, 500);
-    throw new Error(`OpenRouter chat failed (${response.status}). ${detail}`.trim());
+    const payloadRecord =
+      payload && typeof payload === "object" ? (payload as Record<string, unknown>) : null;
+    const detail = payloadRecord?.error
+      ? JSON.stringify(payloadRecord.error)
+      : `HTTP ${response.status}`;
+    throw new Error(`OpenRouter request failed: ${detail}`);
   }
-  return response.json();
+  return payload;
 }
-
-function ttsLanguage(language?: string): string {
-  const normalized = String(language || "English").trim().toLowerCase();
-  if (normalized.startsWith("es") || normalized === "spanish") return "es";
-  return "en";
+function ttsLanguage(value: string | undefined): string {
+  const raw = String(value || "en")
+    .trim()
+    .toLowerCase();
+  const map: Record<string, string> = {
+    english: "en",
+    en: "en",
+    spanish: "es",
+    es: "es",
+    french: "fr",
+    fr: "fr",
+    german: "de",
+    de: "de",
+    italian: "it",
+    it: "it",
+    portuguese: "pt",
+    pt: "pt",
+    chinese: "zh",
+    mandarin: "zh",
+    zh: "zh",
+    japanese: "ja",
+    ja: "ja",
+    korean: "ko",
+    ko: "ko",
+    hindi: "hi",
+    hi: "hi",
+    arabic: "ar",
+    ar: "ar",
+  };
+  return map[raw] || raw.split(/[-_]/)[0] || "en";
 }
-
-async function rawAudioResponse(result: unknown): Promise<Response | null> {
-  if (result instanceof ArrayBuffer) return new Response(result, { headers: { "content-type": "audio/mpeg", "cache-control": "no-store" } });
-  if (result instanceof Uint8Array) return new Response(result, { headers: { "content-type": "audio/mpeg", "cache-control": "no-store" } });
-  if (result && typeof result === "object" && "body" in result && (result as { body?: unknown }).body instanceof ReadableStream)
-    return new Response((result as { body: ReadableStream }).body, { headers: { "content-type": "audio/mpeg", "cache-control": "no-store" } });
-  return null;
-}
-
-type ServerEnv = {
-  AI?: { run: (model: string, input: unknown) => Promise<unknown> };
-  OPENROUTER_API_KEY?: string;
-};
-
 const AURA_EN_SPEAKERS = new Set([
+  "amalthea",
+  "andromeda",
+  "apollo",
+  "arcas",
+  "aries",
   "asteria",
   "athena",
   "atlas",
-  "cassiopeia",
-  "celeste",
-  "charon",
+  "aurora",
+  "callista",
+  "cora",
+  "cordelia",
   "delia",
   "draco",
   "electra",
@@ -158,7 +376,7 @@ async function cloudflareAI(request: Request, env: ServerEnv): Promise<Response 
   } catch {
     return jsonError("Invalid JSON request.", 400);
   }
-  const pathCapability = url.pathname.startsWith(`${AI_PREFIX}/`) ? url.pathname.slice(`${AI_PREFIX}/`.length).split("/")[0].trim() : "";
+  const pathCapability = url.pathname.startsWith(AI_PREFIX) ? url.pathname.slice(AI_PREFIX.length).split("/")[0].trim() : "";
   const capability = String(body.capability || pathCapability).trim();
   const prompt = String(body.prompt ?? body.text ?? body.lyrics ?? "").trim();
   if (!prompt && !["speech-to-text", "video"].includes(capability))
