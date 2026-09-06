@@ -72,9 +72,9 @@ async function runProductionRedClone(
     cachedRedReferenceBase64 = await blobToBase64(sample);
     cachedRedReferenceId = referenceId;
   }
-  const makeBody = (includeAudio: boolean) => ({
+  const makeBody = () => ({
     referenceId,
-    ...(includeAudio ? { audioBase64: cachedRedReferenceBase64 } : {}),
+    audioBase64: cachedRedReferenceBase64,
     audioType: sample.type || "audio/wav",
     text: text.trim().slice(0, 220),
     language,
@@ -84,7 +84,7 @@ async function runProductionRedClone(
   let response = await fetch("/api/ai/voice-clone", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify(makeBody(!alreadyEncoded)),
+    body: JSON.stringify(makeBody()),
   });
   if (response.status === 428) {
     onStatus?.("Refreshing Buddy's voice reference…");
@@ -93,7 +93,7 @@ async function runProductionRedClone(
     response = await fetch("/api/ai/voice-clone", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify(makeBody(true)),
+      body: JSON.stringify(makeBody()),
     });
   }
   if (!response.ok) {

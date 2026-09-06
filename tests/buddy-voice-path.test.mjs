@@ -48,6 +48,11 @@ test("Red reference is cached and busy Qwen queues are retried", () => {
   assert.match(gateway, /generateWithQueueRetry/);
 });
 
+test("cached Red references always send audio so a fresh Worker isolate cannot break cloning", () => {
+  assert.match(runtime, /audioBase64:\s*cachedRedReferenceBase64/);
+  assert.doesNotMatch(runtime, /\.\.\.\(includeAudio \? \{ audioBase64: cachedRedReferenceBase64 \} : \{\}\)/);
+});
+
 test("preset voices expose generated previews before selection", () => {
   assert.match(picker, /const previewPreset = async/);
   assert.match(picker, /runStudioJob\(\s*"tts"/);
