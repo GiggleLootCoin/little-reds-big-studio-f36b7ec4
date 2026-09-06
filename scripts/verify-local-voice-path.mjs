@@ -9,12 +9,12 @@ const required = [
   ["browser clone safety boundary", clone, /normalizeAndVerifyBrowserAudio/],
   ["actual reference Blob reaches clone", clone, /sample:\s*Blob[\s\S]*blobBase64\(sample\)/],
   ["production clone endpoint", clone, /fetch\("\/api\/ai\/voice-clone"/],
-  ["VoxCPM production handler", gateway, /export async function handleVoiceClone/],
-  ["VoxCPM reference clone operation", gateway, /gradio_api\/call\/generate/],
-  ["VoxCPM reference upload", gateway, /gradio_api\/upload/],
-  ["verified VoxCPM2 provider", gateway, /openbmb-voxcpm-demo\.hf\.space/],
+  ["Qwen production handler", gateway, /export async function handleVoiceClone/],
+  ["Qwen voice clone operation", gateway, /generate_voice_clone/],
+  ["Qwen reference upload", gateway, /gradio_api\/upload/],
+  ["verified Qwen3-TTS provider", gateway, /qwen-qwen3-tts\.hf\.space/],
   ["provider response marker", gateway, /x-clone-provider/],
-  ["verified provider route marker", gateway, /x-red-voice-route.*voxcpm2-reference-clone/],
+  ["verified provider route marker", gateway, /x-red-voice-route.*qwen3-tts-reference-clone/],
   ["queue saturation is surfaced as temporary unavailability", gateway, /queueFull \? 503 : 502/],
   ["runtime production clone", runtime, /createBestFreeVoiceClone/],
   [
@@ -33,14 +33,15 @@ for (const forbidden of [
   "rahul7star",
   "spacekaren",
   "OPENROUTERAI_API_KEY",
-  "generate_voice_clone",
   "QWEN_TTS_FALLBACK_SPACE_URL",
   "QWEN_TTS_SPACE_URL",
+  "voxcpm2-reference-clone",
+  "openbmb-voxcpm-demo.hf.space",
 ]) {
   if (clone.includes(forbidden) || runtime.includes(forbidden) || gateway.includes(forbidden))
     throw new Error(`Forbidden legacy production dependency: ${forbidden}`);
 }
 
 console.log(
-  "Buddy production voice path verified: browser reference Blob -> /api/ai/voice-clone -> VoxCPM2 reference clone -> validated browser audio.",
+  "Buddy production voice path verified: browser reference Blob -> /api/ai/voice-clone -> Qwen3-TTS reference clone -> validated browser audio.",
 );
