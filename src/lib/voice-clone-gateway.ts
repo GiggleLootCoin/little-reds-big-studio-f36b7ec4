@@ -143,7 +143,9 @@ async function generate(space: string, path: string, type: string, body: Body, e
   const start = await fetch(`${space}/gradio_api/call/generate`, {
     method: "POST",
     headers: { ...auth(env), "content-type": "application/json" },
-    body: JSON.stringify({ data: [targetText, "", fileData(path, type), Boolean(refText), refText, 2.0, true, false] }),
+    body: JSON.stringify({
+      data: [targetText, "", fileData(path, type), Boolean(refText), refText, 2.0, true, false, 10],
+    }),
   });
   if (!start.ok) {
     const detail = (await start.text().catch(() => "")).slice(0, 300);
