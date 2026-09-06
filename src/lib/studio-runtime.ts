@@ -122,9 +122,17 @@ async function runVerifiedClone(
   onStatus?: (s: string) => void,
   modelSize: "0.6B" | "1.7B" = "1.7B",
   persist = true,
+  speaker?: string,
 ) {
-  if (cloneProfile().speaker === "Red") {
-    const result = await runProductionRedClone(sample, refText, text, language, onStatus, modelSize);
+  if (speaker === "Red" || cloneProfile().speaker === "Red") {
+    const result = await runProductionRedClone(
+      sample,
+      refText,
+      text,
+      language,
+      onStatus,
+      modelSize,
+    );
     if (persist) {
       await saveVoiceSample(sample, refText);
       await markBuddyCloneVerified(
@@ -223,7 +231,9 @@ export async function runStudioJob(
         const runtime = await import("./studio-runtime-impl");
         const presetInput = {
           ...input,
-          text: String(input.text ?? input.target_text ?? input.prompt ?? DEFAULT_CLONE_TEXT).trim(),
+          text: String(
+            input.text ?? input.target_text ?? input.prompt ?? DEFAULT_CLONE_TEXT,
+          ).trim(),
           speaker,
         };
         return runtime.runStudioJob("tts", presetInput, onStatus);
@@ -264,7 +274,8 @@ export async function runStudioJob(
       profile.mode === "clone" || profile.speaker === "Red" || input.speaker === "Red";
     if (wantsRedVoice) {
       let savedSample = await getBuddyVoiceSample();
-      if (!savedSample && profile.mode === "preset" && profile.speaker === "Red") {
+      const effectiveSpeaker = typeof input.speaker === "string" ? input.speaker : profile.speaker;
+      if (!savedSample && effectiveSpeaker === "Red") {
         savedSample = await getBuiltInRedVoiceSample();
         if (savedSample) onStatus?.("Using Buddy's built-in Red voice reference…");
       }
@@ -285,6 +296,7 @@ export async function runStudioJob(
         onStatus,
         modelSize,
         false,
+        effectiveSpeaker,
       );
       return { capability: "tts", value: result, url: result.url, provider: result.provider };
     }
