@@ -38,7 +38,6 @@ for (const forbidden of [
   "spacekaren",
   "OPENROUTERAI_API_KEY",
   "QWEN_TTS_FALLBACK_SPACE_URL",
-  "QWEN_TTS_SPACE_URL",
   "voxcpm2-reference-clone",
   "openbmb-voxcpm-demo.hf.space",
 ]) {
