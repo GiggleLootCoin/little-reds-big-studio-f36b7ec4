@@ -114,5 +114,5 @@ test("Buddy presets use Aura-2 English and never the incompatible Aura-1 speaker
 
 test("VoxCPM2 clone calls the current generate signature including inference timesteps", () => {
   assert.match(gateway, /inference_timesteps/);
-  assert.match(gateway, /data:\s*\[targetText, "", fileData\(path, type\), Boolean\(refText\), refText, 2\.0, true, true, 10\]/);
+  assert.match(gateway, /data:\s*\[targetText, "", fileData\(path, type\), Boolean\(refText\), refText, 2\.0, true, false, 10\]/);
 });
