@@ -433,13 +433,30 @@ async function cloudflareAI(request: Request, env: ServerEnv): Promise<Response 
       return Response.json({ text }, { headers: { "cache-control": "no-store" } });
     }
     if (capability === "tts") {
-      const speaker = BUDDY_TO_AURA[body.speaker || ""] || "luna";
+      const requestedSpeaker = String(body.speaker || "").trim();
+      const speaker = BUDDY_TO_AURA[requestedSpeaker] || "luna";
       const language = ttsLanguage(body.language);
-      if (language !== "en" && !AURA_ES_SPEAKERS.has(speaker))
-        return jsonError("Selected speaker is unavailable for this language.", 400);
-      const result = await env.AI.run("@cf/deepgram/aura-1", {
+      if (language !== "en") {
+        if (language === "es") {
+          const spanishSpeaker = AURA_ES_SPEAKERS.has(requestedSpeaker.toLowerCase())
+            ? requestedSpeaker.toLowerCase()
+            : "sirio";
+          const result = await env.AI.run("@cf/deepgram/aura-2-es", {
+            text: prompt,
+            speaker: spanishSpeaker,
+            encoding: "mp3",
+          });
+          const audio = await rawAudioResponse(result);
+          if (!audio) return jsonError("The speech model returned no audio.", 502);
+          return audio;
+        }
+        return jsonError("Buddy preset voices currently support English and Spanish only.", 400);
+      }
+      if (!AURA_EN_SPEAKERS.has(speaker))
+        return jsonError("Selected Buddy preset is not a valid Aura-2 English speaker.", 400);
+      const result = await env.AI.run("@cf/deepgram/aura-2-en", {
         text: prompt,
-        speaker: language === "es" ? "sirio" : speaker,
+        speaker,
         encoding: "mp3",
       });
       const audio = await rawAudioResponse(result);
