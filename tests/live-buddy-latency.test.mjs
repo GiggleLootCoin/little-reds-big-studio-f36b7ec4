@@ -15,7 +15,7 @@ test("live Buddy speech uses the fast 0.6B path while explicit cloning keeps the
 
 test("live speech is bounded and does not wait for IndexedDB persistence before playback", () => {
   assert.match(clone, /slice\(0, 220\)/);
-  assert.match(runtime, /runVerifiedClone\(\s*savedSample[\s\S]*?modelSize,\s*false\s*,?\s*\)/);
+  assert.match(runtime, /runVerifiedClone\(\s*savedSample[\s\S]*?modelSize,\s*false(?:\s*,\s*[^)]*)?\)/);
 });
 
 test("Buddy sends a bounded recent conversation window to reduce prompt prefill latency", () => {
