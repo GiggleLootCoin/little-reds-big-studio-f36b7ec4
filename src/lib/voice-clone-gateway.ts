@@ -14,6 +14,7 @@ export const RED_VOICE_PROVIDER = "VoxCPM2 reference clone";
 const PRIMARY_SPACE = "https://openbmb-voxcpm-demo.hf.space";
 const REFERENCE_CACHE_TTL_MS = 15 * 60_000;
 const VOXCPM_INFERENCE_TIMESTEPS = 10;
+const VOXCPM_QUEUE_RETRY_DELAYS_MS = [1500, 4000, 8000];
 const cache = new Map<string, { path: string; expires: number }>();
 
 function primarySpace(env: Env) {
@@ -137,6 +138,15 @@ function toWav(value: unknown): ArrayBuffer | null {
   return output;
 }
 
+function isQueueFullError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  return /queue is full|max size is \d+ and size is \d+/i.test(message);
+}
+
+async function wait(ms: number) {
+  await new Promise<void>((resolve) => setTimeout(resolve, ms));
+}
+
 async function generate(space: string, path: string, type: string, body: Body, env: Env): Promise<Response> {
   const refText = body.refText?.trim() || "";
   const targetText = body.text?.trim().replace(/\s+/g, " ").slice(0, 220) || "";
@@ -187,6 +197,29 @@ async function generate(space: string, path: string, type: string, body: Body, e
   return new Response(audio.body, { status: 200, headers });
 }
 
+async function generateFromSpace(space: string, body: Body, env: Env): Promise<Response> {
+  const id = body.referenceId!.trim();
+  const type = String(body.audioType || "audio/wav");
+  const path = await upload(space, id, body.audioBase64!, type, env);
+  return generate(space, path, type, body, env);
+}
+
+async function generateWithQueueRetry(space: string, body: Body, env: Env): Promise<Response> {
+  let lastError: unknown = null;
+  for (let attempt = 0; attempt <= VOXCPM_QUEUE_RETRY_DELAYS_MS.length; attempt++) {
+    try {
+      return await generateFromSpace(space, body, env);
+    } catch (error) {
+      lastError = error;
+      if (!isQueueFullError(error) || attempt === VOXCPM_QUEUE_RETRY_DELAYS_MS.length) throw error;
+      const delay = VOXCPM_QUEUE_RETRY_DELAYS_MS[attempt];
+      console.warn(`[voice-clone] VoxCPM queue full; retrying same cached Red reference in ${delay}ms (attempt ${attempt + 2}).`);
+      await wait(delay);
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error(String(lastError));
+}
+
 export async function handleVoiceClone(request: Request, env: Env): Promise<Response | null> {
   const path = new URL(request.url).pathname;
   if (path !== "/api/voice-clone" && path !== "/api/ai/voice-clone") return null;
@@ -196,21 +229,15 @@ export async function handleVoiceClone(request: Request, env: Env): Promise<Resp
   if (!body.referenceId?.trim() || !body.audioBase64) return Response.json({ ok: false, error: "A Red voice reference is required." }, { status: 400 });
   if (!body.text?.trim()) return Response.json({ ok: false, error: "Target text is required." }, { status: 400 });
   const space = primarySpace(env);
-  let lastError: unknown = null;
-  try { return await generateFromSpace(space, body, env); } catch (firstError) {
-    lastError = firstError;
-    console.warn(`[voice-clone] ${space} failed: ${firstError instanceof Error ? firstError.message : String(firstError)}`);
-    try { return await generateFromSpace(space, body, env, true); } catch (refreshError) {
-      lastError = refreshError;
-      console.warn(`[voice-clone] ${space} reference refresh failed: ${refreshError instanceof Error ? refreshError.message : String(refreshError)}`);
-    }
+  try {
+    return await generateWithQueueRetry(space, body, env);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    const queueFull = isQueueFullError(error);
+    console.warn(`[voice-clone] ${space} failed: ${message}`);
+    return Response.json(
+      { ok: false, error: `Red voice cloning is temporarily unavailable on the verified VoxCPM2 reference-clone route. ${message}` },
+      { status: queueFull ? 503 : 502, headers: { "cache-control": "no-store", "x-red-voice-route": "voxcpm2-reference-clone", ...(queueFull ? { "retry-after": "10" } : {}) } },
+    );
   }
-  return Response.json({ ok: false, error: `Red voice cloning failed on the verified VoxCPM2 reference-clone route. ${lastError instanceof Error ? lastError.message : String(lastError)}` }, { status: 502, headers: { "cache-control": "no-store", "x-red-voice-route": "voxcpm2-reference-clone" } });
-}
-
-async function generateFromSpace(space: string, body: Body, env: Env, refresh = false): Promise<Response> {
-  const id = body.referenceId!.trim();
-  const type = String(body.audioType || "audio/wav");
-  const path = await upload(space, id, body.audioBase64!, type, env, refresh);
-  return generate(space, path, type, body, env);
 }
