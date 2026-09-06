@@ -54,9 +54,9 @@ export async function createBestFreeVoiceClone(
     cachedReferenceBase64 = await blobBase64(sample);
     cachedReferenceId = id;
   }
-  const makeBody = () => ({
+  const makeBody = (includeAudio: boolean) => ({
     referenceId: id,
-    audioBase64: cachedReferenceBase64,
+    ...(includeAudio ? { audioBase64: cachedReferenceBase64 } : {}),
     audioType: sample.type || "audio/wav",
     refText: refText.trim(),
     text: target,
@@ -69,14 +69,14 @@ export async function createBestFreeVoiceClone(
   let response = await fetch("/api/ai/voice-clone", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify(makeBody()),
+    body: JSON.stringify(makeBody(!alreadyEncoded)),
   });
   if (response.status === 428) {
     onStatus?.("Refreshing Buddy's voice reference…");
     response = await fetch("/api/ai/voice-clone", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify(makeBody()),
+      body: JSON.stringify(makeBody(true)),
     });
   }
   if (!response.ok) {
