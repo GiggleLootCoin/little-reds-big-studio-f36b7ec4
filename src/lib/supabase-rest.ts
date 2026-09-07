@@ -34,6 +34,10 @@ export type ProfileRecord = {
   station_name?: string | null;
   is_public?: boolean;
   trial_started_at?: string | null;
+  date_of_birth?: string | null;
+  timezone?: string;
+  birthday_emails_enabled?: boolean;
+  marketing_email_opt_in?: boolean;
   created_at?: string;
   updated_at?: string;
 };
@@ -107,6 +111,27 @@ async function markSuccessfulLogin(accessToken: string) {
   );
 }
 
+async function deliverPendingAccountEmail(accessToken: string) {
+  try {
+    await fetch(`${SUPABASE_URL}/functions/v1/account-email`, {
+      method: "POST",
+      headers: {
+        apikey: SUPABASE_KEY,
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: "{}",
+    });
+  } catch {
+    // Email delivery is deliberately non-blocking for authentication.
+  }
+}
+
+async function finishSuccessfulLogin(accessToken: string) {
+  await markSuccessfulLogin(accessToken);
+  await deliverPendingAccountEmail(accessToken);
+}
+
 export async function adoptSessionFromAuthHash(): Promise<SupabaseSession | null> {
   if (typeof window === "undefined" || !location.hash.includes("access_token=")) return null;
   const params = new URLSearchParams(location.hash.slice(1));
@@ -121,7 +146,7 @@ export async function adoptSessionFromAuthHash(): Promise<SupabaseSession | null
     user,
   };
   storeSession(session);
-  await markSuccessfulLogin(access_token);
+  await finishSuccessfulLogin(access_token);
   history.replaceState({}, document.title, location.pathname + location.search);
   return session;
 }
@@ -138,7 +163,7 @@ export async function signUp(email: string, password: string, displayName: strin
   });
   if ("access_token" in result && result.access_token) {
     storeSession(result);
-    await markSuccessfulLogin(result.access_token);
+    await finishSuccessfulLogin(result.access_token);
   }
   return result;
 }
@@ -148,7 +173,7 @@ export async function signIn(email: string, password: string) {
     body: JSON.stringify({ email, password }),
   });
   storeSession(result);
-  await markSuccessfulLogin(result.access_token);
+  await finishSuccessfulLogin(result.access_token);
   return result;
 }
 export async function refreshSession() {
@@ -194,7 +219,7 @@ export async function updatePassword(password: string) {
   );
 }
 const PROFILE_SELECT =
-  "id,display_name,avatar_url,handle,bio,banner_url,website_url,station_name,is_public,trial_started_at,created_at,updated_at";
+  "id,display_name,avatar_url,handle,bio,banner_url,website_url,station_name,is_public,trial_started_at,date_of_birth,timezone,birthday_emails_enabled,marketing_email_opt_in,created_at,updated_at";
 export async function getProfile(userId: string, token: string): Promise<ProfileRecord | null> {
   const result = await request<ProfileRecord[]>(
     `/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}&select=${PROFILE_SELECT}`,
@@ -216,6 +241,10 @@ export async function updateProfile(
       | "website_url"
       | "station_name"
       | "is_public"
+      | "date_of_birth"
+      | "timezone"
+      | "birthday_emails_enabled"
+      | "marketing_email_opt_in"
     >
   >,
   token: string,
