@@ -25,7 +25,6 @@ type ApplioEndpoint = {
 
 type ApplioApi = {
   named_endpoints?: Record<string, ApplioEndpoint>;
-  unnamed_endpoints?: Record<string, ApplioEndpoint>;
 };
 
 const DEFAULT_PITCH = 0;
@@ -138,17 +137,8 @@ function valueForApplioParameter(
   throw new Error(`Applio API introduced an unsupported required input: ${label}`);
 }
 
-function findApplioEndpoint(api: ApplioApi): {
-  key: string;
-  endpoint: ApplioEndpoint;
-  named: boolean;
-} {
-  const candidates: Array<[string, ApplioEndpoint, boolean]> = [
-    ...Object.entries(api.named_endpoints ?? {}).map(([key, endpoint]) => [key, endpoint, true] as const),
-    ...Object.entries(api.unnamed_endpoints ?? {}).map(([key, endpoint]) => [key, endpoint, false] as const),
-  ];
-
-  const candidate = candidates.find(([, endpoint]) => {
+function findApplioEndpoint(api: ApplioApi): [string, ApplioEndpoint] {
+  const candidate = Object.entries(api.named_endpoints ?? {}).find(([, endpoint]) => {
     const labels = endpoint.parameters.map((parameter) => labelFor(parameter));
     const returnsAudio = endpoint.returns.some((output) =>
       String(output.component ?? "").toLowerCase().includes("audio"),
@@ -162,10 +152,10 @@ function findApplioEndpoint(api: ApplioApi): {
   });
 
   if (!candidate) {
-    throw new Error("The current Applio Space does not expose a compatible RVC inference endpoint.");
+    throw new Error("The current Applio Space does not expose a compatible named RVC inference endpoint.");
   }
 
-  return { key: candidate[0], endpoint: candidate[1], named: candidate[2] };
+  return candidate;
 }
 
 function findAudioUrl(value: unknown): string | null {
@@ -207,13 +197,11 @@ export async function convertWithApplioSpace(
     analytics_enabled: false,
   });
   const api = (await app.view_api()) as unknown as ApplioApi;
-  const selected = findApplioEndpoint(api);
-  const values = selected.endpoint.parameters.map((parameter) =>
+  const [endpointName, endpoint] = findApplioEndpoint(api);
+  const values = endpoint.parameters.map((parameter) =>
     valueForApplioParameter(parameter, request),
   );
-  const result = selected.named
-    ? await app.predict(selected.key, values)
-    : await app.predict(undefined, values, Number(selected.key));
+  const result = await app.predict(endpointName, values);
 
   const audioUrl = findAudioUrl(result);
   if (!audioUrl) throw new Error("Applio completed without returning a playable audio artifact.");
