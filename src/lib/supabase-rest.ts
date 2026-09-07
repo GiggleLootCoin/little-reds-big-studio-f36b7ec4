@@ -220,6 +220,8 @@ export async function updatePassword(password: string) {
 }
 const PROFILE_SELECT =
   "id,display_name,avatar_url,handle,bio,banner_url,website_url,station_name,is_public,trial_started_at,date_of_birth,timezone,birthday_emails_enabled,marketing_email_opt_in,created_at,updated_at";
+const PUBLIC_PROFILE_SELECT =
+  "id,display_name,avatar_url,handle,bio,banner_url,website_url,station_name,is_public,created_at,updated_at";
 export async function getProfile(userId: string, token: string): Promise<ProfileRecord | null> {
   const result = await request<ProfileRecord[]>(
     `/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}&select=${PROFILE_SELECT}`,
@@ -258,7 +260,7 @@ export async function updateProfile(
 }
 export async function getPublicStation(handle: string): Promise<PublicStation | null> {
   const profile = await request<ProfileRecord[]>(
-    `/rest/v1/profiles?handle=eq.${encodeURIComponent(handle.toLowerCase())}&is_public=eq.true&select=${PROFILE_SELECT}`,
+    `/rest/v1/profiles?handle=eq.${encodeURIComponent(handle.toLowerCase())}&is_public=eq.true&select=${PUBLIC_PROFILE_SELECT}`,
   );
   const creator = profile[0];
   if (!creator) return null;
