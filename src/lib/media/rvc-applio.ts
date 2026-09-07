@@ -11,6 +11,23 @@ export type ApplioConversionRequest = {
   autotune?: boolean;
 };
 
+type ApplioParameter = {
+  label?: string;
+  parameter_name?: string;
+  parameter_default?: unknown;
+  parameter_has_default?: boolean;
+};
+
+type ApplioEndpoint = {
+  parameters: ApplioParameter[];
+  returns: Array<{ component?: string }>;
+};
+
+type ApplioApi = {
+  named_endpoints?: Record<string, ApplioEndpoint>;
+  unnamed_endpoints?: Record<string, ApplioEndpoint>;
+};
+
 const DEFAULT_PITCH = 0;
 const DEFAULT_INDEX_RATE = 0.75;
 const DEFAULT_PROTECT = 0.5;
@@ -69,32 +86,23 @@ export async function validateApplioResponse(response: Response): Promise<boolea
   return bytes.byteLength >= MIN_AUDIO_BYTES;
 }
 
-function labelFor(parameter: { label?: string; parameter_name?: string }): string {
+function labelFor(parameter: ApplioParameter): string {
   return `${parameter.label ?? ""} ${parameter.parameter_name ?? ""}`.toLowerCase();
 }
 
 function valueForApplioParameter(
-  parameter: {
-    label?: string;
-    parameter_name?: string;
-    parameter_default?: unknown;
-    parameter_has_default?: boolean;
-  },
+  parameter: ApplioParameter,
   request: ApplioConversionRequest,
 ): unknown {
   const label = labelFor(parameter);
 
   if (label.includes("voice model")) {
     if (!request.model) throw new Error("An Applio RVC voice model is required.");
-    return typeof request.model === "string"
-      ? handle_file(request.model)
-      : handle_file(request.model);
+    return handle_file(request.model);
   }
   if (label.includes("index file")) {
     if (!request.index) return null;
-    return typeof request.index === "string"
-      ? handle_file(request.index)
-      : handle_file(request.index);
+    return handle_file(request.index);
   }
   if (label.includes("select audio")) return handle_file(request.audio);
   if (label.includes("agree to the terms")) return true;
@@ -130,13 +138,14 @@ function valueForApplioParameter(
   throw new Error(`Applio API introduced an unsupported required input: ${label}`);
 }
 
-function findApplioEndpoint(api: {
-  named_endpoints?: Record<string, { parameters: Array<Record<string, unknown>>; returns: Array<Record<string, unknown>> }>;
-  unnamed_endpoints?: Record<string, { parameters: Array<Record<string, unknown>>; returns: Array<Record<string, unknown>> }>;
-}) {
-  const candidates = [
-    ...Object.entries(api.named_endpoints ?? {}),
-    ...Object.entries(api.unnamed_endpoints ?? {}),
+function findApplioEndpoint(api: ApplioApi): {
+  key: string;
+  endpoint: ApplioEndpoint;
+  named: boolean;
+} {
+  const candidates: Array<[string, ApplioEndpoint, boolean]> = [
+    ...Object.entries(api.named_endpoints ?? {}).map(([key, endpoint]) => [key, endpoint, true] as const),
+    ...Object.entries(api.unnamed_endpoints ?? {}).map(([key, endpoint]) => [key, endpoint, false] as const),
   ];
 
   const candidate = candidates.find(([, endpoint]) => {
@@ -156,7 +165,7 @@ function findApplioEndpoint(api: {
     throw new Error("The current Applio Space does not expose a compatible RVC inference endpoint.");
   }
 
-  return candidate;
+  return { key: candidate[0], endpoint: candidate[1], named: candidate[2] };
 }
 
 function findAudioUrl(value: unknown): string | null {
@@ -184,7 +193,7 @@ function findAudioUrl(value: unknown): string | null {
 }
 
 export async function convertWithApplioSpace(
-  request: ApplioConversionRequest & { hfToken?: string },
+  request: ApplioConversionRequest & { hfToken?: `hf_${string}` },
 ): Promise<Response> {
   if (!request.audio || request.audio.size < MIN_AUDIO_BYTES) {
     throw new Error("A non-empty source vocal is required for RVC conversion.");
@@ -197,17 +206,14 @@ export async function convertWithApplioSpace(
     token: request.hfToken,
     analytics_enabled: false,
   });
-  const api = await app.view_api();
-  const [, endpoint] = findApplioEndpoint(api as Parameters<typeof findApplioEndpoint>[0]);
-  const values = endpoint.parameters.map((parameter) =>
+  const api = (await app.view_api()) as unknown as ApplioApi;
+  const selected = findApplioEndpoint(api);
+  const values = selected.endpoint.parameters.map((parameter) =>
     valueForApplioParameter(parameter, request),
   );
-  const endpointName = Object.entries(api.named_endpoints ?? {}).find(
-    ([, candidate]) => candidate === endpoint,
-  )?.[0];
-  const result = endpointName
-    ? await app.predict(endpointName, values)
-    : await app.predict(Number(Object.entries(api.unnamed_endpoints ?? {}).find(([, candidate]) => candidate === endpoint)?.[0]), values);
+  const result = selected.named
+    ? await app.predict(selected.key, values)
+    : await app.predict(undefined, values, Number(selected.key));
 
   const audioUrl = findAudioUrl(result);
   if (!audioUrl) throw new Error("Applio completed without returning a playable audio artifact.");
