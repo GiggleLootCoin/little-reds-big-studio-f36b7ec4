@@ -16,6 +16,7 @@ as $$
 declare
   current_email text;
   membership_data jsonb;
+  membership_event_type text;
   provider_member_id text;
   period_end timestamptz;
   membership_status text;
@@ -32,8 +33,8 @@ begin
     return false;
   end if;
 
-  select e.payload -> 'data'
-    into membership_data
+  select e.payload -> 'data', lower(coalesce(e.payload ->> 'type', ''))
+    into membership_data, membership_event_type
   from public.bmac_webhook_events e
   where lower(trim(coalesce(e.payload -> 'data' ->> 'supporter_email', ''))) = current_email
     and lower(coalesce(e.payload ->> 'type', '')) in (
@@ -64,9 +65,9 @@ begin
     return false;
   end if;
 
-  membership_status := case lower(coalesce(membership_data ->> 'status', ''))
-    when 'cancelled' then 'cancelled'
-    when 'paused' then 'paused'
+  membership_status := case membership_event_type
+    when 'membership.cancelled' then 'cancelled'
+    when 'membership.paused' then 'paused'
     else 'active'
   end;
 
