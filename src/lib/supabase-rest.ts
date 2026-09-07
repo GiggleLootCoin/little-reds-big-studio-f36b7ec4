@@ -16,8 +16,8 @@ export type SupabaseSession = {
   user: SupabaseUser;
 };
 export type Entitlement = {
-  trial_started_at: string;
-  trial_ends_at: string;
+  trial_started_at: string | null;
+  trial_ends_at: string | null;
   trial_active: boolean;
   membership_active: boolean;
   unlimited: boolean;
@@ -99,6 +99,14 @@ function storeSession(session: SupabaseSession | null) {
   else localStorage.removeItem(SESSION_KEY);
 }
 
+async function markSuccessfulLogin(accessToken: string) {
+  await request<string>(
+    "/rest/v1/rpc/start_trial_on_successful_login",
+    { method: "POST", body: "{}" },
+    accessToken,
+  );
+}
+
 export async function adoptSessionFromAuthHash(): Promise<SupabaseSession | null> {
   if (typeof window === "undefined" || !location.hash.includes("access_token=")) return null;
   const params = new URLSearchParams(location.hash.slice(1));
@@ -113,6 +121,7 @@ export async function adoptSessionFromAuthHash(): Promise<SupabaseSession | null
     user,
   };
   storeSession(session);
+  await markSuccessfulLogin(access_token);
   history.replaceState({}, document.title, location.pathname + location.search);
   return session;
 }
@@ -127,7 +136,10 @@ export async function signUp(email: string, password: string, displayName: strin
       redirect_to: `${location.origin}${import.meta.env.BASE_URL}`,
     }),
   });
-  if ("access_token" in result && result.access_token) storeSession(result);
+  if ("access_token" in result && result.access_token) {
+    storeSession(result);
+    await markSuccessfulLogin(result.access_token);
+  }
   return result;
 }
 export async function signIn(email: string, password: string) {
@@ -136,6 +148,7 @@ export async function signIn(email: string, password: string) {
     body: JSON.stringify({ email, password }),
   });
   storeSession(result);
+  await markSuccessfulLogin(result.access_token);
   return result;
 }
 export async function refreshSession() {
