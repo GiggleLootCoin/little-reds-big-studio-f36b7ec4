@@ -16,7 +16,7 @@ test("normalizes a configured Applio URL without changing its origin", () => {
 
 test("builds a complete non-destructive Applio conversion request", async () => {
   const form = buildApplioFormData({
-    audio: new File([new Uint8Array([1, 2, 3])], "vocals.wav", {
+    audio: new File([new Uint8Array(1000)], "vocals.wav", {
       type: "audio/wav",
     }),
     model: "red.pth",
