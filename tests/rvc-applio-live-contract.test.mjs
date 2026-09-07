@@ -9,7 +9,7 @@ test(
     const app = await Client.connect("IAHispano/ApplioX", {
       analytics_enabled: false,
     });
-    const api = await app.view_api(false, false, "dict");
+    const api = await app.view_api();
     const endpoints = Object.entries(api?.named_endpoints ?? {});
     const candidate = endpoints.find(([, endpoint]) => {
       const labels = endpoint.parameters.map((parameter) => parameter.label.toLowerCase());
