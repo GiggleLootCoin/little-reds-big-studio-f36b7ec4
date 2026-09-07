@@ -194,7 +194,6 @@ export async function convertWithApplioSpace(
 
   const app = await Client.connect(APPLIO_SPACE, {
     token: request.hfToken,
-    analytics_enabled: false,
   });
   const api = (await app.view_api()) as unknown as ApplioApi;
   const [endpointName, endpoint] = findApplioEndpoint(api);
