@@ -6,9 +6,7 @@ test(
   "current ApplioX Space exposes a usable RVC inference endpoint",
   { timeout: 120_000 },
   async () => {
-    const app = await Client.connect("IAHispano/ApplioX", {
-      analytics_enabled: false,
-    });
+    const app = await Client.connect("IAHispano/ApplioX");
     const api = await app.view_api();
     const endpoints = Object.entries(api?.named_endpoints ?? {});
     const candidate = endpoints.find(([, endpoint]) => {
