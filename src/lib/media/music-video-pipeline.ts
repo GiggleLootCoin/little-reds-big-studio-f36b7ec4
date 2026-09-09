@@ -13,6 +13,7 @@ export type MusicVideoPlan = {
 const MIN_GENERATION_SECONDS = 2;
 const MAX_GENERATION_SECONDS = 14;
 const DEFAULT_SCENE_SECONDS = 10;
+const MIN_VIDEO_ARTIFACT_BYTES = 100_000;
 
 export function chooseMusicVideoChunkSeconds(requestedSeconds: number): number {
   if (!Number.isFinite(requestedSeconds)) return DEFAULT_SCENE_SECONDS;
@@ -72,7 +73,7 @@ export function validateMusicVideoArtifact(input: {
   if (!Number.isFinite(input.videoDurationSeconds) || input.videoDurationSeconds <= 0) return false;
   if (!Number.isFinite(input.audioDurationSeconds) || input.audioDurationSeconds <= 0) return false;
   if (!Number.isFinite(input.expectedDurationSeconds) || input.expectedDurationSeconds <= 0) return false;
-  if (!Number.isFinite(input.byteLength) || input.byteLength < 100_000) return false;
+  if (!Number.isFinite(input.byteLength) || input.byteLength < MIN_VIDEO_ARTIFACT_BYTES) return false;
 
   const videoDelta = Math.abs(input.videoDurationSeconds - input.expectedDurationSeconds);
   const audioDelta = Math.abs(input.audioDurationSeconds - input.expectedDurationSeconds);
@@ -82,7 +83,23 @@ export function validateMusicVideoArtifact(input: {
   return videoDelta <= tolerance && audioDelta <= tolerance && avDelta <= 0.25;
 }
 
+export function validateRenderedMusicVideoArtifact(input: {
+  contentType: string;
+  durationSeconds: number;
+  expectedDurationSeconds: number;
+  byteLength: number;
+}): boolean {
+  if (!/^video\//i.test(input.contentType)) return false;
+  if (!Number.isFinite(input.durationSeconds) || input.durationSeconds <= 0) return false;
+  if (!Number.isFinite(input.expectedDurationSeconds) || input.expectedDurationSeconds <= 0) return false;
+  if (!Number.isFinite(input.byteLength) || input.byteLength < MIN_VIDEO_ARTIFACT_BYTES) return false;
+
+  const tolerance = Math.max(0.5, input.expectedDurationSeconds * 0.02);
+  return Math.abs(input.durationSeconds - input.expectedDurationSeconds) <= tolerance;
+}
+
 export const MUSIC_VIDEO_LIMITS = {
   minGenerationSeconds: MIN_GENERATION_SECONDS,
   maxGenerationSeconds: MAX_GENERATION_SECONDS,
+  minVideoArtifactBytes: MIN_VIDEO_ARTIFACT_BYTES,
 };
