@@ -13,8 +13,19 @@ function authToken(req: Request) {
   return value.toLowerCase().startsWith("bearer ") ? value.slice(7).trim() : "";
 }
 
+function escapeHtml(value: string) {
+  return value.replace(/[&<>'"]/g, (character) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    "'": "&#39;",
+    '"': "&quot;",
+  })[character] ?? character);
+}
+
 function htmlFor(eventType: string, displayName: string, payload: Record<string, unknown>) {
-  const safeName = displayName || "Creator";
+  const safeName = escapeHtml(displayName || "Creator");
+  const safeMonths = escapeHtml(String(payload.months ?? ""));
   switch (eventType) {
     case "membership_unlimited":
       return {
@@ -23,8 +34,8 @@ function htmlFor(eventType: string, displayName: string, payload: Record<string,
       };
     case "milestone":
       return {
-        subject: `Happy creator milestone — ${String(payload.months ?? "")} months`,
-        html: `<p>Hi ${safeName},</p><p>You’ve been creating with Little Red’s Big Studio for ${String(payload.months ?? "")} months. That’s worth celebrating.</p><p>Keep creating.</p>`,
+        subject: `Happy creator milestone — ${safeMonths} months`,
+        html: `<p>Hi ${safeName},</p><p>You’ve been creating with Little Red’s Big Studio for ${safeMonths} months. That’s worth celebrating.</p><p>Keep creating.</p>`,
       };
     case "birthday":
       return {
@@ -105,7 +116,8 @@ Deno.serve(async (req) => {
     email = (data.user.email ?? "").trim().toLowerCase();
     if (!email) return response(422, { error: "Account email unavailable" });
   } else {
-    await supabase.rpc("queue_due_lifecycle_emails");
+    const { error } = await supabase.rpc("queue_due_lifecycle_emails");
+    if (error) return response(500, { error: "Unable to queue lifecycle emails" });
   }
 
   let eventsQuery = supabase

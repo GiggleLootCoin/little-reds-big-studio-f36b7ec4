@@ -60,9 +60,8 @@ set search_path = public
 as $$
 declare
   p record;
-  milestone_months integer[] := array[3,6,12];
-  months integer;
-  milestone_date date;
+  elapsed_months integer;
+  due_milestone integer;
   local_today date;
   birthday_this_year date;
   birthday_key text;
@@ -99,36 +98,30 @@ begin
       end if;
     end if;
 
-    foreach months in array milestone_months
-    loop
-      milestone_date := (p.trial_started_at at time zone coalesce(nullif(p.timezone, ''), 'UTC'))::date + make_interval(months => months);
-      if local_today >= milestone_date then
-        insert into public.email_events (user_id, event_type, idempotency_key, payload)
-        values (
-          p.id,
-          'milestone',
-          format('milestone:%s:%s', p.id, months),
-          jsonb_build_object('display_name', p.display_name, 'months', months)
-        )
-        on conflict (idempotency_key) do nothing;
-        if found then inserted_count := inserted_count + 1; end if;
-      end if;
-    end loop;
+    elapsed_months := greatest(
+      0,
+      (extract(year from age(local_today::timestamp, (p.trial_started_at at time zone coalesce(nullif(p.timezone, ''), 'UTC'))::date))::integer * 12)
+      + extract(month from age(local_today::timestamp, (p.trial_started_at at time zone coalesce(nullif(p.timezone, ''), 'UTC'))::date))::integer
+    );
 
-    months := greatest(24, floor(extract(year from age(local_today::timestamp, (p.trial_started_at at time zone coalesce(nullif(p.timezone, ''), 'UTC'))::date)) * 12)::integer);
-    if months >= 24 and months % 12 = 0 then
-      milestone_date := (p.trial_started_at at time zone coalesce(nullif(p.timezone, ''), 'UTC'))::date + make_interval(months => months);
-      if local_today >= milestone_date then
-        insert into public.email_events (user_id, event_type, idempotency_key, payload)
-        values (
-          p.id,
-          'milestone',
-          format('milestone:%s:%s', p.id, months),
-          jsonb_build_object('display_name', p.display_name, 'months', months)
-        )
-        on conflict (idempotency_key) do nothing;
-        if found then inserted_count := inserted_count + 1; end if;
-      end if;
+    due_milestone := case
+      when elapsed_months >= 24 then (elapsed_months / 12) * 12
+      when elapsed_months >= 12 then 12
+      when elapsed_months >= 6 then 6
+      when elapsed_months >= 3 then 3
+      else null
+    end;
+
+    if due_milestone is not null then
+      insert into public.email_events (user_id, event_type, idempotency_key, payload)
+      values (
+        p.id,
+        'milestone',
+        format('milestone:%s:%s', p.id, due_milestone),
+        jsonb_build_object('display_name', p.display_name, 'months', due_milestone)
+      )
+      on conflict (idempotency_key) do nothing;
+      if found then inserted_count := inserted_count + 1; end if;
     end if;
   end loop;
 
