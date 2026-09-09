@@ -6,7 +6,15 @@ import {
   chooseMusicVideoChunkSeconds,
   validateMusicVideoArtifact,
   validateRenderedMusicVideoArtifact,
+  MUSIC_VIDEO_ENGINE_SPACES,
 } from "../src/lib/media/music-video-pipeline.ts";
+
+test("music video engines point at currently published free Spaces", () => {
+  assert.deepEqual(MUSIC_VIDEO_ENGINE_SPACES, [
+    "MiniMaxAI/MiniMax-H3-Turbo-Lora",
+    "zerogpu-aoti/wan2-2-fp8da-aoti-faster",
+  ]);
+});
 
 test("music video planner covers the complete song with bounded generation chunks", () => {
   const plan = buildMusicVideoPlan({ durationSeconds: 187, sceneSeconds: 12 });
