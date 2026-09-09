@@ -15,6 +15,11 @@ const MAX_GENERATION_SECONDS = 14;
 const DEFAULT_SCENE_SECONDS = 10;
 const MIN_VIDEO_ARTIFACT_BYTES = 100_000;
 
+export const MUSIC_VIDEO_ENGINE_SPACES = [
+  "MiniMaxAI/MiniMax-H3-Turbo-Lora",
+  "zerogpu-aoti/wan2-2-fp8da-aoti-faster",
+] as const;
+
 export function chooseMusicVideoChunkSeconds(requestedSeconds: number): number {
   if (!Number.isFinite(requestedSeconds)) return DEFAULT_SCENE_SECONDS;
   return Math.min(
