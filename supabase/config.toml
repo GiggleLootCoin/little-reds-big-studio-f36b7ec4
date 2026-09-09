@@ -1,0 +1,8 @@
+[functions.account-email]
+verify_jwt = false
+
+[functions.account-email-cron]
+verify_jwt = false
+
+[functions.buymeacoffee-webhook]
+verify_jwt = false

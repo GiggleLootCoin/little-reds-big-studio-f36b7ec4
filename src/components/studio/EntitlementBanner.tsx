@@ -4,7 +4,7 @@ import { useEntitlement } from "@/hooks/use-entitlement";
 import { getStoredSession } from "@/lib/supabase-rest";
 
 const BMAC = "https://buymeacoffee.com/littleredbigsmile";
-function remaining(end?: string) {
+function remaining(end?: string | null) {
   if (!end) return "";
   const ms = new Date(end).getTime() - Date.now();
   if (ms <= 0) return "Trial ended";
