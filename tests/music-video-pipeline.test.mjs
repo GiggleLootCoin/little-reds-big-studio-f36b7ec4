@@ -5,6 +5,7 @@ import {
   buildMusicVideoPlan,
   chooseMusicVideoChunkSeconds,
   validateMusicVideoArtifact,
+  validateRenderedMusicVideoArtifact,
 } from "../src/lib/media/music-video-pipeline.ts";
 
 test("music video planner covers the complete song with bounded generation chunks", () => {
@@ -46,6 +47,48 @@ test("final music video validation requires playable video, audio, and matching 
       hasAudioStream: true,
       byteLength: 500_000,
       expectedDurationSeconds: 187,
+    }),
+    false,
+  );
+});
+
+test("browser-rendered music video validation rejects empty, non-video, or mistimed output", () => {
+  assert.equal(
+    validateRenderedMusicVideoArtifact({
+      contentType: "video/webm",
+      durationSeconds: 187.1,
+      expectedDurationSeconds: 187,
+      byteLength: 2_000_000,
+    }),
+    true,
+  );
+
+  assert.equal(
+    validateRenderedMusicVideoArtifact({
+      contentType: "application/octet-stream",
+      durationSeconds: 187,
+      expectedDurationSeconds: 187,
+      byteLength: 2_000_000,
+    }),
+    false,
+  );
+
+  assert.equal(
+    validateRenderedMusicVideoArtifact({
+      contentType: "video/webm",
+      durationSeconds: 14,
+      expectedDurationSeconds: 187,
+      byteLength: 2_000_000,
+    }),
+    false,
+  );
+
+  assert.equal(
+    validateRenderedMusicVideoArtifact({
+      contentType: "video/webm",
+      durationSeconds: 187,
+      expectedDurationSeconds: 187,
+      byteLength: 10_000,
     }),
     false,
   );
