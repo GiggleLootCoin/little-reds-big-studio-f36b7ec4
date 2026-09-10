@@ -2,11 +2,11 @@ import { handleVoiceClone } from "./voice-clone-gateway";
 
 type CloneEnv = {
   HF_TOKEN?: string;
-  VOXCPM_SPACE_URL?: string;
+  QWEN_TTS_SPACE_URL?: string;
 };
 
-const BACKEND = "voxcpm2-reference-clone";
-const VERSION = "voice-clone-voxcpm2-reference-v1";
+const BACKEND = "qwen3-tts-reference-clone";
+const VERSION = "voice-clone-qwen3-tts-0.6b-v1";
 
 function headers() {
   const h = new Headers({
@@ -35,9 +35,14 @@ function toBase64(bytes: Uint8Array) {
 }
 
 async function sha256(bytes: Uint8Array) {
-  const buffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+  const buffer = bytes.buffer.slice(
+    bytes.byteOffset,
+    bytes.byteOffset + bytes.byteLength,
+  ) as ArrayBuffer;
   const digest = await crypto.subtle.digest("SHA-256", buffer);
-  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+  return Array.from(new Uint8Array(digest), (byte) =>
+    byte.toString(16).padStart(2, "0"),
+  ).join("");
 }
 
 async function multipartToGateway(request: Request, env: CloneEnv) {
@@ -48,7 +53,9 @@ async function multipartToGateway(request: Request, env: CloneEnv) {
   if (!file?.size) throw new Error("No usable Red voice reference was uploaded.");
 
   const bytes = new Uint8Array(await file.arrayBuffer());
-  const text = String(form.get("text") || form.get("target_text") || form.get("prompt") || "").trim();
+  const text = String(
+    form.get("text") || form.get("target_text") || form.get("prompt") || "",
+  ).trim();
   if (!text) throw new Error("Target text is required.");
 
   const body = {
@@ -58,7 +65,9 @@ async function multipartToGateway(request: Request, env: CloneEnv) {
     text,
     language: String(form.get("language") || "English"),
     modelSize: "0.6B" as const,
-    refText: String(form.get("refText") || form.get("referenceTranscript") || "").trim(),
+    refText: String(
+      form.get("refText") || form.get("referenceTranscript") || "",
+    ).trim(),
   };
 
   return handleVoiceClone(
@@ -79,10 +88,15 @@ export function voiceCloneHealth(_env?: CloneEnv) {
       backend: BACKEND,
       version: VERSION,
       transcriptRequired: false,
-      primary: "VoxCPM2 persistent GPU reference clone",
+      primary: "Qwen3-TTS 0.6B Base reference clone",
       fallback: "none",
       outputFormat: "PCM16 WAV",
-      verification: ["reference upload", "clone provider header", "non-empty audio", "browser playback"],
+      verification: [
+        "reference upload",
+        "clone provider header",
+        "non-empty audio",
+        "browser playback",
+      ],
     },
     { headers: headers() },
   );
@@ -93,7 +107,9 @@ export async function handleProductionVoiceClone(request: Request, env: CloneEnv
 
   try {
     const contentType = (request.headers.get("content-type") || "").toLowerCase();
-    if (contentType.includes("multipart/form-data")) return await multipartToGateway(request, env);
+    if (contentType.includes("multipart/form-data")) {
+      return await multipartToGateway(request, env);
+    }
     return await handleVoiceClone(request, env);
   } catch (error) {
     return errorJson(error instanceof Error ? error.message : "Voice cloning failed.", 502);

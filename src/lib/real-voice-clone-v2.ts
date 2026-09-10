@@ -41,7 +41,7 @@ export async function createBestFreeVoiceClone(
   text: string,
   language: string,
   onStatus?: (s: string) => void,
-  modelSize: "0.6B" | "1.7B" = "1.7B",
+  modelSize: "0.6B" | "1.7B" = "0.6B",
   persistPreview = true,
 ): Promise<CloneResult> {
   if (!sample.size) throw new Error("The voice sample is empty.");
