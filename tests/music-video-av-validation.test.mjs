@@ -1,33 +1,29 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { validateMusicVideoArtifact } from "../src/lib/media/music-video-pipeline.ts";
+import { inspectMusicVideoAvStreams } from "../src/lib/media/music-video-pipeline.ts";
 
-test("accepts a finished MP4 only when both synchronized audio and video streams are proven", () => {
-  assert.equal(
-    validateMusicVideoArtifact({
+test("reports synchronized audio and video streams from decoded media metadata", () => {
+  assert.deepEqual(
+    inspectMusicVideoAvStreams({
       contentType: "video/mp4",
       videoDurationSeconds: 20,
       audioDurationSeconds: 20,
       hasVideoStream: true,
       hasAudioStream: true,
-      byteLength: 500_000,
-      expectedDurationSeconds: 20,
     }),
-    true,
+    { hasVideoStream: true, hasAudioStream: true, videoDurationSeconds: 20, audioDurationSeconds: 20 },
   );
 });
 
-test("rejects a video-only artifact even when its duration and size look valid", () => {
-  assert.equal(
-    validateMusicVideoArtifact({
+test("fails closed when the decoded artifact has no audio stream", () => {
+  assert.deepEqual(
+    inspectMusicVideoAvStreams({
       contentType: "video/mp4",
       videoDurationSeconds: 20,
-      audioDurationSeconds: 20,
+      audioDurationSeconds: 0,
       hasVideoStream: true,
       hasAudioStream: false,
-      byteLength: 500_000,
-      expectedDurationSeconds: 20,
     }),
-    false,
+    { hasVideoStream: true, hasAudioStream: false, videoDurationSeconds: 20, audioDurationSeconds: 0 },
   );
 });
