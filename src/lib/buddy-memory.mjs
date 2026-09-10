@@ -1,4 +1,4 @@
-import { buildAgentSystemPrompt } from "./buddy-agent";
+import { buildAgentSystemPrompt } from "./buddy-agent.ts";
 
 const KEY = "lrbgs-buddy-memory-v1";
 const MAX_MEMORIES = 24;
