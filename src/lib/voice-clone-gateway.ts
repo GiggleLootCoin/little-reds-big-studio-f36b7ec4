@@ -39,6 +39,7 @@ export function parseQwenTTSSSE(stream: string): QwenTTSSEParseResult {
   for (const line of stream.split(/\r\n|\n|\r/)) { if (!line.trim()) { flush(); event = ""; data = []; } else if (line.startsWith("event:")) event = line.slice(6).trim(); else if (line.startsWith("data:")) data.push(line.slice(5).trim()); }
   flush(); return result;
 }
+export const parseQwenSSE = parseQwenTTSSSE;
 
 function fileData(path: string, type: string, size?: number) { return { path, url: null, size: size ?? null, orig_name: `red-reference.${ext(type)}`, mime_type: type, is_stream: false, meta: { _type: "gradio.FileData" } }; }
 function toWav(value: unknown): ArrayBuffer | null {
