@@ -1,32 +1,40 @@
 type Env = { HF_TOKEN?: string; QWEN_TTS_SPACE_URL?: string };
 
 type Body = { referenceId?: string; audioBase64?: string; audioType?: string; refText?: string; text?: string; language?: string; modelSize?: "0.6B" | "1.7B"; allowHighQuality?: boolean };
+type UploadedReference = { path: string; url?: string | null; size: number; orig_name?: string; mime_type?: string; is_stream?: boolean; meta?: Record<string, unknown> };
 
 export const RED_VOICE_PROVIDER = "Qwen3-TTS reference clone";
 const PRIMARY_SPACE = "https://qwen-qwen3-tts.hf.space";
 const REFERENCE_CACHE_TTL_MS = 15 * 60_000;
 const QWEN_QUEUE_RETRY_DELAYS_MS = [1500, 4000, 8000];
-const cache = new Map<string, { path: string; size: number; expires: number }>();
+const cache = new Map<string, { file: UploadedReference; expires: number }>();
 
 function primarySpace(env: Env) { return (env.QWEN_TTS_SPACE_URL?.trim() || PRIMARY_SPACE).replace(/\/$/, ""); }
 function auth(env: Env): HeadersInit { return env.HF_TOKEN?.trim() ? { Authorization: `Bearer ${env.HF_TOKEN.trim()}` } : {}; }
 function ext(type: string) { const t = type.toLowerCase(); if (t.includes("webm")) return "webm"; if (t.includes("mpeg")) return "mp3"; if (t.includes("ogg")) return "ogg"; if (t.includes("flac")) return "flac"; return "wav"; }
 function decode(value: string) { const s = value.replace(/^data:[^,]+,/, "").replace(/\s/g, ""); let binary: string; try { binary = atob(s); } catch { throw new Error("The Red voice reference is not valid base64 audio."); } const bytes = Uint8Array.from(binary, (c) => c.charCodeAt(0)); return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength); }
 
-const QWEN_LANGUAGE_NAMES: Record<string, string> = {
-  auto: "Auto", zh: "Chinese", "zh-cn": "Chinese", "zh-hans": "Chinese",
-  en: "English", "en-us": "English", "en-gb": "English", ja: "Japanese", ko: "Korean",
-  fr: "French", de: "German", es: "Spanish", pt: "Portuguese", "pt-br": "Portuguese", ru: "Russian",
-};
+const QWEN_LANGUAGE_NAMES: Record<string, string> = { auto: "Auto", zh: "Chinese", "zh-cn": "Chinese", "zh-hans": "Chinese", en: "English", "en-us": "English", "en-gb": "English", ja: "Japanese", ko: "Korean", fr: "French", de: "German", es: "Spanish", pt: "Portuguese", "pt-br": "Portuguese", ru: "Russian" };
 function normalizeQwenLanguage(value?: string) { const trimmed = value?.trim() || "English"; return QWEN_LANGUAGE_NAMES[trimmed.toLowerCase()] || trimmed; }
 
-async function upload(space: string, id: string, base64: string, type: string, env: Env) {
-  const key = `${space}|${id}`; const old = cache.get(key); if (old && old.expires > Date.now()) return { path: old.path, size: old.size };
+function normalizeUploadedFile(value: unknown, type: string, size: number): UploadedReference | null {
+  if (typeof value === "string" && value.trim()) return { path: value.trim(), url: null, size, orig_name: `red-reference.${ext(type)}`, mime_type: type, is_stream: false, meta: { _type: "gradio.FileData" } };
+  if (!value || typeof value !== "object") return null;
+  const item = value as Record<string, unknown>;
+  const path = typeof item.path === "string" ? item.path.trim() : "";
+  const url = typeof item.url === "string" ? item.url : null;
+  if (!path && !url) return null;
+  return { path, url, size: typeof item.size === "number" ? item.size : size, orig_name: typeof item.orig_name === "string" ? item.orig_name : `red-reference.${ext(type)}`, mime_type: typeof item.mime_type === "string" ? item.mime_type : type, is_stream: item.is_stream === true, meta: item.meta && typeof item.meta === "object" ? item.meta as Record<string, unknown> : { _type: "gradio.FileData" } };
+}
+
+async function upload(space: string, id: string, base64: string, type: string, env: Env): Promise<UploadedReference> {
+  const key = `${space}|${id}`; const old = cache.get(key); if (old && old.expires > Date.now()) return old.file;
   const bytes = decode(base64); const form = new FormData(); form.append("files", new Blob([bytes], { type }), `red-reference.${ext(type)}`);
   const response = await fetch(`${space}/gradio_api/upload`, { method: "POST", headers: auth(env), body: form });
   if (!response.ok) { const detail = (await response.text().catch(() => "")).slice(0, 240); throw new Error(`Qwen3-TTS reference upload failed (${response.status}). ${detail}`.trim()); }
-  const payload = (await response.json()) as unknown; const path = Array.isArray(payload) ? String(payload[0] || "") : "";
-  if (!path) throw new Error("Qwen3-TTS returned no reference-file path."); cache.set(key, { path, size: bytes.byteLength, expires: Date.now() + REFERENCE_CACHE_TTL_MS }); return { path, size: bytes.byteLength };
+  const payload = (await response.json()) as unknown; const raw = Array.isArray(payload) ? payload[0] : payload; const file = normalizeUploadedFile(raw, type, bytes.byteLength);
+  if (!file) throw new Error("Qwen3-TTS returned no usable reference-file metadata.");
+  cache.set(key, { file, expires: Date.now() + REFERENCE_CACHE_TTL_MS }); return file;
 }
 
 export type QwenTTSSEParseResult = { kind: "audio"; payload: unknown[] } | { kind: "error"; message: string } | { kind: "none" };
@@ -41,7 +49,7 @@ export function parseQwenTTSSSE(stream: string): QwenTTSSEParseResult {
 }
 export const parseQwenSSE = parseQwenTTSSSE;
 
-function fileData(path: string, type: string, size?: number) { return { path, url: null, size: size ?? null, orig_name: `red-reference.${ext(type)}`, mime_type: type, is_stream: false, meta: { _type: "gradio.FileData" } }; }
+function fileData(file: UploadedReference, type: string) { return { path: file.path || undefined, url: file.url ?? null, size: file.size, orig_name: file.orig_name || `red-reference.${ext(type)}`, mime_type: file.mime_type || type, is_stream: file.is_stream === true, meta: file.meta || { _type: "gradio.FileData" } }; }
 function toWav(value: unknown): ArrayBuffer | null {
   if (!Array.isArray(value) || typeof value[0] !== "number" || !Array.isArray(value[1]) || value[1].length === 0) return null;
   const sampleRate = Math.round(value[0]); const samples = value[1] as unknown[]; const pcm = new Int16Array(samples.length);
@@ -53,9 +61,9 @@ function isRetryableQueueError(error: unknown) { const message = error instanceo
 async function wait(ms: number) { await new Promise<void>((resolve) => setTimeout(resolve, ms)); }
 function artifactUrl(space: string, value: unknown) { if (typeof value === "string") return value; if (!value || typeof value !== "object") return ""; const item = value as Record<string, unknown>; if (typeof item.url === "string") return item.url; if (typeof item.path === "string") return `${space}/gradio_api/file=${item.path}`; if (typeof item.name === "string") return `${space}/gradio_api/file=${item.name}`; return ""; }
 
-async function generate(space: string, path: string, size: number, type: string, body: Body, env: Env): Promise<Response> {
+async function generate(space: string, file: UploadedReference, type: string, body: Body, env: Env): Promise<Response> {
   const refText = body.refText?.trim() || ""; const targetText = body.text?.trim().replace(/\s+/g, " ").slice(0, 220) || ""; if (!targetText) throw new Error("Target text is required.");
-  const start = await fetch(`${space}/gradio_api/call/generate_voice_clone`, { method: "POST", headers: { ...auth(env), "content-type": "application/json" }, body: JSON.stringify({ data: [fileData(path, type, size), refText, targetText, normalizeQwenLanguage(body.language), !refText, body.modelSize === "1.7B" && body.allowHighQuality === true ? "1.7B" : "0.6B"] }) });
+  const start = await fetch(`${space}/gradio_api/call/generate_voice_clone`, { method: "POST", headers: { ...auth(env), "content-type": "application/json" }, body: JSON.stringify({ data: [fileData(file, type), refText, targetText, normalizeQwenLanguage(body.language), !refText, body.modelSize === "1.7B" && body.allowHighQuality === true ? "1.7B" : "0.6B"] }) });
   if (!start.ok) { const detail = (await start.text().catch(() => "")).slice(0, 300); throw new Error(`Qwen3-TTS clone start failed (${start.status}). ${detail}`.trim()); }
   const job = (await start.json()) as { event_id?: string }; if (!job.event_id) throw new Error("Qwen3-TTS returned no clone job ID.");
   const result = await fetch(`${space}/gradio_api/call/generate_voice_clone/${encodeURIComponent(job.event_id)}`, { headers: { ...auth(env), Accept: "text/event-stream" } });
@@ -66,8 +74,7 @@ async function generate(space: string, path: string, size: number, type: string,
   const audio = await fetch(artifact.startsWith("http") ? artifact : `${space}${artifact}`, { headers: auth(env) }); if (!audio.ok || !audio.body) throw new Error(`Qwen3-TTS audio download failed (${audio.status}).`);
   const headers = new Headers(audio.headers); headers.set("cache-control", "no-store"); headers.set("x-clone-provider", RED_VOICE_PROVIDER); headers.set("x-red-voice-route", "qwen3-tts-reference-clone"); return new Response(audio.body, { status: 200, headers });
 }
-async function generateFromSpace(space: string, body: Body, env: Env): Promise<Response> { const id = body.referenceId!.trim(); const type = String(body.audioType || "audio/wav"); const uploaded = await upload(space, id, body.audioBase64!, type, env); return generate(space, uploaded.path, uploaded.size, type, body, env); }
-async function generateWithQueueRetry(space: string, body: Body, env: Env): Promise<Response> { let lastError: unknown = null; for (let attempt = 0; attempt <= QWEN_QUEUE_RETRY_DELAYS_MS.length; attempt++) { try { return await generateFromSpace(space, body, env); } catch (error) { lastError = error; if (!isRetryableQueueError(error) || attempt === QWEN_QUEUE_RETRY_DELAYS_MS.length) throw error; const delay = QWEN_QUEUE_RETRY_DELAYS_MS[attempt]; console.warn(`[voice-clone] Qwen3-TTS busy/transient; retrying the same cached Red reference in ${delay}ms (attempt ${attempt + 2}).`); await wait(delay); } } throw lastError instanceof Error ? lastError : new Error(String(lastError)); }
+async function generateWithQueueRetry(space: string, body: Body, env: Env): Promise<Response> { let lastError: unknown = null; for (let attempt = 0; attempt <= QWEN_QUEUE_RETRY_DELAYS_MS.length; attempt++) { try { const type = String(body.audioType || "audio/wav"); const file = await upload(space, body.referenceId!.trim(), body.audioBase64!, type, env); return await generate(space, file, type, body, env); } catch (error) { lastError = error; if (!isRetryableQueueError(error) || attempt === QWEN_QUEUE_RETRY_DELAYS_MS.length) throw error; const delay = QWEN_QUEUE_RETRY_DELAYS_MS[attempt]; console.warn(`[voice-clone] Qwen3-TTS busy/transient; retrying in ${delay}ms (attempt ${attempt + 2}).`); await wait(delay); } } throw lastError instanceof Error ? lastError : new Error(String(lastError)); }
 
 export async function handleVoiceClone(request: Request, env: Env): Promise<Response | null> {
   const path = new URL(request.url).pathname; if (path !== "/api/voice-clone" && path !== "/api/ai/voice-clone") return null; if (request.method !== "POST") return Response.json({ ok: false, error: "POST required." }, { status: 405 });
