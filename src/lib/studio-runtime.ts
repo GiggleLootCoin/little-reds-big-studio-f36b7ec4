@@ -1,6 +1,5 @@
 import type { StudioArtifact, StudioCapability, StudioJobInput } from "./studio-runtime-impl";
 import { getBuddyVoiceProfile, getBuddyVoiceSample, markBuddyCloneVerified } from "./buddy-voice";
-import { getBuiltInRedVoiceSample } from "./red-default-voice";
 import { saveVoiceSample } from "./voice-profile";
 import { normalizeAndVerifyBrowserAudio } from "./audio-artifact";
 import { saveBuddyClonePreview } from "./buddy-voice";
@@ -14,6 +13,64 @@ const DEFAULT_CLONE_TEXT =
   "Hello. This is your cloned voice sample. Would you like to use this voice for Buddy now, or would you like to record again?";
 let cachedRedReferenceId = "";
 let cachedRedReferenceBase64 = "";
+
+const KOKORO_PRESET_SPEAKERS: Record<string, string> = {
+  Red: "af_bella",
+  Ryan: "af_nicole",
+  Aiden: "af_sarah",
+  Vivian: "af_sky",
+  Serena: "am_adam",
+  Uncle_Fu: "am_michael",
+  Dylan: "bf_emma",
+  Eric: "bf_isabella",
+  Ono_Anna: "bm_george",
+  Sohee: "bm_lewis",
+  amalthea: "af_alloy",
+  andromeda: "af_aoede",
+  apollo: "af_jessica",
+  arcas: "af_kore",
+  aries: "af_nova",
+  asteria: "af_river",
+  athena: "am_echo",
+  atlas: "am_eric",
+  aurora: "am_fenrir",
+  callista: "am_liam",
+  cora: "am_onyx",
+  cordelia: "am_puck",
+  delia: "am_santa",
+  draco: "bf_alice",
+  electra: "bf_lily",
+  harmonia: "bm_daniel",
+  helena: "bm_fable",
+  hera: "ef_dora",
+  hermes: "em_alex",
+  hyperion: "em_santa",
+  iris: "ff_siwis",
+  janus: "hf_alpha",
+  juno: "hf_beta",
+  jupiter: "hm_omega",
+  luna: "hm_psi",
+  mars: "if_sara",
+  minerva: "im_nicola",
+  neptune: "jf_alpha",
+  odysseus: "jf_gongitsune",
+  ophelia: "jf_nezumi",
+  orion: "jf_tebukuro",
+  orpheus: "jm_kumo",
+  pandora: "pf_dora",
+  phoebe: "pm_alex",
+  pluto: "pm_santa",
+  saturn: "zf_xiaobei",
+  selene: "zf_xiaoni",
+  thalia: "zf_xiaoxiao",
+  theia: "zf_xiaoyi",
+  vesta: "zm_yunjian",
+  zeus: "zm_yunxi",
+};
+
+function kokoroPresetSpeaker(value: string): string {
+  return KOKORO_PRESET_SPEAKERS[value] || value;
+}
 
 export function artifactText(value: unknown): string {
   if (typeof value === "string") return value.trim();
@@ -97,14 +154,14 @@ async function runProductionRedClone(
     });
   }
   if (!response.ok) {
-    const detail = (await response.text().catch(() => "")).slice(0, 300);
-    throw new Error(`Red voice generation failed (${response.status}). ${detail}`.trim());
+    console.error("Red voice generation failed", response.status, await response.text().catch(() => ""));
+    throw new Error("Buddy's Red voice could not be generated.");
   }
   const blob = await response.blob();
-  if (!blob.size) throw new Error("Red voice generation returned empty audio.");
+  if (!blob.size) throw new Error("Buddy's Red voice returned empty audio.");
   const normalized = await normalizeAndVerifyBrowserAudio(blob);
   if (normalized.stats.duration <= 0 || normalized.stats.peak <= 0 || normalized.stats.rms <= 0)
-    throw new Error("Red voice generation returned silent or unusable audio.");
+    throw new Error("Buddy's Red voice returned silent or unusable audio.");
   return {
     url: normalized.url,
     provider: response.headers.get("x-clone-provider") || "Production Red reference clone",
@@ -125,36 +182,19 @@ async function runVerifiedClone(
   speaker?: string,
 ) {
   if (speaker === "Red" || cloneProfile().speaker === "Red") {
-    const result = await runProductionRedClone(
-      sample,
-      refText,
-      text,
-      language,
-      onStatus,
-      modelSize,
-    );
+    const result = await runProductionRedClone(sample, refText, text, language, onStatus, modelSize);
     if (persist) {
       await saveVoiceSample(sample, refText);
-      await markBuddyCloneVerified(
-        `${result.provider}${result.verification ? ` — ${result.verification}` : ""}`,
-      );
-      await saveBuddyClonePreview(sample, result.provider);
+      await markBuddyCloneVerified("Verified creator voice clone");
+      await saveBuddyClonePreview(sample, "Verified creator voice clone");
     }
     return result;
   }
   let result;
   try {
-    result = await createBestFreeVoiceClone(
-      sample,
-      refText,
-      text,
-      language,
-      onStatus,
-      modelSize,
-      persist,
-    );
+    result = await createBestFreeVoiceClone(sample, refText, text, language, onStatus, modelSize, persist);
   } catch (primaryError) {
-    onStatus?.("Primary voice generation was unavailable. Trying the free fallback…");
+    onStatus?.("Trying another free voice route…");
     try {
       const runtime = await import("./studio-runtime-impl");
       const fallback = await runtime.runStudioJob(
@@ -174,33 +214,30 @@ async function runVerifiedClone(
       );
       if (!fallback.url) throw primaryError;
       const fallbackBlob = await fetch(fallback.url).then((response) => {
-        if (!response.ok) throw new Error(`Fallback audio download failed (${response.status}).`);
+        if (!response.ok) throw new Error("Fallback audio download failed.");
         return response.blob();
       });
       const normalized = await normalizeAndVerifyBrowserAudio(fallbackBlob);
       if (normalized.stats.duration <= 0 || normalized.stats.peak <= 0 || normalized.stats.rms <= 0)
         throw new Error("Fallback clone returned silent or unusable audio.");
-      if (persist) await saveBuddyClonePreview(normalized.blob, fallback.provider);
+      if (persist) await saveBuddyClonePreview(normalized.blob, "Verified creator voice clone");
       result = {
         url: normalized.url,
         provider: fallback.provider,
-        verification: `Free fallback ${fallback.provider} + browser audio decode + non-silent artifact verification`,
+        verification: "Free fallback + browser audio decode + non-silent artifact verification",
         duration: normalized.stats.duration,
         peak: normalized.stats.peak,
         rms: normalized.stats.rms,
       };
     } catch (fallbackError) {
-      throw new Error(
-        `Voice generation failed on the primary and free fallback. ${fallbackError instanceof Error ? fallbackError.message : String(primaryError)}`,
-      );
+      console.error("Voice clone failed", primaryError, fallbackError);
+      throw new Error("Buddy's voice clone could not be generated.");
     }
   }
   if (!result.url) throw new Error("The voice engine returned no playable audio.");
   if (persist) {
     await saveVoiceSample(sample, refText);
-    await markBuddyCloneVerified(
-      `${result.provider}${result.verification ? ` — ${result.verification}` : ""}`,
-    );
+    await markBuddyCloneVerified("Verified creator voice clone");
   }
   return result;
 }
@@ -222,46 +259,32 @@ export async function runStudioJob(
 ): Promise<StudioArtifact> {
   if (capability === "voice-clone") {
     const sample = input.refAudio ?? input.referenceAudio ?? input.audio;
-    // The Voice Lab uses the voice-clone action for both real clones and preset
-    // test buttons. Presets do not need reference audio; route them directly to
-    // the real preset TTS engine instead of incorrectly demanding a clone sample.
     if (!(sample instanceof Blob)) {
       const speaker = String(input.speaker ?? "").trim();
       if (speaker && speaker !== "Red") {
         const runtime = await import("./studio-runtime-impl");
         const presetInput = {
           ...input,
-          text: String(
-            input.text ?? input.target_text ?? input.prompt ?? DEFAULT_CLONE_TEXT,
-          ).trim(),
-          speaker,
+          text: String(input.text ?? input.target_text ?? input.prompt ?? DEFAULT_CLONE_TEXT).trim(),
+          speaker: kokoroPresetSpeaker(speaker),
         };
-        return runtime.runStudioJob("tts", presetInput, onStatus);
+        try {
+          return await runtime.runStudioJob("tts", presetInput, onStatus);
+        } catch (error) {
+          console.error("Preset voice generation failed", error);
+          throw new Error("The selected voice could not be generated.");
+        }
       }
-      throw new Error("A reference voice recording is required for a real clone.");
+      throw new Error("A verified voice recording is required for a real clone.");
     }
     const refText = String(
-      input.refText ??
-        input.referenceText ??
-        input.referenceTranscript ??
-        cloneProfile().referenceTranscript ??
-        "",
+      input.refText ?? input.referenceText ?? input.referenceTranscript ?? cloneProfile().referenceTranscript ?? "",
     ).trim();
-    const targetText =
-      String(input.target_text ?? input.text ?? input.prompt ?? DEFAULT_CLONE_TEXT).trim() ||
-      DEFAULT_CLONE_TEXT;
+    const targetText = String(input.target_text ?? input.text ?? input.prompt ?? DEFAULT_CLONE_TEXT).trim() || DEFAULT_CLONE_TEXT;
     const language = String(input.language ?? cloneProfile().language ?? "English");
     const modelSize = input.model_size === "0.6B" ? "0.6B" : "1.7B";
-    onStatus?.("Using Buddy's Red voice mode…");
-    const result = await runVerifiedClone(
-      sample,
-      refText,
-      targetText,
-      language,
-      onStatus,
-      modelSize,
-      true,
-    );
+    onStatus?.("Using Buddy's verified voice mode…");
+    const result = await runVerifiedClone(sample, refText, targetText, language, onStatus, modelSize, true);
     return { capability, value: result, url: result.url, provider: result.provider };
   }
   if (capability === "tts") {
@@ -270,58 +293,34 @@ export async function runStudioJob(
     if (!text) throw new Error("Voice text is empty.");
     const language = String(input.language ?? profile.language ?? "English");
     const modelSize = input.model_size === "0.6B" ? "0.6B" : "1.7B";
-    const wantsRedVoice =
-      profile.mode === "clone" || profile.speaker === "Red" || input.speaker === "Red";
+    const wantsRedVoice = profile.mode === "clone" || profile.speaker === "Red" || input.speaker === "Red";
     if (wantsRedVoice) {
-      let savedSample = await getBuddyVoiceSample();
+      const savedSample = await getBuddyVoiceSample();
       const effectiveSpeaker = typeof input.speaker === "string" ? input.speaker : profile.speaker;
-      if (!savedSample && effectiveSpeaker === "Red") {
-        savedSample = await getBuiltInRedVoiceSample();
-        if (savedSample) onStatus?.("Using Buddy's built-in Red voice reference…");
-      }
       if (!savedSample) {
-        if (profile.mode === "clone" && profile.cloneVerified)
-          throw new Error(
-            "Buddy's saved voice sample is missing. Please restore the saved voice sample.",
-          );
-        throw new Error("The built-in Red voice reference is unavailable right now.");
+        throw new Error("Your verified Red voice is not loaded. Upload or record your verified voice sample first.");
       }
       const refText = profile.referenceTranscript?.trim() || "";
-      onStatus?.("Speaking in Buddy's Red voice…");
-      const result = await runVerifiedClone(
-        savedSample,
-        refText,
-        text,
-        language,
-        onStatus,
-        modelSize,
-        false,
-        effectiveSpeaker,
-      );
+      onStatus?.("Speaking in your verified Red voice…");
+      const result = await runVerifiedClone(savedSample, refText, text, language, onStatus, modelSize, false, effectiveSpeaker);
       return { capability: "tts", value: result, url: result.url, provider: result.provider };
     }
   }
   let preparedInput = capability === "speech-to-text" ? await prepareSpeechToText(input) : input;
+  if (capability === "tts") {
+    preparedInput = { ...preparedInput, speaker: kokoroPresetSpeaker(String(preparedInput.speaker ?? profileSpeakerFallback())) };
+  }
   if (capability === "chat") {
     const prompt = String(preparedInput.prompt ?? preparedInput.text ?? "").trim();
     if (prompt) rememberUserMessage(prompt);
     const memory = buildBuddyMemoryContext();
     if (memory) {
       const existing = Array.isArray(preparedInput.messages) ? preparedInput.messages : [];
-      const systemIndex = existing.findIndex((message) => {
-        return (
-          message &&
-          typeof message === "object" &&
-          (message as Record<string, unknown>).role === "system"
-        );
-      });
+      const systemIndex = existing.findIndex((message) => message && typeof message === "object" && (message as Record<string, unknown>).role === "system");
       const messages = [...existing];
       if (systemIndex >= 0) {
         const current = messages[systemIndex] as Record<string, unknown>;
-        messages[systemIndex] = {
-          ...current,
-          content: `${String(current.content ?? "").trim()}\n\n${memory}`.trim(),
-        };
+        messages[systemIndex] = { ...current, content: `${String(current.content ?? "").trim()}\n\n${memory}`.trim() };
       } else {
         messages.unshift({ role: "system", content: memory });
       }
@@ -329,5 +328,17 @@ export async function runStudioJob(
     }
   }
   const mod = await import("./studio-runtime-impl");
-  return mod.runStudioJob(capability, preparedInput, onStatus);
+  try {
+    return await mod.runStudioJob(capability, preparedInput, capability === "tts" ? (message) => onStatus?.(message.replace(/^Working with .*…$/, "Generating your selected voice…")) : onStatus);
+  } catch (error) {
+    if (capability === "tts") {
+      console.error("Preset TTS failed", error);
+      throw new Error("The selected voice could not be generated.");
+    }
+    throw error;
+  }
+}
+
+function profileSpeakerFallback(): string {
+  return getBuddyVoiceProfile().speaker || "Ryan";
 }
