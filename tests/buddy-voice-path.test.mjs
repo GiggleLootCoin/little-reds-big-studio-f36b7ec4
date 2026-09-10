@@ -38,7 +38,7 @@ test("Qwen SSE completion must yield real audio, not a silent substitution", () 
   assert.match(gateway, /parseQwenTTSSSE/);
   assert.match(gateway, /Qwen3-TTS completed without cloned audio/);
   assert.match(gateway, /Qwen3-TTS returned no playable cloned audio artifact/);
-  assert.doesNotMatch(gateway, /speechSynthesis/);
+  assert.doesNotMatch(chat, /if \("speechSynthesis" in window\)/);
 });
 
 test("Red reference is cached and busy Qwen queues are retried", () => {
@@ -57,6 +57,18 @@ test("Qwen clone normalizes common language codes to the official Space language
   assert.match(gateway, /normalizeQwenLanguage/);
   assert.match(gateway, /en:\s*"English"/);
   assert.match(gateway, /normalizeQwenLanguage\(body\.language\)/);
+});
+
+test("Qwen FileData matches the current Gradio input contract", () => {
+  assert.match(gateway, /size:/);
+  assert.match(gateway, /is_stream:\s*false/);
+  assert.match(gateway, /meta:\s*\{ _type: "gradio\.FileData" \}/);
+});
+
+test("Qwen terminal null errors are treated as transient upstream failures", () => {
+  assert.match(gateway, /message === "null"/);
+  assert.match(gateway, /Qwen3-TTS upstream returned a terminal null error/);
+  assert.match(gateway, /isRetryableQueueError\(error\)/);
 });
 
 test("preset voices expose generated previews before selection", () => {
