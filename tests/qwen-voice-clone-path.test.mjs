@@ -7,18 +7,20 @@ const gateway = await read("src/lib/voice-clone-gateway.ts");
 const clone = await read("src/lib/real-voice-clone-v2.ts");
 const server = await read("src/server.ts");
 
-test("VoxCPM2 gateway uses the verified full-reference clone contract", () => {
-  assert.match(gateway, /openbmb-voxcpm-demo\.hf\.space/);
+test("Qwen3-TTS gateway uses the verified reference-clone contract", () => {
+  assert.match(gateway, /qwen-qwen3-tts\.hf\.space/);
   assert.match(gateway, /gradio_api\/upload/);
-  assert.match(gateway, /gradio_api\/call\/generate/);
+  assert.match(gateway, /gradio_api\/call\/generate_voice_clone/);
+  assert.match(gateway, /normalizeUploadedFile/);
   assert.match(gateway, /REFERENCE_CACHE_TTL_MS/);
   assert.match(gateway, /x-clone-provider/);
   assert.match(gateway, /x-red-voice-route/);
-  assert.doesNotMatch(gateway, /generate_voice_clone/);
-  assert.doesNotMatch(gateway, /QWEN_TTS/);
+  assert.match(gateway, /0\.6B/);
+  assert.doesNotMatch(gateway, /openbmb-voxcpm-demo/);
+  assert.doesNotMatch(gateway, /VoxCPM2/);
 });
 
-test("production clone generation uses VoxCPM2 and validates its exact returned audio", () => {
+test("production clone generation uses Qwen3-TTS and validates its exact returned audio", () => {
   assert.match(clone, /\/api\/voice-clone/);
   assert.match(clone, /normalizeAndVerifyBrowserAudio/);
   assert.match(clone, /response\.blob\(\)/);
