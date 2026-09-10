@@ -1,3 +1,5 @@
+import { buildAgentSystemPrompt } from "./buddy-agent";
+
 const KEY = "lrbgs-buddy-memory-v1";
 const MAX_MEMORIES = 24;
 const MAX_LENGTH = 240;
@@ -66,13 +68,16 @@ export function rememberUserMessage(text) {
 }
 
 export function buildBuddyMemoryContext() {
+  const cognitiveContext = buildAgentSystemPrompt();
   const memories = loadBuddyMemories();
-  if (!memories.length) return "";
-  return [
-    "Persistent Buddy memory: these are facts or preferences the user explicitly asked Buddy to remember or stated as a personal preference.",
-    ...memories.map((memory) => `- ${memory}`),
-    "Use this memory naturally when relevant. Do not invent additional memories.",
-  ].join("\n");
+  const memoryContext = memories.length
+    ? [
+        "Persistent Buddy memory: these are facts or preferences the user explicitly asked Buddy to remember or stated as a personal preference.",
+        ...memories.map((memory) => `- ${memory}`),
+        "Use this memory naturally when relevant. Do not invent additional memories.",
+      ].join("\n")
+    : "";
+  return memoryContext ? `${cognitiveContext}\n\n${memoryContext}` : cognitiveContext;
 }
 
 export function clearBuddyMemories() {
