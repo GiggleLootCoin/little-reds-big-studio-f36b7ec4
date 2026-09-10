@@ -20,6 +20,14 @@ test("Qwen3-TTS gateway uses the verified reference-clone contract", () => {
   assert.doesNotMatch(gateway, /VoxCPM2/);
 });
 
+test("Qwen terminal-null clone failures recover on the same provider with the 1.7B model", () => {
+  assert.match(gateway, /isTerminalNullError/);
+  assert.match(gateway, /terminal null on 0\.6B/);
+  assert.match(gateway, /modelSize: "1\.7B"/);
+  assert.match(gateway, /allowHighQuality: true/);
+  assert.match(gateway, /Qwen3-TTS reference clone/);
+});
+
 test("production clone generation uses Qwen3-TTS and validates its exact returned audio", () => {
   assert.match(clone, /\/api\/voice-clone/);
   assert.match(clone, /normalizeAndVerifyBrowserAudio/);

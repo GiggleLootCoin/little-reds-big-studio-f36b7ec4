@@ -58,6 +58,7 @@ function toWav(value: unknown): ArrayBuffer | null {
   put(0, "RIFF"); view.setUint32(4, 36 + pcm.byteLength, true); put(8, "WAVE"); put(12, "fmt "); view.setUint32(16, 16, true); view.setUint16(20, 1, true); view.setUint16(22, 1, true); view.setUint32(24, sampleRate, true); view.setUint32(28, sampleRate * 2, true); view.setUint16(32, 2, true); view.setUint16(34, 16, true); put(36, "data"); view.setUint32(40, pcm.byteLength, true); new Uint8Array(output, 44).set(new Uint8Array(pcm.buffer)); return output;
 }
 function isRetryableQueueError(error: unknown) { const message = error instanceof Error ? error.message : String(error); return /queue is full|max size is \d+ and size is \d+|too many requests|rate limit|gpu quota|terminal null error/i.test(message); }
+function isTerminalNullError(error: unknown) { const message = error instanceof Error ? error.message : String(error); return /terminal null error/i.test(message); }
 async function wait(ms: number) { await new Promise<void>((resolve) => setTimeout(resolve, ms)); }
 function artifactUrl(space: string, value: unknown) { if (typeof value === "string") return value; if (!value || typeof value !== "object") return ""; const item = value as Record<string, unknown>; if (typeof item.url === "string") return item.url; if (typeof item.path === "string") return `${space}/gradio_api/file=${item.path}`; if (typeof item.name === "string") return `${space}/gradio_api/file=${item.name}`; return ""; }
 
@@ -74,7 +75,35 @@ async function generate(space: string, file: UploadedReference, type: string, bo
   const audio = await fetch(artifact.startsWith("http") ? artifact : `${space}${artifact}`, { headers: auth(env) }); if (!audio.ok || !audio.body) throw new Error(`Qwen3-TTS audio download failed (${audio.status}).`);
   const headers = new Headers(audio.headers); headers.set("cache-control", "no-store"); headers.set("x-clone-provider", RED_VOICE_PROVIDER); headers.set("x-red-voice-route", "qwen3-tts-reference-clone"); return new Response(audio.body, { status: 200, headers });
 }
-async function generateWithQueueRetry(space: string, body: Body, env: Env): Promise<Response> { let lastError: unknown = null; for (let attempt = 0; attempt <= QWEN_QUEUE_RETRY_DELAYS_MS.length; attempt++) { try { const type = String(body.audioType || "audio/wav"); const file = await upload(space, body.referenceId!.trim(), body.audioBase64!, type, env); return await generate(space, file, type, body, env); } catch (error) { lastError = error; if (!isRetryableQueueError(error) || attempt === QWEN_QUEUE_RETRY_DELAYS_MS.length) throw error; const delay = QWEN_QUEUE_RETRY_DELAYS_MS[attempt]; console.warn(`[voice-clone] Qwen3-TTS busy/transient; retrying in ${delay}ms (attempt ${attempt + 2}).`); await wait(delay); } } throw lastError instanceof Error ? lastError : new Error(String(lastError)); }
+async function generateWithQueueRetry(space: string, body: Body, env: Env): Promise<Response> {
+  let lastError: unknown = null;
+  for (let attempt = 0; attempt <= QWEN_QUEUE_RETRY_DELAYS_MS.length; attempt++) {
+    try {
+      const type = String(body.audioType || "audio/wav");
+      const file = await upload(space, body.referenceId!.trim(), body.audioBase64!, type, env);
+      return await generate(space, file, type, body, env);
+    } catch (error) {
+      lastError = error;
+      if (isTerminalNullError(error) && body.modelSize !== "1.7B") {
+        const upgraded: Body = { ...body, modelSize: "1.7B", allowHighQuality: true };
+        console.warn("[voice-clone] Qwen3-TTS returned terminal null on 0.6B; retrying the same clone on 1.7B.");
+        try {
+          const type = String(upgraded.audioType || "audio/wav");
+          const file = await upload(space, upgraded.referenceId!.trim(), upgraded.audioBase64!, type, env);
+          return await generate(space, file, type, upgraded, env);
+        } catch (fallbackError) {
+          lastError = fallbackError;
+          if (!isRetryableQueueError(fallbackError) || attempt === QWEN_QUEUE_RETRY_DELAYS_MS.length) throw fallbackError;
+        }
+      }
+      if (!isRetryableQueueError(error) || attempt === QWEN_QUEUE_RETRY_DELAYS_MS.length) throw error;
+      const delay = QWEN_QUEUE_RETRY_DELAYS_MS[attempt];
+      console.warn(`[voice-clone] Qwen3-TTS busy/transient; retrying in ${delay}ms (attempt ${attempt + 2}).`);
+      await wait(delay);
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error(String(lastError));
+}
 
 export async function handleVoiceClone(request: Request, env: Env): Promise<Response | null> {
   const path = new URL(request.url).pathname; if (path !== "/api/voice-clone" && path !== "/api/ai/voice-clone") return null; if (request.method !== "POST") return Response.json({ ok: false, error: "POST required." }, { status: 405 });
