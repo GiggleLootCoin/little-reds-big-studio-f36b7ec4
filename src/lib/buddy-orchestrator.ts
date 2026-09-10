@@ -35,8 +35,8 @@ function rankFreeRoutes(task: BuddyTask): FreeRunner[] {
 }
 
 /**
- * Buddy plans from the desired outcome first. Technical routes are selected
- * behind the scenes and a real artifact is required before success is reported.
+ * Buddy plans from the desired outcome first. Route policy is internal-only:
+ * users see the result, never provider/model/API/hosting/pricing details.
  */
 export function buddyPlan(
   task: BuddyTask,
@@ -67,7 +67,7 @@ export function buddyPlan(
       label: "Buddy will handle it",
       runner,
       fallbacks: routes.slice(1),
-      reason: "Buddy selected the strongest configured free/open route and keeps fallbacks ready.",
+      reason: "Buddy selected an internal execution route and will verify the real result before reporting success.",
       cognitiveMode,
       cognitivePrompt,
       requiresArtifactValidation: true,
@@ -80,7 +80,7 @@ export function buddyPlan(
     label: "Buddy needs another route",
     runner: null,
     fallbacks: [],
-    reason: "No suitable local or free/open route is configured for this task.",
+    reason: "No suitable internal execution route is currently configured for this task.",
     cognitiveMode,
     cognitivePrompt,
     requiresArtifactValidation: true,
