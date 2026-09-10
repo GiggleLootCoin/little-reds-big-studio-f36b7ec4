@@ -88,6 +88,27 @@ export function validateMusicVideoArtifact(input: {
   return videoDelta <= tolerance && audioDelta <= tolerance && avDelta <= 0.25;
 }
 
+export type MusicVideoAvStreams = {
+  hasVideoStream: boolean;
+  hasAudioStream: boolean;
+  videoDurationSeconds: number;
+  audioDurationSeconds: number;
+};
+
+/** Normalize decoded browser/container metadata before final artifact checks. */
+export function inspectMusicVideoAvStreams(input: MusicVideoAvStreams): MusicVideoAvStreams {
+  return {
+    hasVideoStream: input.hasVideoStream === true,
+    hasAudioStream: input.hasAudioStream === true,
+    videoDurationSeconds: Number.isFinite(input.videoDurationSeconds)
+      ? input.videoDurationSeconds
+      : 0,
+    audioDurationSeconds: Number.isFinite(input.audioDurationSeconds)
+      ? input.audioDurationSeconds
+      : 0,
+  };
+}
+
 export function validateRenderedMusicVideoArtifact(input: {
   contentType: string;
   durationSeconds: number;
