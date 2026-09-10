@@ -27,10 +27,12 @@ jobs:
         run: npm ci --no-audit --no-fund --legacy-peer-deps
       - name: Audio artifact regression tests
         run: node --experimental-strip-types --test tests/audio-artifact.test.ts
+      - name: Music video AV regression tests
+        run: node --experimental-strip-types --test tests/music-video-av-validation.test.mjs tests/music-video-pipeline.test.mjs
       - name: Buddy voice regression tests
         run: npm run test:voice
-      - name: Buddy memory regression tests
-        run: node --test tests/buddy-memory.test.mjs
+      - name: Buddy memory and cognitive integration tests
+        run: node --experimental-strip-types --test tests/buddy-memory.test.mjs tests/buddy-cognitive-integration.test.mjs
       - name: Buddy live latency regression tests
         run: node --test tests/live-buddy-latency.test.mjs
       - name: Speech language normalization regression test
