@@ -1,4 +1,4 @@
-import { redCognitiveSystemPrompt, RED_COGNITIVE_SOURCE } from "@/lib/buddy-red-cognitive-core";
+import { redCognitiveSystemPrompt, RED_COGNITIVE_SOURCE } from "./buddy-red-cognitive-core.ts";
 
 export type BuddyEmotion =
   "neutral" | "happy" | "excited" | "curious" | "thinking" | "surprised" | "concerned" | "proud";
