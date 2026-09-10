@@ -6,7 +6,7 @@ export const RED_VOICE_PROVIDER = "Qwen3-TTS reference clone";
 const PRIMARY_SPACE = "https://qwen-qwen3-tts.hf.space";
 const REFERENCE_CACHE_TTL_MS = 15 * 60_000;
 const QWEN_QUEUE_RETRY_DELAYS_MS = [1500, 4000, 8000];
-const cache = new Map<string, { path: string; expires: number }>();
+const cache = new Map<string, { path: string; size: number; expires: number }>();
 
 function primarySpace(env: Env) { return (env.QWEN_TTS_SPACE_URL?.trim() || PRIMARY_SPACE).replace(/\/$/, ""); }
 function auth(env: Env): HeadersInit { return env.HF_TOKEN?.trim() ? { Authorization: `Bearer ${env.HF_TOKEN.trim()}` } : {}; }
@@ -21,12 +21,12 @@ const QWEN_LANGUAGE_NAMES: Record<string, string> = {
 function normalizeQwenLanguage(value?: string) { const trimmed = value?.trim() || "English"; return QWEN_LANGUAGE_NAMES[trimmed.toLowerCase()] || trimmed; }
 
 async function upload(space: string, id: string, base64: string, type: string, env: Env) {
-  const key = `${space}|${id}`; const old = cache.get(key); if (old && old.expires > Date.now()) return old.path;
+  const key = `${space}|${id}`; const old = cache.get(key); if (old && old.expires > Date.now()) return { path: old.path, size: old.size };
   const bytes = decode(base64); const form = new FormData(); form.append("files", new Blob([bytes], { type }), `red-reference.${ext(type)}`);
   const response = await fetch(`${space}/gradio_api/upload`, { method: "POST", headers: auth(env), body: form });
   if (!response.ok) { const detail = (await response.text().catch(() => "")).slice(0, 240); throw new Error(`Qwen3-TTS reference upload failed (${response.status}). ${detail}`.trim()); }
   const payload = (await response.json()) as unknown; const path = Array.isArray(payload) ? String(payload[0] || "") : "";
-  if (!path) throw new Error("Qwen3-TTS returned no reference-file path."); cache.set(key, { path, expires: Date.now() + REFERENCE_CACHE_TTL_MS }); return { path, size: bytes.byteLength };
+  if (!path) throw new Error("Qwen3-TTS returned no reference-file path."); cache.set(key, { path, size: bytes.byteLength, expires: Date.now() + REFERENCE_CACHE_TTL_MS }); return { path, size: bytes.byteLength };
 }
 
 export type QwenTTSSEParseResult = { kind: "audio"; payload: unknown[] } | { kind: "error"; message: string } | { kind: "none" };
