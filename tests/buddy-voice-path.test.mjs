@@ -35,8 +35,8 @@ test("Qwen clone uses reference text when available and x-vector-only mode other
   assert.match(gateway, /generate_voice_clone/);
 });
 
-test("Qwen clone defaults to the fast free 0.6B model", () => {
-  assert.match(gateway, /body\.modelSize === "1\.7B" \? "1\.7B" : "0\.6B"/);
+test("Qwen clone defaults to the fast free 0.6B model and gates 1.7B behind an explicit opt-in", () => {
+  assert.match(gateway, /body\.modelSize === "1\.7B" && body\.allowHighQuality === true \? "1\.7B" : "0\.6B"/);
 });
 
 test("Qwen SSE completion must yield real audio, not a silent substitution", () => {
