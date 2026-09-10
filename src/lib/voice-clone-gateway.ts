@@ -1,6 +1,6 @@
 type Env = { HF_TOKEN?: string; QWEN_TTS_SPACE_URL?: string };
 
-type Body = { referenceId?: string; audioBase64?: string; audioType?: string; refText?: string; text?: string; language?: string; modelSize?: "0.6B" | "1.7B" };
+type Body = { referenceId?: string; audioBase64?: string; audioType?: string; refText?: string; text?: string; language?: string; modelSize?: "0.6B" | "1.7B"; allowHighQuality?: boolean };
 
 export const RED_VOICE_PROVIDER = "Qwen3-TTS reference clone";
 const PRIMARY_SPACE = "https://qwen-qwen3-tts.hf.space";
@@ -55,7 +55,7 @@ function artifactUrl(space: string, value: unknown) { if (typeof value === "stri
 
 async function generate(space: string, path: string, size: number, type: string, body: Body, env: Env): Promise<Response> {
   const refText = body.refText?.trim() || ""; const targetText = body.text?.trim().replace(/\s+/g, " ").slice(0, 220) || ""; if (!targetText) throw new Error("Target text is required.");
-  const start = await fetch(`${space}/gradio_api/call/generate_voice_clone`, { method: "POST", headers: { ...auth(env), "content-type": "application/json" }, body: JSON.stringify({ data: [fileData(path, type, size), refText, targetText, normalizeQwenLanguage(body.language), !refText, body.modelSize === "1.7B" ? "1.7B" : "0.6B"] }) });
+  const start = await fetch(`${space}/gradio_api/call/generate_voice_clone`, { method: "POST", headers: { ...auth(env), "content-type": "application/json" }, body: JSON.stringify({ data: [fileData(path, type, size), refText, targetText, normalizeQwenLanguage(body.language), !refText, body.modelSize === "1.7B" && body.allowHighQuality === true ? "1.7B" : "0.6B"] }) });
   if (!start.ok) { const detail = (await start.text().catch(() => "")).slice(0, 300); throw new Error(`Qwen3-TTS clone start failed (${start.status}). ${detail}`.trim()); }
   const job = (await start.json()) as { event_id?: string }; if (!job.event_id) throw new Error("Qwen3-TTS returned no clone job ID.");
   const result = await fetch(`${space}/gradio_api/call/generate_voice_clone/${encodeURIComponent(job.event_id)}`, { headers: { ...auth(env), Accept: "text/event-stream" } });
