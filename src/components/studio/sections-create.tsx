@@ -45,7 +45,7 @@ export function UploadPanel() {
       <button type="button" onClick={() => inputRef.current?.click()} className="w-full rounded-2xl border-2 border-dashed border-border bg-background/40 p-7 text-center transition-colors hover:border-primary hover:bg-primary/5">
         <UploadCloud className="mx-auto mb-2 size-8 text-primary" />
         <p className="font-display text-sm">Choose audio or reference imagery</p>
-        <p className="mt-1 text-xs text-muted-foreground">The browser holds this session. No paid storage backend.</p>
+        <p className="mt-1 text-xs text-muted-foreground">The browser holds this session.</p>
         <input ref={inputRef} hidden type="file" multiple accept="audio/*,image/*" onChange={(e) => add(e.target.files)} />
       </button>
       {files.length > 0 && <div className="space-y-2">{files.map((file) => <div key={`${file.name}-${file.url}`} className="rounded-xl border border-border bg-background/50 p-3">
@@ -64,14 +64,14 @@ export function LabPanel() {
   const names = ["Vocals", "Drums", "Bass", "Other"];
   return (
     <Panel eyebrow="Audio lab" title="Red'sLab Stem Studio" icon={<Scissors className="size-5" />}>
-      <p className="text-sm text-muted-foreground">Local mixer controls plus the best free/open stem separator.</p>
+      <p className="text-sm text-muted-foreground">Local mixer controls plus the stem separator.</p>
       {studio.audioUrl ? <audio controls src={studio.audioUrl} className="w-full" /> : <Note>Upload a track above first.</Note>}
       <div className="space-y-2">{names.map((name, i) => <div key={name} className="rounded-xl border border-border bg-background/40 p-3">
         <div className="mb-2 flex justify-between"><span className="font-display text-sm">{name}</span><span className="text-xs text-muted-foreground">{levels[i]}%</span></div>
         <div className="h-8 overflow-hidden rounded-lg bg-primary/10">{Array.from({ length: 24 }, (_, n) => <span key={n} className="mr-[2px] inline-block w-[3%] rounded-sm bg-primary/60" style={{ height: `${20 + ((n * 17 + i * 23) % 70)}%` }} />)}</div>
         <StudioSlider label="Level" value={levels[i]} onChange={(v) => setLevels((old) => old.map((x, n) => (n === i ? v : x)))} unit="%" />
       </div>)}</div>
-      <StudioButton className="w-full" onClick={() => window.open(demucs.url, "_blank", "noopener,noreferrer")}>Open Demucs free stem separator</StudioButton>
+      <StudioButton className="w-full" onClick={() => window.open(demucs.url, "_blank", "noopener,noreferrer")}>Open stem separator</StudioButton>
     </Panel>
   );
 }
@@ -146,7 +146,7 @@ export function VideoPanel() {
   return (
     <Panel eyebrow="Video" title="Full Music Video Generator" icon={<Film className="size-5" />}>
       <p className="text-sm text-muted-foreground">Generate a complete scene-by-scene music video for the finished song. The final render uses the exact song audio, not audio invented by the video model.</p>
-      <Note><Readout label="Song" value={studio.audioName || (studio.audioUrl ? "Ready" : "Not loaded")} /><Readout label="Visual reference" value={studio.referenceUrl ? "Loaded" : "Optional"} /><Readout label="Cost" value="Free/open engines" /></Note>
+      <Note><Readout label="Song" value={studio.audioName || (studio.audioUrl ? "Ready" : "Not loaded")} /><Readout label="Visual reference" value={studio.referenceUrl ? "Loaded" : "Optional"} /></Note>
       {status && <p className="rounded-xl border border-border bg-background/50 p-3 text-xs">{status}</p>}
       {resultUrl && <div className="space-y-2 rounded-xl border border-border bg-background/50 p-3">
         <video controls playsInline src={resultUrl} className="w-full rounded-lg" />

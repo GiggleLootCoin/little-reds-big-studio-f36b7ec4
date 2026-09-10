@@ -15,8 +15,7 @@ export const FREE_RUNNERS: FreeRunner[] = [
     id: "cf-whisper-large-v3",
     name: "Cloudflare Whisper Large V3",
     kind: "public",
-    description:
-      "Primary server-side speech-to-text engine for Buddy microphone input without the rejected Turbo route.",
+    description: "Primary server-side speech-to-text engine for Buddy microphone input without the rejected Turbo route.",
     capabilities: ["speech-to-text", "transcription"],
     url: "/api/ai/speech-to-text",
     notes: "Server-side Workers AI Whisper route; accepts normalized PCM16 WAV audio.",
@@ -26,12 +25,10 @@ export const FREE_RUNNERS: FreeRunner[] = [
     id: "buddy-web-search",
     name: "Buddy Live Web Search",
     kind: "public",
-    description:
-      "Server-side live internet search for current facts, research, models, tools, prices, and references.",
+    description: "Server-side live internet search for current facts, research, models, tools, prices, and references.",
     capabilities: ["web-search", "research", "internet-search"],
     url: "/api/ai/web-search",
-    notes:
-      "No-key search route. Results are fetched server-side and returned with titles, URLs, and snippets.",
+    notes: "No-key search route. Results are fetched server-side and returned with titles, URLs, and snippets.",
     priority: 1200,
   },
   {
@@ -75,24 +72,23 @@ export const FREE_RUNNERS: FreeRunner[] = [
     priority: 90,
   },
   {
-    id: "cf-buddy-tts",
-    name: "Buddy Voice Engine",
+    id: "hf-kokoro-tts",
+    name: "Kokoro TTS",
     kind: "public",
-    description: "Fast server-side multilingual speech for everyday Buddy voices.",
+    description: "Free public multi-voice Kokoro TTS runtime for preset Buddy voices.",
     capabilities: ["tts"],
-    url: "/api/ai/tts",
-    notes: "Preset speech only; clone engines are excluded from this pool.",
-    priority: 1300,
+    url: "https://huggingface.co/spaces/Remsky/Kokoro-TTS-Zero",
+    notes: "ZeroGPU Gradio runtime. Voice IDs are mapped internally to Kokoro voice packs.",
+    priority: 1500,
   },
   {
     id: "hf-qwen3-tts",
     name: "Qwen3-TTS 1.7B Voice Clone",
     kind: "public",
-    description: "Free reference-voice cloning fallback using Qwen3-TTS Base 1.7B.",
-    capabilities: ["tts", "voice-clone"],
+    description: "Free reference-voice cloning runtime using Qwen3-TTS Base 1.7B.",
+    capabilities: ["voice-clone"],
     url: "https://huggingface.co/spaces/Qwen/Qwen3-TTS",
-    notes:
-      "Uses full reference conditioning when a transcript is available and speaker-embedding mode otherwise.",
+    notes: "Used for the creator's authorized reference-voice clone; not a preset voice runtime.",
     priority: 1000,
   },
   {
@@ -100,10 +96,9 @@ export const FREE_RUNNERS: FreeRunner[] = [
     name: "Chatterbox Voice Clone",
     kind: "public",
     description: "Free reference-voice cloning engine from Resemble AI.",
-    capabilities: ["voice-clone", "tts"],
+    capabilities: ["voice-clone"],
     url: "https://huggingface.co/spaces/ResembleAI/Chatterbox",
-    notes:
-      "Uses the supplied reference audio directly. Kept as an independent fallback after Qwen.",
+    notes: "Uses the supplied reference audio directly as an independent clone fallback.",
     priority: 900,
   },
   {
@@ -113,8 +108,7 @@ export const FREE_RUNNERS: FreeRunner[] = [
     description: "Independent multilingual reference-voice cloning fallback.",
     capabilities: ["voice-clone"],
     url: "https://huggingface.co/spaces/ResembleAI/Chatterbox-Multilingual-TTS-V3",
-    notes:
-      "Fallback only; never treated as a preset voice. Default Red path skips this demo route.",
+    notes: "Fallback only; never treated as a preset voice.",
     priority: 700,
   },
   {
@@ -131,12 +125,10 @@ export const FREE_RUNNERS: FreeRunner[] = [
     id: "hf-seed-vc",
     name: "Seed-VC Singing Voice Conversion",
     kind: "public",
-    description:
-      "Zero-shot voice and singing-voice conversion with source-performance preservation.",
+    description: "Zero-shot voice and singing-voice conversion with source-performance preservation.",
     capabilities: ["voice-swap", "singing-voice-conversion", "song-voice-swap"],
     url: "https://huggingface.co/spaces/Plachta/Seed-VC",
-    notes:
-      "Preferred free SVC route. The project explicitly supports zero-shot singing conversion; source vocals should be isolated for best results.",
+    notes: "Preferred free SVC route. Source vocals should be isolated for best results.",
     priority: 900,
   },
   {
@@ -146,8 +138,7 @@ export const FREE_RUNNERS: FreeRunner[] = [
     description: "Open voice-conversion fallback for authorized speaking and singing voices.",
     capabilities: ["voice", "voice-swap", "singing-voice-conversion", "song-voice-swap"],
     url: "https://huggingface.co/spaces/IAHispano/ApplioX",
-    notes:
-      "Fallback conversion engine; not used to claim a custom clone without a verified reference.",
+    notes: "Fallback conversion engine; not used to claim a custom clone without a verified reference.",
     priority: 1300,
   },
   {
@@ -177,8 +168,8 @@ export const FREE_RUNNERS: FreeRunner[] = [
     description: "Song and instrumental music generation.",
     capabilities: ["music", "song", "lyrics-to-music", "audio-generation"],
     url: "/api/ai/music",
-    notes: "Server route; used only after free ZeroGPU Music 3 routes fail.",
-    priority: 100,
+    notes: "Legacy server route retained but must not be selected by the free-only policy.",
+    priority: -100,
   },
   {
     id: "hf-zimage-turbo",
@@ -207,8 +198,8 @@ export const FREE_RUNNERS: FreeRunner[] = [
     description: "Server-side text-to-image generation and editing.",
     capabilities: ["image", "image-generation", "artwork", "cover"],
     url: "/api/ai/image",
-    notes: "Server route; used only after free ZeroGPU image routes fail.",
-    priority: 100,
+    notes: "Legacy server route retained but must not be selected by the free-only policy.",
+    priority: -100,
   },
   {
     id: "hf-wan22-fast-preview",
@@ -237,8 +228,8 @@ export const FREE_RUNNERS: FreeRunner[] = [
     description: "Text-to-video and image-to-video generation.",
     capabilities: ["video", "video-generation", "image-to-video", "animation"],
     url: "/api/ai/video",
-    notes: "Server route; used only after the free public video route fails.",
-    priority: 100,
+    notes: "Legacy server route retained but must not be selected by the free-only policy.",
+    priority: -100,
   },
   {
     id: "hf-demucs",
@@ -247,8 +238,7 @@ export const FREE_RUNNERS: FreeRunner[] = [
     description: "Real vocal/drum/bass/other separation.",
     capabilities: ["vocal-separation", "stems", "audio-separation"],
     url: "https://huggingface.co/spaces/owiedotch/demucs-stem-separation",
-    notes:
-      "Actual separated audio required; intended as the first stage of song voice-swap workflows.",
+    notes: "Actual separated audio required; intended as the first stage of song voice-swap workflows.",
     priority: 170,
   },
 ];
