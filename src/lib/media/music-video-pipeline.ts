@@ -88,6 +88,65 @@ export function validateMusicVideoArtifact(input: {
   return videoDelta <= tolerance && audioDelta <= tolerance && avDelta <= 0.25;
 }
 
+export type MusicVideoAvStreams = {
+  hasVideoStream: boolean;
+  hasAudioStream: boolean;
+  videoDurationSeconds: number;
+  audioDurationSeconds: number;
+};
+
+/**
+ * Normalize decoded browser/container metadata before final artifact checks.
+ * The renderer supplies these values only after the output video has been
+ * decoded and the audio track has independently decoded through Web Audio.
+ */
+export function inspectMusicVideoAvStreams(input: MusicVideoAvStreams): MusicVideoAvStreams {
+  return {
+    hasVideoStream: input.hasVideoStream === true,
+    hasAudioStream: input.hasAudioStream === true,
+    videoDurationSeconds: Number.isFinite(input.videoDurationSeconds)
+      ? input.videoDurationSeconds
+      : 0,
+    audioDurationSeconds: Number.isFinite(input.audioDurationSeconds)
+      ? input.audioDurationSeconds
+      : 0,
+  };
+}
+
+/**
+ * Final browser-render validation. Unlike the legacy metadata-only check,
+ * this path refuses to certify an output unless decoded audio and video
+ * streams are both present and their durations agree with the song.
+ */
+export function validateRenderedMusicVideoAvArtifact(input: {
+  contentType: string;
+  durationSeconds: number;
+  audioDurationSeconds: number;
+  hasVideoStream: boolean;
+  hasAudioStream: boolean;
+  expectedDurationSeconds: number;
+  byteLength: number;
+}): boolean {
+  if (!/^video\//i.test(input.contentType)) return false;
+  const streams = inspectMusicVideoAvStreams({
+    hasVideoStream: input.hasVideoStream,
+    hasAudioStream: input.hasAudioStream,
+    videoDurationSeconds: input.durationSeconds,
+    audioDurationSeconds: input.audioDurationSeconds,
+  });
+  if (!streams.hasVideoStream || !streams.hasAudioStream) return false;
+  if (streams.videoDurationSeconds <= 0 || streams.audioDurationSeconds <= 0) return false;
+  if (!Number.isFinite(input.expectedDurationSeconds) || input.expectedDurationSeconds <= 0) return false;
+  if (!Number.isFinite(input.byteLength) || input.byteLength < MIN_VIDEO_ARTIFACT_BYTES) return false;
+
+  const tolerance = Math.max(0.5, input.expectedDurationSeconds * 0.02);
+  return (
+    Math.abs(streams.videoDurationSeconds - input.expectedDurationSeconds) <= tolerance &&
+    Math.abs(streams.audioDurationSeconds - input.expectedDurationSeconds) <= tolerance &&
+    Math.abs(streams.videoDurationSeconds - streams.audioDurationSeconds) <= 0.25
+  );
+}
+
 export function validateRenderedMusicVideoArtifact(input: {
   contentType: string;
   durationSeconds: number;
