@@ -13,6 +13,7 @@ const required = [
   ["Qwen voice clone operation", gateway, /generate_voice_clone/],
   ["Qwen reference upload", gateway, /gradio_api\/upload/],
   ["verified Qwen3-TTS provider", gateway, /qwen-qwen3-tts\.hf\.space/],
+  ["Qwen3-TTS secondary recovery Space", gateway, /wordercom-qwen3-tts\.hf\.space/],
   ["provider response marker", gateway, /x-clone-provider/],
   ["verified provider route marker", gateway, /x-red-voice-route.*qwen3-tts-reference-clone/],
   [
@@ -37,7 +38,6 @@ for (const forbidden of [
   "rahul7star",
   "spacekaren",
   "OPENROUTERAI_API_KEY",
-  "QWEN_TTS_FALLBACK_SPACE_URL",
   "voxcpm2-reference-clone",
   "openbmb-voxcpm-demo.hf.space",
 ]) {
