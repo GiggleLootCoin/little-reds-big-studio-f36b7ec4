@@ -1,15 +1,17 @@
-type Env = { HF_TOKEN?: string; QWEN_TTS_SPACE_URL?: string };
+type Env = { HF_TOKEN?: string; QWEN_TTS_SPACE_URL?: string; QWEN_TTS_FALLBACK_SPACE_URL?: string };
 
 type Body = { referenceId?: string; audioBase64?: string; audioType?: string; refText?: string; text?: string; language?: string; modelSize?: "0.6B" | "1.7B"; allowHighQuality?: boolean };
 type UploadedReference = { path: string; url?: string | null; size: number; orig_name?: string; mime_type?: string; is_stream?: boolean; meta?: Record<string, unknown> };
 
 export const RED_VOICE_PROVIDER = "Qwen3-TTS reference clone";
 const PRIMARY_SPACE = "https://qwen-qwen3-tts.hf.space";
+const FALLBACK_SPACE = "https://wordercom-qwen3-tts.hf.space";
 const REFERENCE_CACHE_TTL_MS = 15 * 60_000;
 const QWEN_QUEUE_RETRY_DELAYS_MS = [1500, 4000, 8000];
 const cache = new Map<string, { file: UploadedReference; expires: number }>();
 
 function primarySpace(env: Env) { return (env.QWEN_TTS_SPACE_URL?.trim() || PRIMARY_SPACE).replace(/\/$/, ""); }
+function fallbackSpace(env: Env) { return (env.QWEN_TTS_FALLBACK_SPACE_URL?.trim() || FALLBACK_SPACE).replace(/\/$/, ""); }
 function auth(env: Env): HeadersInit { return env.HF_TOKEN?.trim() ? { Authorization: `Bearer ${env.HF_TOKEN.trim()}` } : {}; }
 function ext(type: string) { const t = type.toLowerCase(); if (t.includes("webm")) return "webm"; if (t.includes("mpeg")) return "mp3"; if (t.includes("ogg")) return "ogg"; if (t.includes("flac")) return "flac"; return "wav"; }
 function decode(value: string) { const s = value.replace(/^data:[^,]+,/, "").replace(/\s/g, ""); let binary: string; try { binary = atob(s); } catch { throw new Error("The Red voice reference is not valid base64 audio."); } const bytes = Uint8Array.from(binary, (c) => c.charCodeAt(0)); return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength); }
@@ -75,6 +77,14 @@ async function generate(space: string, file: UploadedReference, type: string, bo
   const audio = await fetch(artifact.startsWith("http") ? artifact : `${space}${artifact}`, { headers: auth(env) }); if (!audio.ok || !audio.body) throw new Error(`Qwen3-TTS audio download failed (${audio.status}).`);
   const headers = new Headers(audio.headers); headers.set("cache-control", "no-store"); headers.set("x-clone-provider", RED_VOICE_PROVIDER); headers.set("x-red-voice-route", "qwen3-tts-reference-clone"); return new Response(audio.body, { status: 200, headers });
 }
+
+async function generateAtSpace(space: string, body: Body, env: Env): Promise<Response> {
+  const type = String(body.audioType || "audio/wav");
+  const file = await upload(space, body.referenceId!.trim(), body.audioBase64!, type, env);
+  const requestBody: Body = { ...body, modelSize: "1.7B", allowHighQuality: true };
+  return generate(space, file, type, requestBody, env);
+}
+
 async function generateWithQueueRetry(space: string, body: Body, env: Env): Promise<Response> {
   let lastError: unknown = null;
   for (let attempt = 0; attempt <= QWEN_QUEUE_RETRY_DELAYS_MS.length; attempt++) {
@@ -93,8 +103,15 @@ async function generateWithQueueRetry(space: string, body: Body, env: Env): Prom
           return await generate(space, file, type, upgraded, env);
         } catch (fallbackError) {
           lastError = fallbackError;
+          if (isTerminalNullError(fallbackError)) {
+            console.warn("[voice-clone] Primary Qwen3-TTS Space returned terminal null on both models; trying the secondary Qwen3-TTS Space.");
+            try { return await generateAtSpace(fallbackSpace(env), body, env); } catch (secondaryError) { lastError = secondaryError; }
+          }
           if (!isRetryableQueueError(fallbackError) || attempt === QWEN_QUEUE_RETRY_DELAYS_MS.length) throw fallbackError;
         }
+      } else if (isTerminalNullError(error) && body.modelSize === "1.7B") {
+        console.warn("[voice-clone] Primary Qwen3-TTS Space returned terminal null on 1.7B; trying the secondary Qwen3-TTS Space.");
+        try { return await generateAtSpace(fallbackSpace(env), body, env); } catch (secondaryError) { lastError = secondaryError; }
       }
       if (!isRetryableQueueError(error) || attempt === QWEN_QUEUE_RETRY_DELAYS_MS.length) throw error;
       const delay = QWEN_QUEUE_RETRY_DELAYS_MS[attempt];
