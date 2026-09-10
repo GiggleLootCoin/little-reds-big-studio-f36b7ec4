@@ -30,8 +30,13 @@ test("production Red clone uses the Worker endpoint and verifies returned audio"
 test("Qwen clone uses reference text when available and x-vector-only mode otherwise", () => {
   assert.match(gateway, /refText/);
   assert.match(gateway, /!refText/);
+  assert.match(gateway, /0\.6B/);
   assert.match(gateway, /1\.7B/);
   assert.match(gateway, /generate_voice_clone/);
+});
+
+test("Red clone defaults to the fast free 0.6B model", () => {
+  assert.match(runtime, /modelSize: "0\.6B" \| "1\.7B" = "0\.6B"/);
 });
 
 test("Qwen SSE completion must yield real audio, not a silent substitution", () => {
