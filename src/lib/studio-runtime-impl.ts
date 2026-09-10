@@ -412,7 +412,9 @@ async function prepareVoice(capability: StudioCapability, input: StudioJobInput)
   const profile = getBuddyVoiceProfile();
   const next = { ...input };
   if (profile.language && profile.language !== "Auto") next.language = profile.language;
-  if (profile.mode === "clone") {
+  const requestedSpeaker = String(input.speaker ?? "").trim();
+  const explicitPresetSpeaker = requestedSpeaker.length > 0 && requestedSpeaker !== "Red";
+  if (profile.mode === "clone" && !explicitPresetSpeaker) {
     if (!profile.cloneVerified)
       throw new Error(
         "Your custom voice is not verified yet. Generate and verify the clone first.",
@@ -429,7 +431,6 @@ async function prepareVoice(capability: StudioCapability, input: StudioJobInput)
   // Preserve an explicit speaker supplied by the caller (especially the
   // uncommitted preview selection). Falling back to the saved profile keeps
   // normal Buddy TTS behaviour unchanged.
-  const requestedSpeaker = String(input.speaker ?? "").trim();
   next.speaker = requestedSpeaker || profile.speaker;
   next.text = input.text ?? input.target_text ?? input.prompt ?? "";
   return { capability, input: next };
