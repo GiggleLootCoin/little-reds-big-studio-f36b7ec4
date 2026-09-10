@@ -270,8 +270,11 @@ export async function runStudioJob(
     if (!text) throw new Error("Voice text is empty.");
     const language = String(input.language ?? profile.language ?? "English");
     const modelSize = input.model_size === "0.6B" ? "0.6B" : "1.7B";
+    // An explicitly requested non-Red speaker is a preview/selection operation.
+    // It must win over the saved Red profile so a preset cannot accidentally clone Red.
     const wantsRedVoice =
-      profile.mode === "clone" || profile.speaker === "Red" || input.speaker === "Red";
+      input.speaker === "Red" ||
+      (!input.speaker && (profile.mode === "clone" || profile.speaker === "Red"));
     if (wantsRedVoice) {
       let savedSample = await getBuddyVoiceSample();
       const effectiveSpeaker = typeof input.speaker === "string" ? input.speaker : profile.speaker;
