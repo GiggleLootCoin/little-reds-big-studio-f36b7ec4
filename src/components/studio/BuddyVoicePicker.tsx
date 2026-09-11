@@ -6,22 +6,21 @@ import { saveLocalBuddyVoiceReference } from "@/lib/local-voice-reference";
 import { BUDDY_MOODS, BUDDY_TONES, BUDDY_VOICE_PRESETS } from "@/lib/buddy-voice";
 import { BUDDY_EXPANDED_LANGUAGES, BUDDY_EXPANDED_VOICES } from "@/lib/buddy-voice-expanded";
 import { getStoredPresetPreview } from "@/lib/stored-preset-previews";
+import { normalizeBuddyPresetSpeaker } from "@/lib/buddy-preset-voice-routing";
 import { StudioButton } from "./ui";
 
 const CLONE_TEXT = "Hello. This is your cloned voice sample. Would you like to use this voice for Buddy now, or would you like to record again?";
 const REFERENCE_TRANSCRIPT = CLONE_TEXT;
 const PREVIEW_TEXT = "Hello. This is Buddy. This is a real voice preview, so you can listen before choosing this voice.";
-const normalizePresetSpeaker = (speaker: string) => {
-  const raw = speaker.trim();
+const normalizePresetSpeaker = (speaker: string) => normalizeBuddyPresetSpeaker(speaker);
+const previewLookupSpeaker = (speaker: string) => {
+  const raw = normalizePresetSpeaker(speaker);
   if (!raw) return "";
-  if (raw === "Red") return "Red";
-  if (raw.startsWith("aura-2-")) return raw;
-  return BUDDY_EXPANDED_VOICES.some((v) => v.id === raw) ? `aura-2-${raw}-en` : raw;
+  return `aura-2-${raw}-en`;
 };
 const displaySpeaker = (speaker: string) => {
-  const canonical = normalizePresetSpeaker(speaker);
-  const raw = canonical.replace(/^aura-2-/, "").replace(/-en$/, "");
-  return BUDDY_EXPANDED_VOICES.find((v) => v.id === raw)?.label || BUDDY_VOICE_PRESETS.find((v) => v.id === canonical)?.label || speaker;
+  const raw = normalizePresetSpeaker(speaker);
+  return BUDDY_EXPANDED_VOICES.find((v) => v.id === raw)?.label || BUDDY_VOICE_PRESETS.find((v) => v.id === speaker)?.label || speaker;
 };
 const FAILURE = "Buddy couldn't create the voice clone yet.";
 
@@ -30,7 +29,7 @@ export function BuddyVoicePicker() {
   const [busy, setBusy] = useState(false);
   const [recording, setRecording] = useState(false);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
-  const [presetCandidate, setPresetCandidate] = useState(profile.speaker);
+  const [presetCandidate, setPresetCandidate] = useState(normalizePresetSpeaker(profile.speaker));
   const [previewVoice, setPreviewVoice] = useState<string | null>(null);
   const [status, setStatus] = useState("Choose a preset, or upload/record a voice sample to create a real clone.");
   const recorderRef = useRef<MediaRecorder | null>(null);
@@ -53,7 +52,7 @@ export function BuddyVoicePicker() {
     const canonicalSpeaker = next.mode === "preset" ? normalizePresetSpeaker(next.speaker) : next.speaker;
     const canonicalNext = { ...next, speaker: canonicalSpeaker };
     setProfile(canonicalNext);
-    setPresetCandidate(canonicalSpeaker);
+    setPresetCandidate(normalizePresetSpeaker(canonicalSpeaker));
     setPreviewVoice(null);
     saveBuddyVoiceProfile(canonicalNext);
     const voice = allVoices.find((v) => v.id === canonicalSpeaker) || allVoices.find((v) => normalizePresetSpeaker(v.id) === canonicalSpeaker);
@@ -115,7 +114,7 @@ export function BuddyVoicePicker() {
     setPreviewVoice(speaker);
     setStatus(`Generating ${displaySpeaker(speaker)} preview…`);
     try {
-      const stored = getStoredPresetPreview(speaker);
+      const stored = getStoredPresetPreview(previewLookupSpeaker(speaker)) || getStoredPresetPreview(speaker);
       if (stored) {
         setGeneratedAudio(stored);
         const player = new Audio(stored);
@@ -182,7 +181,7 @@ export function BuddyVoicePicker() {
       </div>
       {profile.mode === "preset" ? (
         <div className="mt-2 rounded-xl border border-border bg-background/40 p-2">
-          <select value={presetCandidate} onChange={(e) => { setPresetCandidate(e.target.value); setPreviewVoice(null); setStatus("Preset selected for preview — it is not committed until you use this voice."); }} className="w-full rounded-xl border border-border bg-background/70 px-3 py-2 text-xs">
+          <select value={presetCandidate} onChange={(e) => { setPresetCandidate(normalizePresetSpeaker(e.target.value)); setPreviewVoice(null); setStatus("Preset selected for preview — it is not committed until you use this voice."); }} className="w-full rounded-xl border border-border bg-background/70 px-3 py-2 text-xs">
             {["Buddy's Original Voice", "Buddy Originals", "Aura Studio — 40 distinct English voices"].map((family) => <optgroup key={family} label={family}>{allVoices.filter((v) => v.family === family).map((voice) => <option key={voice.id} value={voice.id}>{voice.label} — {voice.note}</option>)}</optgroup>)}
           </select>
           <div className="mt-2 grid grid-cols-2 gap-2"><StudioButton type="button" className="w-full justify-center" onClick={() => void previewPreset()} disabled={busy}><Volume2 className="size-4" /> Preview Voice</StudioButton><button type="button" onClick={() => update({ mode: "preset", speaker: normalizePresetSpeaker(presetCandidate) })} disabled={busy} className="rounded-xl border border-primary bg-primary/10 px-3 py-2 text-xs font-semibold"><CheckCircle2 className="mr-1 inline size-4" /> Use This Voice</button></div>
@@ -199,7 +198,4 @@ export function BuddyVoicePicker() {
           {profile.cloneVerified && <div className="mt-2 flex items-center justify-between gap-2"><span className="text-[10px] text-primary">Verified clone saved and ready for Buddy.</span><button type="button" onClick={() => void removeClone()} className="rounded-xl border border-border px-3 py-2 text-xs"><Trash2 className="mr-1 inline size-3.5" /> Remove</button></div>}
         </div>
       )}
-      <div className="mt-2 grid grid-cols-3 gap-2"><label className="text-[10px] font-semibold text-muted-foreground">Language<select value={profile.language || "English"} onChange={(e) => update({ language: e.target.value })} className="mt-1 w-full rounded-xl border border-border bg-background/70 px-2 py-2 text-xs font-normal text-foreground">{BUDDY_EXPANDED_LANGUAGES.map((language) => <option key={language}>{language}</option>)}</select></label><label className="text-[10px] font-semibold text-muted-foreground">Mood<select value={profile.mood || "natural"} onChange={(e) => update({ mood: e.target.value })} className="mt-1 w-full rounded-xl border border-border bg-background/70 px-2 py-2 text-xs font-normal text-foreground">{BUDDY_MOODS.map((mood) => <option key={mood.id} value={mood.id}>{mood.label}</option>)}</select></label><label className="text-[10px] font-semibold text-muted-foreground">Tone<select value={profile.tone || "conversational"} onChange={(e) => update({ tone: e.target.value })} className="mt-1 w-full rounded-xl border border-border bg-background/70 px-2 py-2 text-xs font-normal text-foreground">{BUDDY_TONES.map((tone) => <option key={tone.id} value={tone.id}>{tone.label}</option>)}</select></label></div>
-    </div>
-  );
-}
+      <div className="mt-2 grid grid-cols-3 gap-2"><label className="text-[10px] font-semibold text-muted-foreground">Language<select value={profile.language || "English"} onChange={(e) => update({ language: e.target.value })} className="mt-1 w-full rounded-xl border border-border bg-background/70 px-2 py-2 text-xs font-normal text-foreground">{BUDDY_EXPANDED_LANGUAGES.map((language) => <option key={language}>{language}</option>)}</select></label><label className="text-[10px] font-semibold text-muted-foreground">Mood<select value={profile.mood || "natural"} onChange={(e) => update({ mood: e.target.value })} className="mt-1 w-full rounded-xl border border-border bg-background/70 px-2 py-2 text-xs font-normal text-foreground">{BUDDY_MOODS.map((mood) => <option key={mood.id} value={mood.id}>{mood.label}</option>)}</select></label><label className="text-[10px] font-semibold text-muted-foreground">Tone<select value={profile.tone || "conversational"} onChange={(e) => update({ tone: e.target.value })} className="mt-1 w-full rounded-xl border border-border bg-background/70 p...
