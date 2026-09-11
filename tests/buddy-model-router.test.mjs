@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { buddyModelCatalog, hasVisionInput, selectBuddyModel } from "../src/lib/buddy-model-router.ts";
+import { buddyModelCatalog, hasVisionInput, selectBuddyModel } from "../src/lib/buddy-model-router.mjs";
 
 assert.equal(buddyModelCatalog().length, 5);
 assert.equal(selectBuddyModel({ prompt: "Hello Buddy" }).id, "fast");
