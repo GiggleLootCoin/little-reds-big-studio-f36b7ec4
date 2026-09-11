@@ -14,6 +14,8 @@ export { runtimeProviders } from "./studio-runtime-impl";
 
 const DEFAULT_CLONE_TEXT =
   "Hello. This is your cloned voice sample. Would you like to use this voice for Buddy now, or would you like to record again?";
+const PREVIEW_TEXT =
+  "Hello. This is Buddy. This is a real voice preview, so you can listen before choosing this voice.";
 let cachedRedReferenceId = "";
 let cachedRedReferenceBase64 = "";
 
@@ -127,14 +129,7 @@ async function runVerifiedClone(
   speaker?: string,
 ) {
   if (speaker === "Red" || cloneProfile().speaker === "Red") {
-    const result = await runProductionRedClone(
-      sample,
-      refText,
-      text,
-      language,
-      onStatus,
-      modelSize,
-    );
+    const result = await runProductionRedClone(sample, refText, text, language, onStatus, modelSize);
     if (persist) {
       await saveVoiceSample(sample, refText);
       await markBuddyCloneVerified(
@@ -230,9 +225,7 @@ export async function runStudioJob(
         const runtime = await import("./studio-runtime-impl");
         const presetInput = {
           ...input,
-          text: String(
-            input.text ?? input.target_text ?? input.prompt ?? DEFAULT_CLONE_TEXT,
-          ).trim(),
+          text: String(input.text ?? input.target_text ?? input.prompt ?? DEFAULT_CLONE_TEXT).trim(),
           speaker,
         };
         return runtime.runStudioJob("tts", presetInput, onStatus);
@@ -252,15 +245,7 @@ export async function runStudioJob(
     const language = String(input.language ?? cloneProfile().language ?? "English");
     const modelSize = input.model_size === "0.6B" ? "0.6B" : "1.7B";
     onStatus?.("Using Buddy's Red voice mode…");
-    const result = await runVerifiedClone(
-      sample,
-      refText,
-      targetText,
-      language,
-      onStatus,
-      modelSize,
-      true,
-    );
+    const result = await runVerifiedClone(sample, refText, targetText, language, onStatus, modelSize, true);
     return { capability, value: result, url: result.url, provider: result.provider };
   }
   if (capability === "tts") {
@@ -270,10 +255,8 @@ export async function runStudioJob(
     const language = String(input.language ?? profile.language ?? "English");
     const modelSize = input.model_size === "0.6B" ? "0.6B" : "1.7B";
     const effectiveSpeaker = typeof input.speaker === "string" ? input.speaker : profile.speaker;
-
-    // Preset preview requests are identified by the explicit preview flag and return
-    // a stored audio asset directly. There is deliberately no TTS/clone/backend call.
-    if (input.previewOnly === true && effectiveSpeaker) {
+    const legacyPreviewRequest = text === PREVIEW_TEXT;
+    if ((input.previewOnly === true || legacyPreviewRequest) && effectiveSpeaker) {
       const previewUrl = getStoredPresetPreview(effectiveSpeaker);
       if (!previewUrl)
         throw new Error("This preset does not have a stored preview audio asset yet.");
@@ -284,7 +267,6 @@ export async function runStudioJob(
         provider: "Stored preset preview",
       };
     }
-
     const wantsRedPreset = effectiveSpeaker === "Red" && profile.mode !== "clone";
     const wantsSavedClone = !input.speaker && profile.mode === "clone";
     const wantsRedVoice = wantsRedPreset || wantsSavedClone || input.speaker === "Red";
@@ -298,9 +280,7 @@ export async function runStudioJob(
       }
       if (!sample) {
         if (wantsSavedClone && profile.cloneVerified)
-          throw new Error(
-            "Buddy's saved voice sample is missing. Please restore the saved voice sample.",
-          );
+          throw new Error("Buddy's saved voice sample is missing. Please restore the saved voice sample.");
         throw new Error("The built-in Red voice reference is unavailable right now.");
       }
       const refText = profile.referenceTranscript?.trim() || "";
@@ -325,13 +305,9 @@ export async function runStudioJob(
     const memory = buildBuddyMemoryContext();
     if (memory) {
       const existing = Array.isArray(preparedInput.messages) ? preparedInput.messages : [];
-      const systemIndex = existing.findIndex((message) => {
-        return (
-          message &&
-          typeof message === "object" &&
-          (message as Record<string, unknown>).role === "system"
-        );
-      });
+      const systemIndex = existing.findIndex(
+        (message) => message && typeof message === "object" && (message as Record<string, unknown>).role === "system",
+      );
       const messages = [...existing];
       if (systemIndex >= 0) {
         const current = messages[systemIndex] as Record<string, unknown>;
@@ -344,10 +320,6 @@ export async function runStudioJob(
       }
       preparedInput = { ...preparedInput, messages, history: messages };
     }
-
-    // Qwen is the preferred Buddy brain. On Android, a local llama.cpp/Qwen
-    // server can answer completely offline; when it is absent or incompatible,
-    // immediately continue to the existing server/free provider chain.
     const localMessages = Array.isArray(preparedInput.messages)
       ? preparedInput.messages.filter(
           (message): message is { role: "system" | "user" | "assistant"; content: string } =>
@@ -366,20 +338,10 @@ export async function runStudioJob(
       localMessages.length > 0;
     if (canUseLocalQwen) {
       try {
-        const local = await runLocalQwen({
-          messages: localMessages,
-          timeoutMs: 15000,
-          maxTokens: 700,
-        });
-        return {
-          capability: "chat",
-          value: local.text,
-          url: null,
-          provider: local.provider,
-        };
+        const local = await runLocalQwen({ messages: localMessages, timeoutMs: 15000, maxTokens: 700 });
+        return { capability: "chat", value: local.text, url: null, provider: local.provider };
       } catch {
-        // Local Qwen is an opportunistic offline path. A missing local server
-        // must never strand Buddy; the established online Qwen/free chain follows.
+        // Continue to the established online/free chain.
       }
     }
   }
