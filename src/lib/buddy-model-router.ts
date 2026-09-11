@@ -3,6 +3,7 @@ export type BuddyModelRoute = {
   label: string;
   cloudflareModel: string;
   localPreferred: boolean;
+  localModel: string;
   reason: string;
 };
 
@@ -12,6 +13,7 @@ const ROUTES: Record<string, BuddyModelRoute> = {
     label: "Qwen3 — Buddy default",
     cloudflareModel: "@cf/qwen/qwen3-30b-a3b-fp8",
     localPreferred: true,
+    localModel: "Qwen3",
     reason: "Strong general conversation, reasoning and multilingual support.",
   },
   reasoning: {
@@ -19,13 +21,15 @@ const ROUTES: Record<string, BuddyModelRoute> = {
     label: "GPT-OSS 20B — reasoning",
     cloudflareModel: "@cf/openai/gpt-oss-20b",
     localPreferred: true,
-    reason: "Open-weight reasoning and agentic work with a lower-latency 20B option.",
+    localModel: "Qwen3",
+    reason: "Uses the stronger free hosted reasoning route online; offline falls back to the installed local Qwen model.",
   },
   coding: {
     id: "qwen3",
     label: "Qwen3 — coding",
     cloudflareModel: "@cf/qwen/qwen3-30b-a3b-fp8",
     localPreferred: true,
+    localModel: "Qwen3",
     reason: "Keeps coding on the same strong Buddy brain unless a dedicated free coder is added later.",
   },
   vision: {
@@ -33,6 +37,7 @@ const ROUTES: Record<string, BuddyModelRoute> = {
     label: "Qwen3 — vision",
     cloudflareModel: "@cf/qwen/qwen3.8-27b",
     localPreferred: false,
+    localModel: "Qwen3",
     reason: "Current Cloudflare Qwen vision route for image-aware requests.",
   },
   fast: {
@@ -40,7 +45,8 @@ const ROUTES: Record<string, BuddyModelRoute> = {
     label: "Llama 3.2 1B — fast fallback",
     cloudflareModel: "@cf/meta/llama-3.2-1b-instruct",
     localPreferred: true,
-    reason: "Small open model for quick/simple requests and fallback resilience.",
+    localModel: "Qwen3",
+    reason: "Small hosted open model for quick/simple requests; offline uses the installed local model.",
   },
 };
 
