@@ -111,10 +111,22 @@ export function BuddyVoicePicker() {
         return;
       }
       if (speaker === "Red") throw new Error("Buddy's Red preview asset is unavailable.");
-      const result = await runStudioJob("voice-clone", { speaker, language: profile.language || "English", text: PREVIEW_TEXT, target_text: PREVIEW_TEXT }, setStatus);
-      if (!result.url) throw new Error("The voice engine returned no playable preview audio.");
-      setGeneratedAudio(result.url);
-      const player = new Audio(result.url);
+      // Preset previews bypass the voice-clone gateway completely. Aura speaker IDs
+      // are sent to the dedicated Aura-2 TTS route so they can never reach Qwen clone.
+      const response = await fetch("/api/ai/tts", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ capability: "tts", text: PREVIEW_TEXT, target_text: PREVIEW_TEXT, language: profile.language || "English", speaker, mood: profile.mood || "natural", tone: profile.tone || "conversational" }),
+      });
+      if (!response.ok) {
+        const detail = (await response.text().catch(() => "")).slice(0, 400);
+        throw new Error(`Preset preview generation failed (${response.status}). ${detail}`.trim());
+      }
+      const blob = await response.blob();
+      if (!blob.size) throw new Error("The selected preset returned empty audio.");
+      const url = URL.createObjectURL(blob);
+      setGeneratedAudio(url);
+      const player = new Audio(url);
       player.preload = "auto";
       try { await player.play(); setStatus(`✓ ${allVoices.find((v) => v.id === speaker)?.label || speaker} preview playing.`); }
       catch { setStatus("✓ Preview generated — press Play on the audio player below if Android blocks automatic playback."); }
