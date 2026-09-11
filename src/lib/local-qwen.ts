@@ -1,3 +1,5 @@
+import { selectBuddyModel } from "./buddy-model-router";
+
 export type LocalQwenMessage = {
   role: "system" | "user" | "assistant";
   content: string;
@@ -102,7 +104,8 @@ export async function runLocalQwen(options: LocalQwenOptions): Promise<LocalQwen
   if (!isLocalQwenEnabled()) throw new Error("Local Qwen is disabled.");
   if (!options.messages.length) throw new Error("Local Qwen requires at least one message.");
 
-  const model = options.model?.trim() || localQwenModel();
+  const route = selectBuddyModel({ messages: options.messages });
+  const model = options.model?.trim() || localQwenModel() || route.localModel;
   const timeoutMs = Math.max(1500, options.timeoutMs ?? DEFAULT_TIMEOUT_MS);
   const response = await abortableFetch(
     normalizeLocalQwenUrl(configuredUrl()),
