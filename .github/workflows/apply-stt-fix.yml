@@ -88,4 +88,4 @@ jobs:
           git rm .github/workflows/apply-stt-fix.yml
           git commit -m 'chore: remove temporary STT patch workflow'
           git push origin HEAD:${{ github.event.pull_request.head.ref }}
-# retrigger
+# final retrigger
