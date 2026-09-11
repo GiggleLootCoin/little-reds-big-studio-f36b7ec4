@@ -31,6 +31,8 @@ jobs:
         with:
           node-version: 24
           cache: npm
+      - name: Apply production Buddy chat fallback
+        run: node scripts/apply-production-chat-fallback.mjs
       - name: Install browser-only production dependencies
         run: |
           npm install --no-audit --no-fund --ignore-scripts
