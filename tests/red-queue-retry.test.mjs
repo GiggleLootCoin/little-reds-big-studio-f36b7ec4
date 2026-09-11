@@ -20,3 +20,10 @@ test("Qwen SSE parser accepts completed audio artifacts", () => {
   assert.match(source, /event === "complete"/);
   assert.match(source, /x-red-voice-route.*qwen3-tts-reference-clone/);
 });
+
+test("interactive Red speech keeps the fast 0.6B model when the primary Space returns terminal null", () => {
+  assert.match(source, /body\.modelSize !== "1\.7B"/);
+  assert.match(source, /body\.modelSize === "0\.6B"/);
+  assert.match(source, /generateAtSpace\(fallbackSpace\(env\),\s*body,\s*env\)/);
+  assert.doesNotMatch(source, /modelSize: "1\.7B", allowHighQuality: true[\s\S]*generateAtSpace\(fallbackSpace\(env\), body, env\)/);
+});

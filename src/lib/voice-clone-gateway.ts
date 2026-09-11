@@ -78,10 +78,10 @@ async function generate(space: string, file: UploadedReference, type: string, bo
   const headers = new Headers(audio.headers); headers.set("cache-control", "no-store"); headers.set("x-clone-provider", RED_VOICE_PROVIDER); headers.set("x-red-voice-route", "qwen3-tts-reference-clone"); return new Response(audio.body, { status: 200, headers });
 }
 
-async function generateAtSpace(space: string, body: Body, env: Env): Promise<Response> {
+async function generateAtSpace(space: string, body: Body, env: Env, forceHighQuality = false): Promise<Response> {
   const type = String(body.audioType || "audio/wav");
   const file = await upload(space, body.referenceId!.trim(), body.audioBase64!, type, env);
-  const requestBody: Body = { ...body, modelSize: "1.7B", allowHighQuality: true };
+  const requestBody: Body = forceHighQuality ? { ...body, modelSize: "1.7B", allowHighQuality: true } : body;
   return generate(space, file, type, requestBody, env);
 }
 
@@ -95,6 +95,14 @@ async function generateWithQueueRetry(space: string, body: Body, env: Env): Prom
     } catch (error) {
       lastError = error;
       if (isTerminalNullError(error) && body.modelSize !== "1.7B") {
+        if (body.modelSize === "0.6B") {
+          console.warn("[voice-clone] Qwen3-TTS returned terminal null on the live 0.6B path; trying the secondary Qwen3-TTS Space at 0.6B before any quality-model fallback.");
+          try {
+            return await generateAtSpace(fallbackSpace(env), body, env);
+          } catch (secondaryError) {
+            lastError = secondaryError;
+          }
+        }
         const upgraded: Body = { ...body, modelSize: "1.7B", allowHighQuality: true };
         console.warn("[voice-clone] Qwen3-TTS returned terminal null on 0.6B; retrying the same clone on 1.7B.");
         try {
@@ -105,13 +113,13 @@ async function generateWithQueueRetry(space: string, body: Body, env: Env): Prom
           lastError = fallbackError;
           if (isTerminalNullError(fallbackError)) {
             console.warn("[voice-clone] Primary Qwen3-TTS Space returned terminal null on both models; trying the secondary Qwen3-TTS Space.");
-            try { return await generateAtSpace(fallbackSpace(env), body, env); } catch (secondaryError) { lastError = secondaryError; }
+            try { return await generateAtSpace(fallbackSpace(env), body, env, true); } catch (secondaryError) { lastError = secondaryError; }
           }
           if (!isRetryableQueueError(fallbackError) || attempt === QWEN_QUEUE_RETRY_DELAYS_MS.length) throw fallbackError;
         }
       } else if (isTerminalNullError(error) && body.modelSize === "1.7B") {
         console.warn("[voice-clone] Primary Qwen3-TTS Space returned terminal null on 1.7B; trying the secondary Qwen3-TTS Space.");
-        try { return await generateAtSpace(fallbackSpace(env), body, env); } catch (secondaryError) { lastError = secondaryError; }
+        try { return await generateAtSpace(fallbackSpace(env), body, env, true); } catch (secondaryError) { lastError = secondaryError; }
       }
       if (!isRetryableQueueError(error) || attempt === QWEN_QUEUE_RETRY_DELAYS_MS.length) throw error;
       const delay = QWEN_QUEUE_RETRY_DELAYS_MS[attempt];
