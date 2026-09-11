@@ -1,0 +1,35 @@
+name: One-shot Buddy routing fixer
+on:
+  push:
+    branches: [main]
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch Buddy routing and live-turn delay
+        run: |
+          if [[ "${{ github.event.head_commit.message }}" == "fix: apply Buddy preset routing and live latency" ]]; then
+            exit 0
+          fi
+          python3 <<'PY'
+          from pathlib import Path
+          def replace(path, old, new):
+              p=Path(path); s=p.read_text()
+              if old not in s: raise SystemExit(f'missing expected text in {path}')
+              p.write_text(s.replace(old,new,1))
+          replace('src/server.ts','      const speaker = BUDDY_TO_AURA[requestedSpeaker] || "luna";','      const speaker =\n        (AURA_EN_SPEAKERS.has(requestedSpeaker) ? requestedSpeaker : BUDDY_TO_AURA[requestedSpeaker]) ||\n        "luna";')
+          replace('src/components/studio/BuddyLiveChat.tsx','          }, 900);','          }, 500);')
+          PY
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/server.ts src/components/studio/BuddyLiveChat.tsx
+          git commit -m 'fix: apply Buddy preset routing and live latency'
+          git push origin main
+      - name: Remove one-shot workflow
+        run: |
+          git rm .github/workflows/one-shot-buddy-routing.yml
+          git commit -m 'chore: remove one-shot Buddy routing fixer'
+          git push origin main
