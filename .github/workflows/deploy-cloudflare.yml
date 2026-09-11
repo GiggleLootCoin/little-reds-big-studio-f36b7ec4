@@ -3,6 +3,9 @@ name: Deploy Little Red's Big Studio
 on:
   push:
     branches: [main]
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
   workflow_dispatch:
 
 permissions:
@@ -19,8 +22,8 @@ jobs:
     timeout-minutes: 45
     steps:
       # Production deploy: full voice and chat smoke remain mandatory after every main push.
-      # Human-authored trigger commit keeps production verification running after bot hotfix commits.
-      # Keep this workflow push-triggered so every production wrapper fix is actually deployed.
+      # Pull-request runs are enabled so verified fixes can be deployed even when a bot-authored
+      # main push does not create a new workflow run.
       - name: Checkout
         uses: actions/checkout@v4
       - name: Setup Node
