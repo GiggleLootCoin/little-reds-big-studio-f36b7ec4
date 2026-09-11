@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Mic, MicOff, Paperclip, Phone, Send, Sparkles, Volume2, VolumeX } from "lucide-react";
 import { artifactText, runStudioJob } from "@/lib/studio-runtime";
+import { buildAgentSystemPrompt } from "@/lib/buddy-agent";
 import { setBuddyStatus } from "@/lib/buddy-presence";
 import {
   listMicrophones,
@@ -147,7 +148,7 @@ export function BuddyLiveChat() {
           silenceTimer.current = window.setTimeout(() => {
             silenceTimer.current = null;
             if (rec.current?.state === "recording") rec.current.stop();
-          }, 1400);
+          }, 900);
         }
         raf.current = requestAnimationFrame(tick);
       };
@@ -290,7 +291,7 @@ export function BuddyLiveChat() {
       const language = voiceProfile.language || "English";
       const mood = voiceProfile.mood || "natural";
       const tone = voiceProfile.tone || "conversational";
-      const systemPrompt = `${IDENTITY} Respond in ${language}. Your current mood is ${mood}; your conversational tone is ${tone}. Keep replies compact when the user asks something simple, but give enough detail when the task needs it. Do not switch back to English unless the user asks for English.`;
+      const systemPrompt = `${IDENTITY} ${buildAgentSystemPrompt()} Respond in ${language}. Your current mood is ${mood}; your conversational tone is ${tone}. Keep replies compact when the user asks something simple, but give enough detail when the task needs it. Do not switch back to English unless the user asks for English.`;
       const history = [
         { role: "system", content: systemPrompt },
         ...prior,
@@ -335,11 +336,9 @@ export function BuddyLiveChat() {
     try {
       let r;
       if (v.mode === "clone" || v.speaker === "Red") {
-        let sample = await getBuddyVoiceSample();
-        if (!sample && v.mode === "preset" && v.speaker === "Red") {
-          sample = await getBuiltInRedVoiceSample();
-          if (sample) setStatus("Using Buddy's built-in Red voice reference…");
-        }
+        let sample: Blob | null = null;
+        if (v.mode === "clone") sample = await getBuddyVoiceSample();
+        else sample = await getBuiltInRedVoiceSample();
         if (!sample) throw Error("The Red voice reference is unavailable right now.");
         r = await runStudioJob(
           "tts",
