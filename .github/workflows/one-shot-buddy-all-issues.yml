@@ -1,17 +1,16 @@
 name: One-shot Buddy all-issues fix
 on:
-  pull_request:
+  push:
     branches: [main]
 jobs:
   fix:
+    if: github.event.head_commit.message != 'fix: remove Android localhost chat lag and finish preset previews' && github.event.head_commit.message != 'chore: remove one-shot Buddy fix workflow'
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@v4
-      - name: Patch Buddy latency, duplicate UI, and preview registry
-        env:
-          SITE_URL: https://little-reds-big-studio-f36b7ec4.gigglelootcoin.workers.dev
+      - name: Patch Buddy latency and duplicate UI
         run: |
           python3 <<'PY'
           from pathlib import Path
@@ -19,13 +18,15 @@ jobs:
               p=Path(path); s=p.read_text()
               if old not in s: raise SystemExit(f"missing expected text in {path}: {old[:100]}")
               p.write_text(s.replace(old,new,1))
-          replace('src/lib/local-qwen.ts','  if (storage?.getItem(ENABLE_KEY) === "false") return false;\n  if (storage?.getItem(ENABLE_KEY) === "true") return true;\n  return typeof window !== "undefined";','  // Never probe localhost on Android unless the user explicitly enabled a local Qwen server.\n  // The old browser-default path waited up to 15 seconds for 127.0.0.1:8080 on every chat turn.\n  return storage?.getItem(ENABLE_KEY) === "true";')
+          replace('src/lib/local-qwen.ts','  if (storage?.getItem(ENABLE_KEY) === "false") return false;\n  if (storage?.getItem(ENABLE_KEY) === "true") return true;\n  return typeof window !== "undefined";','  // Only probe localhost when the user explicitly enabled a local Qwen server.\n  // Android does not have one by default, so the old browser-default path added up to 15 seconds of latency.\n  return storage?.getItem(ENABLE_KEY) === "true";')
           replace('src/components/studio/BuddyLiveChat.tsx','          }, 900);','          }, 500);')
           replace('src/routes/index.tsx','import { BuddyVoicePicker } from "@/components/studio/BuddyVoicePicker";\n','')
           replace('src/routes/index.tsx','            <BuddyWelcome onChoose={chooseBuddyTask} />\n            <BuddyVoicePicker />\n','            <BuddyWelcome onChoose={chooseBuddyTask} />\n')
-          replace('src/components/studio/BuddyVoicePicker.tsx','    if (!previewUrl) {\n      setStatus("This preset does not have a stored preview audio asset yet.");\n      return;\n    }','    if (!previewUrl) {\n      setStatus("This voice is selectable, but its stored preview asset is not bundled yet.");\n      return;\n    }')
-          print('source patches applied')
           PY
+      - name: Generate and bundle stored preset previews
+        env:
+          SITE_URL: https://little-reds-big-studio-f36b7ec4.gigglelootcoin.workers.dev
+        run: |
           mkdir -p public/buddy-previews
           python3 <<'PY'
           import json, subprocess, pathlib, sys, os
@@ -33,9 +34,10 @@ jobs:
           base=os.environ['SITE_URL']+'/api/ai/tts'
           for speaker,label in voices:
             out=pathlib.Path('public/buddy-previews')/(speaker+'.mp3')
-            payload=json.dumps({'capability':'tts','prompt':f'Hello. I am {label}, one of Buddy\'s selectable voices.','text':f'Hello. I am {label}, one of Buddy\'s selectable voices.','language':'English','speaker':speaker})
-            r=subprocess.run(['curl','-fsS','--retry','2','--connect-timeout','10','--max-time','45','-X','POST',base,'-H','content-type: application/json','--data',payload,'-o',str(out)],capture_output=True,text=True)
-            if r.returncode or not out.exists() or out.stat().st_size<1000: raise SystemExit(f'preview generation failed for {speaker}: {r.stderr[:300]}')
+            payload=json.dumps({'capability':'tts','text':f'Hello. I am {label}, one of Buddy\'s selectable voices.','language':'English','speaker':speaker})
+            r=subprocess.run(['curl','-fsS','--retry','3','--connect-timeout','10','--max-time','45','-X','POST',base,'-H','content-type: application/json','--data',payload,'-o',str(out)],capture_output=True,text=True)
+            if r.returncode or not out.exists() or out.stat().st_size<1000:
+              print(f'preview generation failed for {speaker}: {r.stderr[:500]}',file=sys.stderr); sys.exit(1)
           print(f'generated {len(voices)} stored preset previews')
           PY
           python3 <<'PY'
@@ -44,12 +46,15 @@ jobs:
           voices=['amalthea','andromeda','apollo','arcas','aries','asteria','athena','atlas','aurora','callista','cora','cordelia','delia','draco','electra','harmonia','helena','hera','hermes','hyperion','iris','janus','juno','jupiter','luna','mars','minerva','neptune','odysseus','ophelia','orion','orpheus','pandora','phoebe','pluto','saturn','selene','thalia','theia','vesta','zeus']
           existing=s[start:end].strip(); additions='\n'.join(f'  {v}: "/buddy-previews/{v}.mp3",' for v in voices); s=s[:start]+'\n'+existing+'\n'+additions+s[end:]; p.write_text(s)
           PY
-          git config user.name 'github-actions[bot]'; git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add src/lib/local-qwen.ts src/components/studio/BuddyLiveChat.tsx src/components/studio/BuddyVoicePicker.tsx src/routes/index.tsx src/lib/stored-preset-previews.ts public/buddy-previews
-          git commit -m 'fix: remove Android localhost chat lag and finish preset previews' || true
-          git push
+      - name: Commit source and preview assets
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/lib/local-qwen.ts src/components/studio/BuddyLiveChat.tsx src/routes/index.tsx src/lib/stored-preset-previews.ts public/buddy-previews
+          git commit -m 'fix: remove Android localhost chat lag and finish preset previews'
+          git push origin main
       - name: Remove one-shot workflow
         run: |
           git rm .github/workflows/one-shot-buddy-all-issues.yml
           git commit -m 'chore: remove one-shot Buddy fix workflow'
-          git push
+          git push origin main
