@@ -4,3 +4,4 @@ Disallow: /auth
 Disallow: /mcp
 
 Sitemap: https://little-reds-big-studio.lovable.app/sitemap.xml
+# Buddy routing fixer trigger
