@@ -1,12 +1,20 @@
 # Little Red's Big Studio — CURRENT STATE
 
-**Last updated:** 2026-09-03
+**Last updated:** 2026-09-11
 **Authoritative repository:** `GiggleLootCoin/little-reds-big-studio-f36b7ec4`
-**Branch:** `main`
-**Current main commit:** `42818f18775907193c672905050e1c72ddee64ee` (hotfix automation added; voice-runtime patch is the next automated commit)
+**Main baseline:** `925b697cf9cf72113226cd8ba809a8deb1f79738`
+**Feature branch:** `feat/qwen-local-offline-buddy-2026-09-11`
+**Feature head:** `977747cb9e9b945164c31a4bae71e4d1a7fe37a8`
+**PR:** #77 — local/offline Qwen Buddy path
 **Production:** `https://little-reds-big-studio-f36b7ec4.gigglelootcoin.workers.dev`
 **Hosting:** Cloudflare Workers
 **Product:** Buddy-first, Android-first, free/open-first creative studio for musicians and YouTubers.
+
+## Current approved change
+
+Buddy's reasoning path now prefers a real local Qwen endpoint on Android when available, using the OpenAI-compatible `/v1/chat/completions` contract. The default local server base is `http://127.0.0.1:8080`, matching the documented llama.cpp server default. The app does not bundle model weights; Qwen remains on-device. If the local endpoint is unavailable, incompatible, blocked by CORS, times out, or returns an empty/malformed response, Buddy automatically falls through to the existing server/free Qwen chain.
+
+The local route is text-only by design. Multimodal turns continue through the existing remote Qwen/vision path. Red voice generation remains a separate verified artifact pipeline.
 
 ## Non-negotiable product rules
 
@@ -30,10 +38,9 @@
 - The Studio runtime automatically applies the saved Buddy voice/language to TTS jobs; a saved personal sample routes TTS through the voice-clone capability rather than silently substituting another voice.
 - Buddy persistent memory is injected into chat while remaining separate from engineering memory.
 - Buddy chat uses direct Cloudflare Workers AI when the binding is available, with Qwen3 text and Qwen 3.8 vision routing and a bounded OpenRouter fallback.
-- The rejected Whisper Turbo dependency is being removed from the runtime registry; the next hotfix removes the Turbo runner entry as well as the public Chatterbox Turbo route.
-- Red Buddy voice now defaults to the verified 1.7B path instead of accidentally selecting 0.6B from the live-chat client.
-- The Red clone gateway now accepts both `/api/voice-clone` and the `/api/ai/voice-clone` path used by the live client, fixing the client/gateway route mismatch.
-- Preset Voice Lab tests route directly to real preset TTS when no clone reference is required; the next hotfix moves the dedicated server TTS route ahead of public Spaces and prevents clone-only Chatterbox probing for preset TTS.
+- Local/offline Qwen chat is now attempted first for text-only Buddy turns when a local endpoint is available.
+- Red Buddy voice defaults to the verified 1.7B path and the current production branch has canonical Red reference routing and live latency improvements.
+- Preset Voice Lab tests route directly to real preset TTS when no clone reference is required.
 - The user's real Studio logo asset `1784996969001.png` is the live React StudioLogo source.
 - APK build scaffold is present and rebuilds from `main` with monotonically increasing Android version codes.
 
@@ -44,31 +51,19 @@
 - Artifact extraction and validation before reporting media success.
 - Supabase authentication and server-authoritative entitlement logic.
 - Cloudflare production deployment configuration with Workers AI binding.
-- Security & Quality Gate run `33782967577` for the prior fixes passed all checks.
-- Fresh APK artifact from commit `8dcb6df` was built and signed, but user testing exposed severe latency and missing audio, so it is not considered a functional final release.
+- PR #77 Security & Quality Gate passed TypeScript, formatting, ESLint, Buddy regression tests, static voice-path verification, production build, browser voice bundle verification, and dependency audit.
+- PR #77 Free Open Validation passed audio artifact, music/video AV, Buddy voice, memory/cognitive, live latency, speech language normalization, Android voice smoke contract, Create flow, orchestrator, experience, cognitive core, Applio/RVC, typecheck, formatting, lint, and production build checks.
 
-## Current bug investigation
+## Current verification gaps
 
-User-reported on Android APK: Buddy responses are extremely slow, Buddy gives generic responses, Buddy produces no audio, and none of the preset voice test buttons produce sound.
-
-Root causes found in code inspection:
-1. Preset TTS providers are sorted with public Qwen3-TTS (priority 1000) before the dedicated `/api/ai/tts` server route (priority 500), so the app can spend substantial time on a public Space before reaching the fast server path.
-2. Generic TTS provider probing can reach Chatterbox routes even though those routes are clone-oriented, wasting time and failing without playable preset audio.
-3. Gradio connection code retries a failed public Space three times with 0.7/1.4/2.1 second sleeps, adding avoidable latency.
-4. TTS and chat have a 120-second generic timeout, so a dead provider can make Buddy appear frozen.
-5. The runtime registry still contains the explicitly rejected Whisper Turbo entry and a Chatterbox Turbo entry, despite the product decision to avoid Turbo routes.
-
-Hotfix automation has been added to apply these changes and run typecheck/lint/build before committing them. No Lovable or Pocket TTS changes are part of this fix.
-
-## Current known verification gaps
-
-1. The hotfix commit and its production deployment must pass before it is called fixed.
-2. A fresh APK must be rebuilt from the hotfix commit and installed on the Android device.
-3. Real Android verification must confirm fast Buddy text response, non-generic context-aware answers, audible preset voices, audible Red voice, microphone turn-taking, and no browser fallback.
-4. Real public free-provider execution remains conditional on queue/availability; each exposed capability must be tested with a returned artifact before being called verified.
-5. Live verification of the Buy Me a Coffee membership webhook secret/production membership flow is still required before calling membership fully production-verified.
-6. RVC/voice-swap still requires a real authorized model/reference input and a live converted artifact test.
-7. Whole-app UI translation is not yet a complete localization layer; the Buddy voice/language preference is implemented first.
+1. PR #77 is implemented and CI-verified but still requires merge before its changes reach `main` and production.
+2. A real Android offline smoke test must prove the actual local Qwen server/model returns a response through the installed APK/TWA.
+3. A fresh APK must be rebuilt from the merged commit and installed on the Android device.
+4. Real Android verification must confirm fast Buddy text response, non-generic context-aware answers, audible preset voices, audible Red voice, microphone turn-taking, and no browser fallback.
+5. Real public free-provider execution remains conditional on queue/availability; each exposed capability must be tested with a returned artifact before being called verified.
+6. Live verification of the Buy Me a Coffee membership webhook secret/production membership flow is still required before calling membership fully production-verified.
+7. RVC/voice-swap still requires a real authorized model/reference input and a live converted artifact test.
+8. Whole-app UI translation is not yet a complete localization layer; the Buddy voice/language preference is implemented first.
 
 ## Migration artifacts
 
@@ -79,7 +74,7 @@ Hotfix automation has been added to apply these changes and run typecheck/lint/b
 
 ## Current route families
 
-- Writing/reasoning: Qwen3 + browser-local fallback.
+- Writing/reasoning: local Qwen first when available, then server-side Qwen3 + browser/local fallback.
 - Voice: Qwen3-TTS, MOSS-TTS, Chatterbox, Seed-VC and Applio/RVC fallbacks.
 - Music: ACE-Step 1.5 + DiffRhythm fallback.
 - Stems: Demucs.
@@ -89,7 +84,7 @@ Hotfix automation has been added to apply these changes and run typecheck/lint/b
 
 ## Immediate next action
 
-Let the automated Buddy voice hotfix commit, pass quality gates, deploy, rebuild the APK, and then verify the resulting APK artifact before asking for another install test.
+Merge PR #77 after the passing quality gates, allow the normal production deployment from `main`, then rebuild the Android APK from the merged commit and perform the real local-Qwen offline smoke test on the Samsung A12.
 
 ## Handoff rule
 

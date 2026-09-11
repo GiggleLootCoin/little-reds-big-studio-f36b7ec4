@@ -6,6 +6,7 @@ import { normalizeAndVerifyBrowserAudio } from "./audio-artifact";
 import { saveBuddyClonePreview } from "./buddy-voice";
 import { createBestFreeVoiceClone } from "./real-voice-clone-v2";
 import { buildBuddyMemoryContext, rememberUserMessage } from "./buddy-memory.mjs";
+import { isLocalQwenEnabled, runLocalQwen } from "./local-qwen";
 
 export type { StudioArtifact, StudioCapability, StudioJobInput } from "./studio-runtime-impl";
 export { runtimeProviders } from "./studio-runtime-impl";
@@ -222,9 +223,6 @@ export async function runStudioJob(
 ): Promise<StudioArtifact> {
   if (capability === "voice-clone") {
     const sample = input.refAudio ?? input.referenceAudio ?? input.audio;
-    // The Voice Lab uses the voice-clone action for both real clones and preset
-    // test buttons. Presets do not need reference audio; route them directly to
-    // the real preset TTS engine instead of incorrectly demanding a clone sample.
     if (!(sample instanceof Blob)) {
       const speaker = String(input.speaker ?? "").trim();
       if (speaker && speaker !== "Red") {
@@ -270,8 +268,6 @@ export async function runStudioJob(
     if (!text) throw new Error("Voice text is empty.");
     const language = String(input.language ?? profile.language ?? "English");
     const modelSize = input.model_size === "0.6B" ? "0.6B" : "1.7B";
-    // An explicitly requested non-Red speaker is a preview/selection operation.
-    // The built-in Red preset is deliberately independent of any stale saved clone sample.
     const effectiveSpeaker = typeof input.speaker === "string" ? input.speaker : profile.speaker;
     const wantsRedPreset = effectiveSpeaker === "Red" && profile.mode !== "clone";
     const wantsSavedClone = !input.speaker && profile.mode === "clone";
@@ -331,6 +327,44 @@ export async function runStudioJob(
         messages.unshift({ role: "system", content: memory });
       }
       preparedInput = { ...preparedInput, messages, history: messages };
+    }
+
+    // Qwen is the preferred Buddy brain. On Android, a local llama.cpp/Qwen
+    // server can answer completely offline; when it is absent or incompatible,
+    // immediately continue to the existing server/free provider chain.
+    const localMessages = Array.isArray(preparedInput.messages)
+      ? preparedInput.messages.filter(
+          (message): message is { role: "system" | "user" | "assistant"; content: string } =>
+            Boolean(
+              message &&
+                typeof message === "object" &&
+                ["system", "user", "assistant"].includes(String((message as Record<string, unknown>).role)) &&
+                typeof (message as Record<string, unknown>).content === "string",
+            ),
+        )
+      : [];
+    const canUseLocalQwen =
+      isLocalQwenEnabled() &&
+      Array.isArray(preparedInput.messages) &&
+      localMessages.length === preparedInput.messages.length &&
+      localMessages.length > 0;
+    if (canUseLocalQwen) {
+      try {
+        const local = await runLocalQwen({
+          messages: localMessages,
+          timeoutMs: 15000,
+          maxTokens: 700,
+        });
+        return {
+          capability: "chat",
+          value: local.text,
+          url: null,
+          provider: local.provider,
+        };
+      } catch {
+        // Local Qwen is an opportunistic offline path. A missing local server
+        // must never strand Buddy; the established online Qwen/free chain follows.
+      }
     }
   }
   const mod = await import("./studio-runtime-impl");
