@@ -1,7 +1,9 @@
 name: Build Little Red's Big Studio APK
 
-# Final production APK build: triggered on main so every verified source fix gets a fresh installable artifact.
+# Final production APK build: validate pull requests and produce a fresh installable artifact on main.
 on:
+  pull_request:
+    branches: [main]
   push:
     branches: [main]
   workflow_dispatch:
