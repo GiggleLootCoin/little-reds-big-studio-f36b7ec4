@@ -435,7 +435,9 @@ async function cloudflareAI(request: Request, env: ServerEnv): Promise<Response 
     }
     if (capability === "tts") {
       const requestedSpeaker = String(body.speaker || "").trim();
-      const speaker = BUDDY_TO_AURA[requestedSpeaker] || "luna";
+      const speaker =
+        (AURA_EN_SPEAKERS.has(requestedSpeaker) ? requestedSpeaker : BUDDY_TO_AURA[requestedSpeaker]) ||
+        "luna";
       const language = ttsLanguage(body.language);
       if (language !== "en") {
         if (language === "es") {

@@ -148,7 +148,7 @@ export function BuddyLiveChat() {
           silenceTimer.current = window.setTimeout(() => {
             silenceTimer.current = null;
             if (rec.current?.state === "recording") rec.current.stop();
-          }, 900);
+          }, 500);
         }
         raf.current = requestAnimationFrame(tick);
       };
