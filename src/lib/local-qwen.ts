@@ -54,9 +54,9 @@ export function normalizeLocalQwenUrl(value: string): string {
 
 export function isLocalQwenEnabled(): boolean {
   const storage = browserStorage();
-  if (storage?.getItem(ENABLE_KEY) === "false") return false;
-  if (storage?.getItem(ENABLE_KEY) === "true") return true;
-  return typeof window !== "undefined";
+  // Local Qwen is opt-in. Android/Chrome must never probe 127.0.0.1 by default.
+  // The previous browser-default behavior could add the full local timeout to every Buddy turn.
+  return storage?.getItem(ENABLE_KEY) === "true";
 }
 
 export function localQwenModel(): string {
