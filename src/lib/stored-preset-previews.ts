@@ -26,7 +26,22 @@ const STORED_PRESET_PREVIEWS: Record<string, string> = {
     "https://huggingface.co/datasets/malaiwah/qwen3-tts-customvoice-ab-clips/resolve/main/original/sohee_English.wav",
 };
 
+const NORMALIZED_PRESET_ALIASES: Record<string, keyof typeof STORED_PRESET_PREVIEWS> = {
+  "aura-2-luna-en": "Ryan",
+  "aura-2-orpheus-en": "Aiden",
+  "aura-2-athena-en": "Vivian",
+  "aura-2-asteria-en": "Serena",
+  "aura-2-atlas-en": "Uncle_Fu",
+  "aura-2-juno-en": "Dylan",
+  "aura-2-zeus-en": "Eric",
+  "aura-2-phoebe-en": "Ono_Anna",
+  "aura-2-delia-en": "Sohee",
+};
+
 export function getStoredPresetPreview(speaker: string): string | null {
   const key = speaker.trim();
-  return STORED_PRESET_PREVIEWS[key] ?? null;
+  const direct = STORED_PRESET_PREVIEWS[key];
+  if (direct) return direct;
+  const alias = NORMALIZED_PRESET_ALIASES[key];
+  return alias ? STORED_PRESET_PREVIEWS[alias] : null;
 }
