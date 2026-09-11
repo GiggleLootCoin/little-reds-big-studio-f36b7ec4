@@ -271,19 +271,21 @@ export async function runStudioJob(
     const language = String(input.language ?? profile.language ?? "English");
     const modelSize = input.model_size === "0.6B" ? "0.6B" : "1.7B";
     // An explicitly requested non-Red speaker is a preview/selection operation.
-    // It must win over the saved Red profile so a preset cannot accidentally clone Red.
-    const wantsRedVoice =
-      input.speaker === "Red" ||
-      (!input.speaker && (profile.mode === "clone" || profile.speaker === "Red"));
+    // The built-in Red preset is deliberately independent of any stale saved clone sample.
+    const effectiveSpeaker = typeof input.speaker === "string" ? input.speaker : profile.speaker;
+    const wantsRedPreset = effectiveSpeaker === "Red" && profile.mode !== "clone";
+    const wantsSavedClone = !input.speaker && profile.mode === "clone";
+    const wantsRedVoice = wantsRedPreset || wantsSavedClone || input.speaker === "Red";
     if (wantsRedVoice) {
-      let savedSample = await getBuddyVoiceSample();
-      const effectiveSpeaker = typeof input.speaker === "string" ? input.speaker : profile.speaker;
-      if (!savedSample && effectiveSpeaker === "Red") {
-        savedSample = await getBuiltInRedVoiceSample();
-        if (savedSample) onStatus?.("Using Buddy's built-in Red voice reference…");
+      let sample: Blob | null = null;
+      if (wantsRedPreset || input.speaker === "Red") {
+        sample = await getBuiltInRedVoiceSample();
+        if (sample) onStatus?.("Using Buddy's built-in Red voice reference…");
+      } else {
+        sample = await getBuddyVoiceSample();
       }
-      if (!savedSample) {
-        if (profile.mode === "clone" && profile.cloneVerified)
+      if (!sample) {
+        if (wantsSavedClone && profile.cloneVerified)
           throw new Error(
             "Buddy's saved voice sample is missing. Please restore the saved voice sample.",
           );
@@ -292,7 +294,7 @@ export async function runStudioJob(
       const refText = profile.referenceTranscript?.trim() || "";
       onStatus?.("Speaking in Buddy's Red voice…");
       const result = await runVerifiedClone(
-        savedSample,
+        sample,
         refText,
         text,
         language,
