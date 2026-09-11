@@ -1,7 +1,7 @@
 name: One-shot Buddy all-issues fix
 on:
-  push:
-    branches: [fix/buddy-all-current-issues-20260911]
+  pull_request:
+    branches: [main]
 jobs:
   fix:
     runs-on: ubuntu-latest
@@ -15,89 +15,39 @@ jobs:
         run: |
           python3 <<'PY'
           from pathlib import Path
-          import json
-
           def replace(path, old, new):
-              p=Path(path); s=p.read_text();
+              p=Path(path); s=p.read_text()
               if old not in s: raise SystemExit(f"missing expected text in {path}: {old[:100]}")
               p.write_text(s.replace(old,new,1))
-
-          replace('src/lib/local-qwen.ts',
-            '  if (storage?.getItem(ENABLE_KEY) === "false") return false;\n  if (storage?.getItem(ENABLE_KEY) === "true") return true;\n  return typeof window !== "undefined";',
-            '  // Never probe localhost on Android unless the user explicitly enabled a local Qwen server.\n  // The old browser-default path waited up to 15 seconds for 127.0.0.1:8080 on every chat turn.\n  return storage?.getItem(ENABLE_KEY) === "true";')
-
-          replace('src/components/studio/BuddyLiveChat.tsx',
-            '          }, 900);',
-            '          }, 500);')
-
-          replace('src/routes/index.tsx',
-            'import { BuddyVoicePicker } from "@/components/studio/BuddyVoicePicker";\n',
-            '')
-          replace('src/routes/index.tsx',
-            '            <BuddyWelcome onChoose={chooseBuddyTask} />\n            <BuddyVoicePicker />\n',
-            '            <BuddyWelcome onChoose={chooseBuddyTask} />\n')
-
-          replace('src/components/studio/BuddyVoicePicker.tsx',
-            '    if (!previewUrl) {\n      setStatus("This preset does not have a stored preview audio asset yet.");\n      return;\n    }',
-            '    if (!previewUrl) {\n      setStatus("This voice is selectable, but its stored preview asset is not bundled yet.");\n      return;\n    }')
-
+          replace('src/lib/local-qwen.ts','  if (storage?.getItem(ENABLE_KEY) === "false") return false;\n  if (storage?.getItem(ENABLE_KEY) === "true") return true;\n  return typeof window !== "undefined";','  // Never probe localhost on Android unless the user explicitly enabled a local Qwen server.\n  // The old browser-default path waited up to 15 seconds for 127.0.0.1:8080 on every chat turn.\n  return storage?.getItem(ENABLE_KEY) === "true";')
+          replace('src/components/studio/BuddyLiveChat.tsx','          }, 900);','          }, 500);')
+          replace('src/routes/index.tsx','import { BuddyVoicePicker } from "@/components/studio/BuddyVoicePicker";\n','')
+          replace('src/routes/index.tsx','            <BuddyWelcome onChoose={chooseBuddyTask} />\n            <BuddyVoicePicker />\n','            <BuddyWelcome onChoose={chooseBuddyTask} />\n')
+          replace('src/components/studio/BuddyVoicePicker.tsx','    if (!previewUrl) {\n      setStatus("This preset does not have a stored preview audio asset yet.");\n      return;\n    }','    if (!previewUrl) {\n      setStatus("This voice is selectable, but its stored preview asset is not bundled yet.");\n      return;\n    }')
           print('source patches applied')
           PY
-
           mkdir -p public/buddy-previews
           python3 <<'PY'
-          import json, subprocess, pathlib, sys, re, os
-          voices = [
-            ('amalthea','Penny'),('andromeda','Frankie'),('apollo','Mason'),('arcas','Ellis'),('aries','Benny'),
-            ('asteria','Dani'),('athena','Maren'),('atlas','Gus'),('aurora','Tessa'),('callista','Rae'),
-            ('cora','Lila'),('cordelia','Nell'),('delia','Pippa'),('draco','Alfie'),('electra','Sloane'),
-            ('harmonia','June'),('helena','Maggie'),('hera','Claire'),('hermes','Theo'),('hyperion','Callum'),
-            ('iris','Millie'),('janus','Savannah'),('juno','Ruby'),('jupiter','Grant'),('luna','Sadie'),
-            ('mars','Dean'),('minerva','Elise'),('neptune','Martin'),('odysseus','Jonah'),('ophelia','Zoe'),
-            ('orion','Benji'),('orpheus','Marcus'),('pandora','Harriet'),('phoebe','Peaches'),('pluto','Nate'),
-            ('saturn','Warren'),('selene','Brooke'),('thalia','Jess'),('theia','Chloe'),('vesta','Hannah'),('zeus','Victor')
-          ]
-          base=os.environ['SITE_URL'] + '/api/ai/tts'
-          made=[]
+          import json, subprocess, pathlib, sys, os
+          voices=[('amalthea','Penny'),('andromeda','Frankie'),('apollo','Mason'),('arcas','Ellis'),('aries','Benny'),('asteria','Dani'),('athena','Maren'),('atlas','Gus'),('aurora','Tessa'),('callista','Rae'),('cora','Lila'),('cordelia','Nell'),('delia','Pippa'),('draco','Alfie'),('electra','Sloane'),('harmonia','June'),('helena','Maggie'),('hera','Claire'),('hermes','Theo'),('hyperion','Callum'),('iris','Millie'),('janus','Savannah'),('juno','Ruby'),('jupiter','Grant'),('luna','Sadie'),('mars','Dean'),('minerva','Elise'),('neptune','Martin'),('odysseus','Jonah'),('ophelia','Zoe'),('orion','Benji'),('orpheus','Marcus'),('pandora','Harriet'),('phoebe','Peaches'),('pluto','Nate'),('saturn','Warren'),('selene','Brooke'),('thalia','Jess'),('theia','Chloe'),('vesta','Hannah'),('zeus','Victor')]
+          base=os.environ['SITE_URL']+'/api/ai/tts'
           for speaker,label in voices:
             out=pathlib.Path('public/buddy-previews')/(speaker+'.mp3')
             payload=json.dumps({'capability':'tts','prompt':f'Hello. I am {label}, one of Buddy\'s selectable voices.','text':f'Hello. I am {label}, one of Buddy\'s selectable voices.','language':'English','speaker':speaker})
             r=subprocess.run(['curl','-fsS','--retry','2','--connect-timeout','10','--max-time','45','-X','POST',base,'-H','content-type: application/json','--data',payload,'-o',str(out)],capture_output=True,text=True)
-            if r.returncode != 0 or not out.exists() or out.stat().st_size < 1000:
-              print(f'preview generation failed for {speaker}: {r.stderr[:300]}', file=sys.stderr)
-              sys.exit(1)
-            made.append(speaker)
-          print(f'generated {len(made)} stored preset previews')
+            if r.returncode or not out.exists() or out.stat().st_size<1000: raise SystemExit(f'preview generation failed for {speaker}: {r.stderr[:300]}')
+          print(f'generated {len(voices)} stored preset previews')
           PY
-
           python3 <<'PY'
           from pathlib import Path
-          p=Path('src/lib/stored-preset-previews.ts')
-          s=p.read_text()
-          marker='const STORED_PRESET_PREVIEWS: Record<string, string> = {'
-          start=s.index(marker)+len(marker)
-          end=s.index('\n};', start)
-          expanded=[
-            'amalthea','andromeda','apollo','arcas','aries','asteria','athena','atlas','aurora','callista',
-            'cora','cordelia','delia','draco','electra','harmonia','helena','hera','hermes','hyperion',
-            'iris','janus','juno','jupiter','luna','mars','minerva','neptune','odysseus','ophelia','orion',
-            'orpheus','pandora','phoebe','pluto','saturn','selene','thalia','theia','vesta','zeus'
-          ]
-          lines=[]
-          existing=s[start:end]
-          lines.append(existing.strip())
-          for v in expanded:
-            lines.append(f'  {v}: "/buddy-previews/{v}.mp3",')
-          s=s[:start]+'\n'+'\n'.join(x for x in lines if x)+s[end:]
-          p.write_text(s)
+          p=Path('src/lib/stored-preset-previews.ts'); s=p.read_text(); marker='const STORED_PRESET_PREVIEWS: Record<string, string> = {'; start=s.index(marker)+len(marker); end=s.index('\n};',start)
+          voices=['amalthea','andromeda','apollo','arcas','aries','asteria','athena','atlas','aurora','callista','cora','cordelia','delia','draco','electra','harmonia','helena','hera','hermes','hyperion','iris','janus','juno','jupiter','luna','mars','minerva','neptune','odysseus','ophelia','orion','orpheus','pandora','phoebe','pluto','saturn','selene','thalia','theia','vesta','zeus']
+          existing=s[start:end].strip(); additions='\n'.join(f'  {v}: "/buddy-previews/{v}.mp3",' for v in voices); s=s[:start]+'\n'+existing+'\n'+additions+s[end:]; p.write_text(s)
           PY
-
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git config user.name 'github-actions[bot]'; git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add src/lib/local-qwen.ts src/components/studio/BuddyLiveChat.tsx src/components/studio/BuddyVoicePicker.tsx src/routes/index.tsx src/lib/stored-preset-previews.ts public/buddy-previews
           git commit -m 'fix: remove Android localhost chat lag and finish preset previews' || true
           git push
-
       - name: Remove one-shot workflow
         run: |
           git rm .github/workflows/one-shot-buddy-all-issues.yml
