@@ -3,7 +3,7 @@
   "launcherName": "Little Red's Big Studio",
   "host": "little-reds-big-studio-f36b7ec4.gigglelootcoin.workers.dev",
   "launcherIcon": "../1784996969001.png",
-  "enableCache": true,
+  "enableCache": false,
   "display": "standalone",
   "themeColor": "#d71932",
   "backgroundColor": "#0b0506",
