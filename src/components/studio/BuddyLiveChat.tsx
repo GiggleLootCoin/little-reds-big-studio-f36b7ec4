@@ -335,7 +335,10 @@ export function BuddyLiveChat() {
     const v = getBuddyVoiceProfile();
     try {
       let r;
-      if (v.mode === "clone" || v.speaker === "Red") {
+      // An explicitly selected non-Red preset must always win over any saved clone state.
+      // The old condition treated every clone-mode profile as Red, even when a preset
+      // speaker had been selected, so Buddy reused the saved 30-second Red sample.
+      if (v.speaker === "Red" || (v.mode === "clone" && !v.speaker)) {
         let sample: Blob | null = null;
         if (v.mode === "clone") sample = await getBuddyVoiceSample();
         else sample = await getBuiltInRedVoiceSample();
