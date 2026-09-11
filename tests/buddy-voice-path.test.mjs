@@ -82,10 +82,11 @@ test("preset voice previews use stored assets when available and generate the se
   assert.match(picker, /getStoredPresetPreview\(speaker\)/);
   assert.match(picker, /setGeneratedAudio\(stored\)/);
   assert.match(picker, /speaker === "Red"/);
-  assert.match(picker, /runStudioJob\(\s*"voice-clone"/);
+  assert.doesNotMatch(picker, /runStudioJob\(\s*"voice-clone".*PREVIEW_TEXT/s);
+  assert.match(picker, /fetch\("\/api\/ai\/tts"/);
   assert.match(picker, /text: PREVIEW_TEXT/);
   assert.match(picker, /target_text: PREVIEW_TEXT/);
-  assert.match(picker, /new Audio\(result\.url\)/);
+  assert.match(picker, /new Audio\(url\)/);
   assert.match(runtime, /input\.previewOnly === true \|\| legacyPreviewRequest/);
   assert.match(runtime, /getStoredPresetPreview\(effectiveSpeaker\)/);
   assert.match(previews, /Red:\s*"\/red_voice_mic_device10_30s_C\.wav"/);
