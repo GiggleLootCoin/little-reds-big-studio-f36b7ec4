@@ -2,6 +2,8 @@ name: Build Little Red's Big Studio APK
 
 # Final production APK build: validate pull requests and produce a fresh installable artifact on main.
 # Fresh-build trigger: keep the production APK artifact aligned with the current main commit.
+# Verification branch trigger: produce an independently verifiable artifact from the same corrected main tree.
+# APK-only verification: no application source behavior is changed by this trigger.
 on:
   pull_request:
     branches: [main]
