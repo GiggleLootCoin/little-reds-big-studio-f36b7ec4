@@ -92,3 +92,4 @@ jobs:
           git rm .github/workflows/one-shot-stt-fix.yml
           git commit -m 'chore: remove one-shot Buddy STT fix'
           git push origin HEAD:${{ github.event.pull_request.head.ref }}
+# retrigger after workflow activation
