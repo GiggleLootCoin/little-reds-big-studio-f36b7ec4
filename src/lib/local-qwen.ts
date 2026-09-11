@@ -47,11 +47,8 @@ export function normalizeLocalQwenUrl(value: string): string {
   const url = new URL(withProtocol);
   const path = url.pathname.replace(/\/+$/, "");
   if (/\/v1\/chat\/completions$/i.test(path)) return url.toString().replace(/\/$/, "");
-  if (/\/v1$/i.test(path)) {
-    url.pathname = `${path}/chat/completions`;
-  } else {
-    url.pathname = `${path}/v1/chat/completions`;
-  }
+  if (/\/v1$/i.test(path)) url.pathname = `${path}/chat/completions`;
+  else url.pathname = `${path}/v1/chat/completions`;
   return url.toString().replace(/\/$/, "");
 }
 
@@ -124,7 +121,6 @@ export async function runLocalQwen(options: LocalQwenOptions): Promise<LocalQwen
     const detail = (await response.text().catch(() => "")).slice(0, 240);
     throw new Error(`Local Qwen HTTP ${response.status}${detail ? `: ${detail}` : ""}`);
   }
-
   const value = (await response.json()) as unknown;
   const text = extractLocalQwenText(value);
   if (!text) throw new Error("Local Qwen returned no assistant text.");
