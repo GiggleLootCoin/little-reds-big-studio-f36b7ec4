@@ -1,0 +1,1 @@
+Production verification trigger: Buddy preset previews use direct Aura-2 routing and never send Aura speaker IDs through the Qwen clone gateway.
