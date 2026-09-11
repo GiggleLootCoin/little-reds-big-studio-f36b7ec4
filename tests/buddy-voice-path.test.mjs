@@ -100,6 +100,10 @@ test("preset voice previews use stored assets when available and generate the se
   assert.match(previews, /Eric:\s*"https:\/\/huggingface\.co/);
   assert.match(previews, /Ono_Anna:\s*"https:\/\/huggingface\.co/);
   assert.match(previews, /Sohee:\s*"https:\/\/huggingface\.co/);
+  assert.match(previews, /NORMALIZED_PRESET_ALIASES/);
+  assert.match(previews, /"aura-2-luna-en":\s*"Ryan"/);
+  assert.match(previews, /"aura-2-orpheus-en":\s*"Aiden"/);
+  assert.match(previews, /"aura-2-athena-en":\s*"Vivian"/);
   assert.doesNotMatch(chat, /if \("speechSynthesis" in window\)/);
 });
 
