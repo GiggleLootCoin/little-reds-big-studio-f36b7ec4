@@ -7,6 +7,7 @@ import { saveBuddyClonePreview } from "./buddy-voice";
 import { createBestFreeVoiceClone } from "./real-voice-clone-v2";
 import { buildBuddyMemoryContext, rememberUserMessage } from "./buddy-memory.mjs";
 import { isLocalQwenEnabled, runLocalQwen } from "./local-qwen";
+import { getStoredPresetPreview } from "./stored-preset-previews";
 
 export type { StudioArtifact, StudioCapability, StudioJobInput } from "./studio-runtime-impl";
 export { runtimeProviders } from "./studio-runtime-impl";
@@ -269,6 +270,21 @@ export async function runStudioJob(
     const language = String(input.language ?? profile.language ?? "English");
     const modelSize = input.model_size === "0.6B" ? "0.6B" : "1.7B";
     const effectiveSpeaker = typeof input.speaker === "string" ? input.speaker : profile.speaker;
+
+    // Preset preview requests are identified by the explicit preview flag and return
+    // a stored audio asset directly. There is deliberately no TTS/clone/backend call.
+    if (input.previewOnly === true && effectiveSpeaker) {
+      const previewUrl = getStoredPresetPreview(effectiveSpeaker);
+      if (!previewUrl)
+        throw new Error("This preset does not have a stored preview audio asset yet.");
+      return {
+        capability: "tts",
+        value: { previewOnly: true, speaker: effectiveSpeaker },
+        url: previewUrl,
+        provider: "Stored preset preview",
+      };
+    }
+
     const wantsRedPreset = effectiveSpeaker === "Red" && profile.mode !== "clone";
     const wantsSavedClone = !input.speaker && profile.mode === "clone";
     const wantsRedVoice = wantsRedPreset || wantsSavedClone || input.speaker === "Red";
