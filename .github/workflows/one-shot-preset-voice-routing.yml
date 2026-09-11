@@ -1,15 +1,19 @@
 name: One-shot preset voice routing fix
 on:
-  push:
-    branches: [fix/buddy-preset-voice-routing-real-selection-20260911]
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [main]
 permissions:
   contents: write
 jobs:
   patch:
-    if: github.event.head_commit.message != 'chore: remove one-shot preset voice routing fix'
+    if: github.event.pull_request.head.ref == 'fix/buddy-preset-voice-routing-real-selection-20260911'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
       - name: Apply authoritative preset speech route
         run: |
           python3 <<'PY'
@@ -39,9 +43,9 @@ jobs:
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add src/components/studio/BuddyLiveChat.tsx
           git commit -m 'fix: route selected Buddy presets directly to Aura TTS'
-          git push
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
       - name: Remove one-shot workflow
         run: |
           git rm .github/workflows/one-shot-preset-voice-routing.yml
           git commit -m 'chore: remove one-shot preset voice routing fix'
-          git push
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
