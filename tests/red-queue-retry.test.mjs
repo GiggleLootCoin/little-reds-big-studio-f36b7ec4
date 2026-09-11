@@ -20,3 +20,9 @@ test("Qwen SSE parser accepts completed audio artifacts", () => {
   assert.match(source, /event === "complete"/);
   assert.match(source, /x-red-voice-route.*qwen3-tts-reference-clone/);
 });
+
+test("interactive Red speech does not silently upgrade a fast 0.6B request to 1.7B after a terminal-null response", () => {
+  assert.match(source, /latencyMode\?:\s*"interactive"/);
+  assert.match(source, /latencyMode\s*===\s*"interactive"/);
+  assert.match(source, /generateAtSpace\(fallbackSpace\(env\),\s*body,\s*env\)/);
+});
