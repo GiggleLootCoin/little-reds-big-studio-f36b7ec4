@@ -345,13 +345,14 @@ export async function runStudioJob(
       : [];
     const canUseLocalQwen =
       isLocalQwenEnabled() &&
-      localMessages.length === preparedInput.messages?.length &&
+      Array.isArray(preparedInput.messages) &&
+      localMessages.length === preparedInput.messages.length &&
       localMessages.length > 0;
     if (canUseLocalQwen) {
       try {
         const local = await runLocalQwen({
           messages: localMessages,
-          timeoutMs: 3500,
+          timeoutMs: 15000,
           maxTokens: 700,
         });
         return {
