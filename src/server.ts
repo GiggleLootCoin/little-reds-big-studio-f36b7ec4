@@ -393,19 +393,33 @@ async function cloudflareAI(request: Request, env: ServerEnv): Promise<Response 
         vad_filter: true,
       };
       let result: unknown;
-      try {
-        result = await env.AI.run("@cf/openai/whisper", input);
-      } catch (primaryError) {
-        console.warn("Standard Whisper failed; retrying with its binary-input form", primaryError);
+      let lastError: unknown;
+      for (let attempt = 0; attempt < 3 && !result; attempt += 1) {
         try {
-          result = await env.AI.run("@cf/openai/whisper", audio);
-        } catch (secondaryError) {
-          console.warn("Standard Whisper binary request failed", secondaryError);
-          return jsonError(
-            `Speech recognition temporarily unavailable. ${isCapacityError(primaryError) || isCapacityError(secondaryError) ? "The AI service is at capacity." : "The audio request was rejected."}`,
-            503,
-          );
+          result = await env.AI.run("@cf/openai/whisper-large-v3-turbo", input);
+        } catch (error) {
+          lastError = error;
+          if (attempt < 2) await new Promise((resolve) => setTimeout(resolve, 250 * 2 ** attempt));
         }
+      }
+      if (!result) {
+        try {
+          result = await env.AI.run("@cf/openai/whisper", input);
+        } catch (primaryError) {
+          lastError = primaryError || lastError;
+          try {
+            result = await env.AI.run("@cf/openai/whisper", audio);
+          } catch (secondaryError) {
+            lastError = secondaryError || lastError;
+          }
+        }
+      }
+      if (!result) {
+        console.warn("Buddy speech recognition failed after current and legacy Whisper routes", lastError);
+        return jsonError(
+          `Speech recognition temporarily unavailable. ${isCapacityError(lastError) ? "The AI service is at capacity; please try again in a moment." : "The speech service did not accept the recording."}`,
+          503,
+        );
       }
       const text = chatText(result);
       if (!text) return jsonError("Whisper returned no usable transcription.", 502);
