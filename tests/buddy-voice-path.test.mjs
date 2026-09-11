@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-const [runtime, gateway, picker, chat, voice, server, previews] = await Promise.all([
+const [runtime, gateway, picker, chat, voice, server, previews, routing, twa] = await Promise.all([
   readFile("src/lib/studio-runtime.ts", "utf8"),
   readFile("src/lib/voice-clone-gateway.ts", "utf8"),
   readFile("src/components/studio/BuddyVoicePicker.tsx", "utf8"),
@@ -10,6 +10,8 @@ const [runtime, gateway, picker, chat, voice, server, previews] = await Promise.
   readFile("src/lib/buddy-voice.ts", "utf8"),
   readFile("src/server.ts", "utf8"),
   readFile("src/lib/stored-preset-previews.ts", "utf8"),
+  readFile("src/lib/buddy-preset-voice-routing.ts", "utf8"),
+  readFile("twa/twa-manifest.json", "utf8"),
 ]);
 
 test("production Red clone uses the Worker endpoint and verifies returned audio", () => {
@@ -37,7 +39,7 @@ test("Qwen clone uses reference text when available and x-vector-only mode other
 });
 
 test("Qwen clone defaults to the fast free 0.6B model and gates 1.7B behind an explicit opt-in", () => {
-  assert.match(gateway, /body\.modelSize === "1\.7B" && body\.allowHighQuality === true \? "1\.7B" : "0.6B"/);
+  assert.match(gateway, /body\.modelSize === "1\.7B" && body\.allowHighQuality === true \? "1\.7B" : "0\.6B"/);
 });
 
 test("Qwen SSE completion must yield real audio, not a silent substitution", () => {
@@ -111,4 +113,15 @@ test("Red remains the explicit default and presets use Aura-2 English", () => {
   assert.match(voice, /speaker: "Red"/);
   assert.match(server, /@cf\/deepgram\/aura-2-en/);
   assert.doesNotMatch(server, /@cf\/deepgram\/aura-1/);
+});
+
+test("preset TTS canonicalizes both raw Aura names and full Aura-2 IDs", () => {
+  assert.match(routing, /function normalizeBuddyPresetSpeaker\(value: string\)/);
+  assert.match(routing, /aura-2-\(\[a-z0-9_\]\+\)-\(en\|es\)/);
+  assert.match(routing, /return match \? match\[1\] : speaker/);
+  assert.match(routing, /const speaker = normalizeBuddyPresetSpeaker\(profile\.speaker\)/);
+});
+
+test("Android TWA does not intentionally pin stale cached Studio assets", () => {
+  assert.match(twa, /"enableCache": false/);
 });
