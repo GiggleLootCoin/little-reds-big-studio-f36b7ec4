@@ -17,3 +17,5 @@ test("an explicitly selected preset always produces a preset TTS request, never 
   assert.equal(request.text, "Hello from Mason.");
   assert.equal(request.refAudio, undefined);
 });
+
+// Regression: a stale clone mode must not override an explicit preset speaker.
