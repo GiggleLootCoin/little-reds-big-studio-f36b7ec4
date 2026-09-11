@@ -11,7 +11,18 @@ import { StudioButton } from "./ui";
 const CLONE_TEXT = "Hello. This is your cloned voice sample. Would you like to use this voice for Buddy now, or would you like to record again?";
 const REFERENCE_TRANSCRIPT = CLONE_TEXT;
 const PREVIEW_TEXT = "Hello. This is Buddy. This is a real voice preview, so you can listen before choosing this voice.";
-const normalizePresetSpeaker = (speaker: string) => speaker.startsWith("aura-2-") ? speaker : BUDDY_EXPANDED_VOICES.some((v) => v.id === `aura-2-${speaker}-en`) ? `aura-2-${speaker}-en` : speaker;
+const normalizePresetSpeaker = (speaker: string) => {
+  const raw = speaker.trim();
+  if (!raw) return "";
+  if (raw === "Red") return "Red";
+  if (raw.startsWith("aura-2-")) return raw;
+  return BUDDY_EXPANDED_VOICES.some((v) => v.id === raw) ? `aura-2-${raw}-en` : raw;
+};
+const displaySpeaker = (speaker: string) => {
+  const canonical = normalizePresetSpeaker(speaker);
+  const raw = canonical.replace(/^aura-2-/, "").replace(/-en$/, "");
+  return BUDDY_EXPANDED_VOICES.find((v) => v.id === raw)?.label || BUDDY_VOICE_PRESETS.find((v) => v.id === canonical)?.label || speaker;
+};
 const FAILURE = "Buddy couldn't create the voice clone yet.";
 
 export function BuddyVoicePicker() {
@@ -39,12 +50,14 @@ export function BuddyVoicePicker() {
 
   const update = (patch: Partial<typeof profile>) => {
     const next = { ...getBuddyVoiceProfile(), ...patch };
-    setProfile(next);
-    setPresetCandidate(next.speaker);
+    const canonicalSpeaker = next.mode === "preset" ? normalizePresetSpeaker(next.speaker) : next.speaker;
+    const canonicalNext = { ...next, speaker: canonicalSpeaker };
+    setProfile(canonicalNext);
+    setPresetCandidate(canonicalSpeaker);
     setPreviewVoice(null);
-    saveBuddyVoiceProfile(next);
-    const voice = allVoices.find((v) => v.id === next.speaker);
-    setStatus(next.mode === "clone" || next.speaker === "Red" ? next.cloneVerified ? "✓ Your verified clone is ready for Buddy." : "Your sample is saved. Tap Generate My Voice Clone." : `${voice?.label || next.speaker} selected — ${voice?.note || "ready to test"}.`);
+    saveBuddyVoiceProfile(canonicalNext);
+    const voice = allVoices.find((v) => v.id === canonicalSpeaker) || allVoices.find((v) => normalizePresetSpeaker(v.id) === canonicalSpeaker);
+    setStatus(canonicalNext.mode === "clone" || canonicalNext.speaker === "Red" ? canonicalNext.cloneVerified ? "✓ Your verified clone is ready for Buddy." : "Your sample is saved. Tap Generate My Voice Clone." : `${voice?.label || displaySpeaker(canonicalSpeaker)} selected — ${voice?.note || "ready to test"}.`);
   };
 
   const saveReference = async (file: File) => {
@@ -96,24 +109,22 @@ export function BuddyVoicePicker() {
   const stopRecording = () => { if (!recorderRef.current || recorderRef.current.state === "inactive") return; recorderRef.current.stop(); recorderRef.current = null; setRecording(false); };
 
   const previewPreset = async () => {
-    const speaker = normalizePresetSpeaker(String(presetCandidate || "").trim());
+    const speaker = normalizePresetSpeaker(String(presetCandidate || ""));
     if (!speaker) { setStatus("Choose a preset voice to preview."); return; }
     setBusy(true);
     setPreviewVoice(speaker);
-    setStatus(`Generating ${allVoices.find((v) => v.id === speaker)?.label || allVoices.find((v) => v.id === `aura-2-${speaker}-en`)?.label || speaker} preview…`);
+    setStatus(`Generating ${displaySpeaker(speaker)} preview…`);
     try {
       const stored = getStoredPresetPreview(speaker);
       if (stored) {
         setGeneratedAudio(stored);
         const player = new Audio(stored);
         player.preload = "auto";
-        try { await player.play(); setStatus(`✓ ${allVoices.find((v) => v.id === speaker)?.label || speaker} preview playing.`); }
+        try { await player.play(); setStatus(`✓ ${displaySpeaker(speaker)} preview playing.`); }
         catch { setStatus("✓ Preview loaded — press Play on the audio player below if Android blocks automatic playback."); }
         return;
       }
       if (speaker === "Red") throw new Error("Buddy's Red preview asset is unavailable.");
-      // Preset previews bypass the voice-clone gateway completely. Aura speaker IDs
-      // are sent to the dedicated Aura-2 TTS route so they can never reach Qwen clone.
       const response = await fetch("/api/ai/tts", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -129,7 +140,7 @@ export function BuddyVoicePicker() {
       setGeneratedAudio(url);
       const player = new Audio(url);
       player.preload = "auto";
-      try { await player.play(); setStatus(`✓ ${allVoices.find((v) => v.id === speaker)?.label || speaker} preview playing.`); }
+      try { await player.play(); setStatus(`✓ ${displaySpeaker(speaker)} preview playing.`); }
       catch { setStatus("✓ Preview generated — press Play on the audio player below if Android blocks automatic playback."); }
     } catch (error) {
       setStatus(`Preview failed. ${error instanceof Error ? error.message : "The voice engine failed."}`);
@@ -153,7 +164,7 @@ export function BuddyVoicePicker() {
         setStatus("✓ REAL VOICE CLONE READY — press Play on the audio player below.");
         return;
       }
-      const result = await runStudioJob("voice-clone", { speaker: current.speaker, language: current.language || "English", text: CLONE_TEXT, target_text: CLONE_TEXT, refText: REFERENCE_TRANSCRIPT }, setStatus);
+      const result = await runStudioJob("voice-clone", { speaker: normalizePresetSpeaker(current.speaker), language: current.language || "English", text: CLONE_TEXT, target_text: CLONE_TEXT, refText: REFERENCE_TRANSCRIPT }, setStatus);
       if (!result.url) throw new Error("The voice engine returned no playable audio.");
       setGeneratedAudio(result.url);
       setStatus("✓ Voice sample generated — press Play below.");
@@ -175,7 +186,7 @@ export function BuddyVoicePicker() {
             {["Buddy's Original Voice", "Buddy Originals", "Aura Studio — 40 distinct English voices"].map((family) => <optgroup key={family} label={family}>{allVoices.filter((v) => v.family === family).map((voice) => <option key={voice.id} value={voice.id}>{voice.label} — {voice.note}</option>)}</optgroup>)}
           </select>
           <div className="mt-2 grid grid-cols-2 gap-2"><StudioButton type="button" className="w-full justify-center" onClick={() => void previewPreset()} disabled={busy}><Volume2 className="size-4" /> Preview Voice</StudioButton><button type="button" onClick={() => update({ mode: "preset", speaker: normalizePresetSpeaker(presetCandidate) })} disabled={busy} className="rounded-xl border border-primary bg-primary/10 px-3 py-2 text-xs font-semibold"><CheckCircle2 className="mr-1 inline size-4" /> Use This Voice</button></div>
-          {audioUrl && previewVoice === presetCandidate && <div className="mt-2 rounded-xl border border-primary/30 bg-background/70 p-2"><p className="mb-2 text-[10px] font-semibold text-primary">Preset voice preview</p><audio className="w-full" controls preload="auto" src={audioUrl} /></div>}
+          {audioUrl && previewVoice === normalizePresetSpeaker(presetCandidate) && <div className="mt-2 rounded-xl border border-primary/30 bg-background/70 p-2"><p className="mb-2 text-[10px] font-semibold text-primary">Preset voice preview</p><audio className="w-full" controls preload="auto" src={audioUrl} /></div>}
           <p role="status" aria-live="polite" className="mt-2 rounded-xl border border-border/70 bg-background/50 px-3 py-2 text-[10px] leading-relaxed text-muted-foreground">{status}</p>
         </div>
       ) : (
