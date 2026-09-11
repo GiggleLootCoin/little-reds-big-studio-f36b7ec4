@@ -1,5 +1,3 @@
-import { selectBuddyModel } from "./buddy-model-router.mjs";
-
 export type LocalQwenMessage = {
   role: "system" | "user" | "assistant";
   content: string;
@@ -77,11 +75,14 @@ export function extractLocalQwenText(value: unknown): string {
     const content = (message as { content?: unknown }).content;
     if (typeof content === "string" && content.trim()) return content.trim();
     if (Array.isArray(content)) {
-      const text = content.map((part) => {
-        if (!part || typeof part !== "object") return "";
-        const item = part as { text?: unknown };
-        return typeof item.text === "string" ? item.text : "";
-      }).join("").trim();
+      const text = content
+        .map((part) => {
+          if (!part || typeof part !== "object") return "";
+          const item = part as { text?: unknown };
+          return typeof item.text === "string" ? item.text : "";
+        })
+        .join("")
+        .trim();
       if (text) return text;
     }
   }
@@ -98,20 +99,23 @@ export async function runLocalQwen(options: LocalQwenOptions): Promise<LocalQwen
   if (!isLocalQwenEnabled()) throw new Error("Local Qwen is disabled.");
   if (!options.messages.length) throw new Error("Local Qwen requires at least one message.");
 
-  const route = selectBuddyModel({ messages: options.messages });
-  const model = options.model?.trim() || localQwenModel() || route.localModel;
+  const model = options.model?.trim() || localQwenModel();
   const timeoutMs = Math.max(1500, options.timeoutMs ?? DEFAULT_TIMEOUT_MS);
-  const response = await abortableFetch(normalizeLocalQwenUrl(configuredUrl()), {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      model,
-      messages: options.messages,
-      temperature: options.temperature ?? 0.6,
-      max_tokens: options.maxTokens ?? 700,
-      stream: false,
-    }),
-  }, timeoutMs);
+  const response = await abortableFetch(
+    normalizeLocalQwenUrl(configuredUrl()),
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        model,
+        messages: options.messages,
+        temperature: options.temperature ?? 0.6,
+        max_tokens: options.maxTokens ?? 700,
+        stream: false,
+      }),
+    },
+    timeoutMs,
+  );
 
   if (!response.ok) {
     const detail = (await response.text().catch(() => "")).slice(0, 240);
@@ -123,7 +127,9 @@ export async function runLocalQwen(options: LocalQwenOptions): Promise<LocalQwen
   return { text, provider: "Local Qwen", model };
 }
 
-export function localQwenBaseUrl(): string { return configuredUrl(); }
+export function localQwenBaseUrl(): string {
+  return configuredUrl();
+}
 
 export const LOCAL_QWEN_DEFAULTS = {
   baseUrl: DEFAULT_BASE_URL,
