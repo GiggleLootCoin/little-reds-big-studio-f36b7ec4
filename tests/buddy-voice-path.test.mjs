@@ -77,12 +77,15 @@ test("Qwen terminal null errors are treated as transient upstream failures", () 
   assert.match(gateway, /isRetryableQueueError\(error\)/);
 });
 
-test("preset voices use stored previews without any preview generation request", () => {
-  assert.match(picker, /const previewPreset = \(\) =>/);
+test("preset voice previews use stored assets when available and generate the selected speaker when missing", () => {
+  assert.match(picker, /const previewPreset = async \(\) =>/);
   assert.match(picker, /getStoredPresetPreview\(speaker\)/);
-  assert.match(picker, /setGeneratedAudio\(previewUrl\)/);
-  assert.doesNotMatch(picker, /previewPreset[\s\S]*?runStudioJob\(\s*"tts"/);
-  assert.doesNotMatch(picker, /Generating a real preview/);
+  assert.match(picker, /setGeneratedAudio\(stored\)/);
+  assert.match(picker, /speaker === "Red"/);
+  assert.match(picker, /runStudioJob\(\s*"voice-clone"/);
+  assert.match(picker, /text: PREVIEW_TEXT/);
+  assert.match(picker, /target_text: PREVIEW_TEXT/);
+  assert.match(picker, /new Audio\(result\.url\)/);
   assert.match(runtime, /input\.previewOnly === true \|\| legacyPreviewRequest/);
   assert.match(runtime, /getStoredPresetPreview\(effectiveSpeaker\)/);
   assert.match(previews, /Red:\s*"\/red_voice_mic_device10_30s_C\.wav"/);
