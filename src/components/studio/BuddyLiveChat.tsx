@@ -12,6 +12,7 @@ import {
 } from "@/lib/microphone";
 import { BuddyVoicePicker } from "./BuddyVoicePicker";
 import { getBuddyVoiceProfile, getBuddyVoiceSample } from "@/lib/buddy-voice";
+import { buildPresetTtsRequest } from "@/lib/buddy-preset-voice-routing";
 import { getBuiltInRedVoiceSample } from "@/lib/red-default-voice";
 import buddyReference from "../../../file_0000000070e8824391d24367b5f22d59.png";
 import "./BuddyVisual.css";
@@ -361,20 +362,33 @@ export function BuddyLiveChat() {
           },
           setStatus,
         );
-      } else
-        r = await runStudioJob(
-          "tts",
-          {
-            text,
-            target_text: text,
-            language: v.language || "English",
-            speaker: v.speaker,
-            model_size: "1.7B",
-            mood: v.mood || "natural",
-            tone: v.tone || "conversational",
-          },
-          setStatus,
-        );
+      } else {
+        const preset = buildPresetTtsRequest(v, text);
+        setStatus(`Speaking with ${preset.speaker}…`);
+        const response = await fetch("/api/ai/tts", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            capability: "tts",
+            text: preset.text,
+            target_text: preset.text,
+            language: preset.language,
+            speaker: preset.speaker,
+            mood: preset.mood,
+            tone: preset.tone,
+          }),
+        });
+        if (!response.ok) {
+          const detail = (await response.text().catch(() => "")).slice(0, 300);
+          throw Error(`Preset voice generation failed (${response.status}). ${detail}`.trim());
+        }
+        const blob = await response.blob();
+        if (!blob.size) throw Error("Preset voice generation returned empty audio.");
+        r = {
+          url: URL.createObjectURL(blob),
+          provider: response.headers.get("x-voice-provider") || `Preset TTS (${preset.speaker})`,
+        };
+      }
       if (!r.url) throw Error("No usable Buddy voice was returned.");
       const a = audio.current ?? new Audio();
       audio.current = a;
