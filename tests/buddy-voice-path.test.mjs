@@ -37,7 +37,7 @@ test("Qwen clone uses reference text when available and x-vector-only mode other
 });
 
 test("Qwen clone defaults to the fast free 0.6B model and gates 1.7B behind an explicit opt-in", () => {
-  assert.match(gateway, /body\.modelSize === "1\.7B" && body\.allowHighQuality === true \? "1\.7B" : "0\.6B"/);
+  assert.match(gateway, /body\.modelSize === "1\.7B" && body\.allowHighQuality === true \? "1\.7B" : "0.6B"/);
 });
 
 test("Qwen SSE completion must yield real audio, not a silent substitution", () => {
@@ -87,6 +87,7 @@ test("preset voice previews use stored assets when available and generate the se
   assert.match(picker, /text: PREVIEW_TEXT/);
   assert.match(picker, /target_text: PREVIEW_TEXT/);
   assert.match(picker, /new Audio\(url\)/);
+  assert.match(picker, /previewVoice === normalizePresetSpeaker\(presetCandidate\)/);
   assert.match(runtime, /input\.previewOnly === true \|\| legacyPreviewRequest/);
   assert.match(runtime, /getStoredPresetPreview\(effectiveSpeaker\)/);
   assert.match(previews, /Red:\s*"\/red_voice_mic_device10_30s_C\.wav"/);
