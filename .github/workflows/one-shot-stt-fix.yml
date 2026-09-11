@@ -1,0 +1,87 @@
+name: One-shot Buddy STT reliability fix
+on:
+  push:
+    branches: [fix/buddy-stt-whisper-fallback-20260911]
+permissions:
+  contents: write
+jobs:
+  patch:
+    if: github.event.head_commit.message != 'chore: remove one-shot Buddy STT fix'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch Whisper route
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+          p = Path('src/server.ts')
+          s = p.read_text()
+          start = s.index('    if (capability === "speech-to-text") {')
+          end = s.index('    if (capability === "web-search") {', start)
+          new = '''    if (capability === "speech-to-text") {
+      if (!body.audioBase64) return jsonError("Audio is required for speech recognition.", 400);
+      const audio = body.audioBase64.trim();
+      if (!audio) return jsonError("The recorded audio was empty.", 400);
+      const input = {
+        audio,
+        task: "transcribe",
+        ...(body.language && body.language !== "Auto" ? { language: body.language } : {}),
+        vad_filter: true,
+      };
+      let result: unknown;
+      let lastError: unknown;
+      for (let attempt = 0; attempt < 3 && !result; attempt += 1) {
+        try {
+          result = await env.AI.run("@cf/openai/whisper-large-v3-turbo", input);
+        } catch (error) {
+          lastError = error;
+          if (attempt < 2) await new Promise((resolve) => setTimeout(resolve, 250 * 2 ** attempt));
+        }
+      }
+      if (!result) {
+        try {
+          result = await env.AI.run("@cf/openai/whisper", input);
+        } catch (primaryError) {
+          lastError = primaryError || lastError;
+          try {
+            result = await env.AI.run("@cf/openai/whisper", audio);
+          } catch (secondaryError) {
+            lastError = secondaryError || lastError;
+          }
+        }
+      }
+      if (!result) {
+        console.warn("Buddy speech recognition failed after current and legacy Whisper routes", lastError);
+        return jsonError(
+          `Speech recognition temporarily unavailable. ${isCapacityError(lastError) ? "The AI service is at capacity; please try again in a moment." : "The speech service did not accept the recording."}`,
+          503,
+        );
+      }
+      const text = chatText(result);
+      if (!text) return jsonError("Whisper returned no usable transcription.", 502);
+      return Response.json(
+        { text, transcription: text },
+        { headers: { "cache-control": "no-store" } },
+      );
+    }
+'''
+          s = s[:start] + new + s[end:]
+          p.write_text(s)
+          PY
+      - name: Typecheck and build
+        run: |
+          npm ci --ignore-scripts --legacy-peer-deps
+          npm run typecheck
+          npm run build
+      - name: Commit source fix
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/server.ts
+          git commit -m 'fix: use current Whisper Turbo with STT retry fallback'
+          git push
+      - name: Remove one-shot workflow
+        run: |
+          git rm .github/workflows/one-shot-stt-fix.yml
+          git commit -m 'chore: remove one-shot Buddy STT fix'
+          git push
