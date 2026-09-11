@@ -1,4 +1,4 @@
-import { selectBuddyModel } from "./buddy-model-router";
+import { selectBuddyModel } from "./buddy-model-router.mjs";
 
 export type LocalQwenMessage = {
   role: "system" | "user" | "assistant";
@@ -49,11 +49,8 @@ export function normalizeLocalQwenUrl(value: string): string {
   const url = new URL(withProtocol);
   const path = url.pathname.replace(/\/+$/, "");
   if (/\/v1\/chat\/completions$/i.test(path)) return url.toString().replace(/\/$/, "");
-  if (/\/v1$/i.test(path)) {
-    url.pathname = `${path}/chat/completions`;
-  } else {
-    url.pathname = `${path}/v1/chat/completions`;
-  }
+  if (/\/v1$/i.test(path)) url.pathname = `${path}/chat/completions`;
+  else url.pathname = `${path}/v1/chat/completions`;
   return url.toString().replace(/\/$/, "");
 }
 
@@ -80,14 +77,11 @@ export function extractLocalQwenText(value: unknown): string {
     const content = (message as { content?: unknown }).content;
     if (typeof content === "string" && content.trim()) return content.trim();
     if (Array.isArray(content)) {
-      const text = content
-        .map((part) => {
-          if (!part || typeof part !== "object") return "";
-          const item = part as { text?: unknown };
-          return typeof item.text === "string" ? item.text : "";
-        })
-        .join("")
-        .trim();
+      const text = content.map((part) => {
+        if (!part || typeof part !== "object") return "";
+        const item = part as { text?: unknown };
+        return typeof item.text === "string" ? item.text : "";
+      }).join("").trim();
       if (text) return text;
     }
   }
@@ -107,36 +101,29 @@ export async function runLocalQwen(options: LocalQwenOptions): Promise<LocalQwen
   const route = selectBuddyModel({ messages: options.messages });
   const model = options.model?.trim() || localQwenModel() || route.localModel;
   const timeoutMs = Math.max(1500, options.timeoutMs ?? DEFAULT_TIMEOUT_MS);
-  const response = await abortableFetch(
-    normalizeLocalQwenUrl(configuredUrl()),
-    {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        model,
-        messages: options.messages,
-        temperature: options.temperature ?? 0.6,
-        max_tokens: options.maxTokens ?? 700,
-        stream: false,
-      }),
-    },
-    timeoutMs,
-  );
+  const response = await abortableFetch(normalizeLocalQwenUrl(configuredUrl()), {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      model,
+      messages: options.messages,
+      temperature: options.temperature ?? 0.6,
+      max_tokens: options.maxTokens ?? 700,
+      stream: false,
+    }),
+  }, timeoutMs);
 
   if (!response.ok) {
     const detail = (await response.text().catch(() => "")).slice(0, 240);
     throw new Error(`Local Qwen HTTP ${response.status}${detail ? `: ${detail}` : ""}`);
   }
-
   const value = (await response.json()) as unknown;
   const text = extractLocalQwenText(value);
   if (!text) throw new Error("Local Qwen returned no assistant text.");
   return { text, provider: "Local Qwen", model };
 }
 
-export function localQwenBaseUrl(): string {
-  return configuredUrl();
-}
+export function localQwenBaseUrl(): string { return configuredUrl(); }
 
 export const LOCAL_QWEN_DEFAULTS = {
   baseUrl: DEFAULT_BASE_URL,
