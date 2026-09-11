@@ -1,0 +1,19 @@
+name: Preset Voice Regression
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [fix/buddy-preset-voice-routing-real-selection-20260911]
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci --ignore-scripts --legacy-peer-deps
+      - run: node --test tests/buddy-preset-voice-routing.test.mjs
