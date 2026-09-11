@@ -1,18 +1,16 @@
 name: Apply final Buddy runtime fix
 on:
-  pull_request:
-    types: [opened, synchronize, reopened]
+  push:
     branches: [main]
 permissions:
   contents: write
 jobs:
   patch:
-    if: github.event.pull_request.head.ref == 'fix/final-buddy-runtime-20260911'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.ref }}
+          ref: main
           fetch-depth: 0
       - name: Patch preset preview fallback and chat failover
         run: |
@@ -115,9 +113,9 @@ jobs:
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add src/lib/studio-runtime.ts src/server.ts
           git commit -m 'fix: route expanded preset previews through Aura and add chat failover'
-          git push origin HEAD:${{ github.event.pull_request.head.ref }}
+          git push origin HEAD:main
       - name: Remove temporary workflow
         run: |
-          git rm .github/workflows/apply-final-runtime-fix.yml
-          git commit -m 'chore: remove temporary runtime fix workflow'
-          git push origin HEAD:${{ github.event.pull_request.head.ref }}
+          git rm .github/workflows/apply-final-runtime-fix.yml FIX_TRIGGER.md
+          git commit -m 'chore: remove temporary Buddy runtime fix workflow'
+          git push origin HEAD:main
