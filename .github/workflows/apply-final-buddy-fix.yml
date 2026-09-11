@@ -88,3 +88,4 @@ jobs:
           git rm .github/workflows/apply-final-buddy-fix.yml .github/workflows/apply-stt-fix.yml
           git commit -m 'chore: remove temporary Buddy fix workflows'
           git push origin HEAD:${{ github.event.pull_request.head.ref }}
+# retrigger
