@@ -2,13 +2,14 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-const [runtime, gateway, picker, chat, voice, server] = await Promise.all([
+const [runtime, gateway, picker, chat, voice, server, previews] = await Promise.all([
   readFile("src/lib/studio-runtime.ts", "utf8"),
   readFile("src/lib/voice-clone-gateway.ts", "utf8"),
   readFile("src/components/studio/BuddyVoicePicker.tsx", "utf8"),
   readFile("src/components/studio/BuddyLiveChat.tsx", "utf8"),
   readFile("src/lib/buddy-voice.ts", "utf8"),
   readFile("src/server.ts", "utf8"),
+  readFile("src/lib/stored-preset-previews.ts", "utf8"),
 ]);
 
 test("production Red clone uses the Worker endpoint and verifies returned audio", () => {
@@ -76,12 +77,24 @@ test("Qwen terminal null errors are treated as transient upstream failures", () 
   assert.match(gateway, /isRetryableQueueError\(error\)/);
 });
 
-test("preset voices expose generated previews before selection", () => {
-  assert.match(picker, /const previewPreset = async/);
-  assert.match(picker, /runStudioJob\(\s*"tts"/);
-  assert.match(picker, /setGeneratedAudio\(result\.url\)/);
-  assert.match(picker, /Preview Voice/);
-  assert.match(picker, /audio[^\n]*controls/);
+test("preset voices use stored previews without any preview generation request", () => {
+  assert.match(picker, /const previewPreset = \(\) =>/);
+  assert.match(picker, /getStoredPresetPreview\(speaker\)/);
+  assert.match(picker, /setGeneratedAudio\(previewUrl\)/);
+  assert.doesNotMatch(picker, /previewPreset[\s\S]*?runStudioJob\(\s*"tts"/);
+  assert.doesNotMatch(picker, /Generating a real preview/);
+  assert.match(runtime, /input\.previewOnly === true \|\| legacyPreviewRequest/);
+  assert.match(runtime, /getStoredPresetPreview\(effectiveSpeaker\)/);
+  assert.match(previews, /Red:\s*"\/red_voice_mic_device10_30s_C\.wav"/);
+  assert.match(previews, /Ryan:\s*"https:\/\/huggingface\.co/);
+  assert.match(previews, /Aiden:\s*"https:\/\/huggingface\.co/);
+  assert.match(previews, /Vivian:\s*"https:\/\/huggingface\.co/);
+  assert.match(previews, /Serena:\s*"https:\/\/huggingface\.co/);
+  assert.match(previews, /Uncle_Fu:\s*"https:\/\/huggingface\.co/);
+  assert.match(previews, /Dylan:\s*"https:\/\/huggingface\.co/);
+  assert.match(previews, /Eric:\s*"https:\/\/huggingface\.co/);
+  assert.match(previews, /Ono_Anna:\s*"https:\/\/huggingface\.co/);
+  assert.match(previews, /Sohee:\s*"https:\/\/huggingface\.co/);
   assert.doesNotMatch(chat, /if \("speechSynthesis" in window\)/);
 });
 
