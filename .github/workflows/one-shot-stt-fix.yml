@@ -1,15 +1,19 @@
 name: One-shot Buddy STT reliability fix
 on:
-  push:
-    branches: [fix/buddy-stt-whisper-fallback-20260911]
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [main]
 permissions:
   contents: write
 jobs:
   patch:
-    if: github.event.head_commit.message != 'chore: remove one-shot Buddy STT fix'
+    if: github.event.pull_request.head.ref == 'fix/buddy-stt-whisper-fallback-20260911'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
       - name: Patch Whisper route
         run: |
           python3 <<'PY'
@@ -18,6 +22,9 @@ jobs:
           s = p.read_text()
           start = s.index('    if (capability === "speech-to-text") {')
           end = s.index('    if (capability === "web-search") {', start)
+          if '@cf/openai/whisper-large-v3-turbo' in s[start:end]:
+              print('STT patch already present')
+              raise SystemExit(0)
           new = '''    if (capability === "speech-to-text") {
       if (!body.audioBase64) return jsonError("Audio is required for speech recognition.", 400);
       const audio = body.audioBase64.trim();
@@ -79,9 +86,9 @@ jobs:
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add src/server.ts
           git commit -m 'fix: use current Whisper Turbo with STT retry fallback'
-          git push
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
       - name: Remove one-shot workflow
         run: |
           git rm .github/workflows/one-shot-stt-fix.yml
           git commit -m 'chore: remove one-shot Buddy STT fix'
-          git push
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
