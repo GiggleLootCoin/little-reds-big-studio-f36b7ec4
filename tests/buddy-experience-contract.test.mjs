@@ -15,7 +15,7 @@ const [picker, chat, agent, voice, runtime, wrapper, twa] = await Promise.all([
 test("Red personal voice is a visible preset choice and remains clone-routed", () => {
   assert.match(picker, /id: "Red"[\s\S]*?family: "Buddy's Original Voice"/);
   assert.match(picker, /label: "Red — The Original Voice of Buddy"/);
-  assert.match(chat, /v\.mode === "clone" \|\| v\.speaker === "Red"/);
+  assert.match(chat, /v\.speaker === "Red" \|\| \(v\.mode === "clone" \&\& !v\.speaker\)/);
 });
 
 test("saved Red voice is selected without hiding the preset voice list", () => {
@@ -24,6 +24,11 @@ test("saved Red voice is selected without hiding the preset voice list", () => {
   assert.match(picker, /setPresetCandidate\(e\.target\.value\)/);
   assert.match(picker, /setPresetCandidate\(next\.speaker\)/);
   assert.match(picker, /mode: "preset"/);
+});
+
+test("non-Red preset selection cannot enter the saved clone branch", () => {
+  assert.match(chat, /v\.speaker === "Red"/);
+  assert.doesNotMatch(chat, /if \(v\.mode === "clone" \|\| v\.speaker === "Red"\)/);
 });
 
 test("preset voices are not silently replaced by a saved Red sample", () => {
