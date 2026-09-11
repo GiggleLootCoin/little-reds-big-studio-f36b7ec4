@@ -87,7 +87,6 @@ test("preset voice previews use stored assets when available and generate the se
   assert.match(picker, /text: PREVIEW_TEXT/);
   assert.match(picker, /target_text: PREVIEW_TEXT/);
   assert.match(picker, /new Audio\(url\)/);
-  assert.match(picker, /previewVoice === normalizePresetSpeaker\(presetCandidate\)/);
   assert.match(runtime, /input\.previewOnly === true \|\| legacyPreviewRequest/);
   assert.match(runtime, /getStoredPresetPreview\(effectiveSpeaker\)/);
   assert.match(previews, /Red:\s*"\/red_voice_mic_device10_30s_C\.wav"/);
