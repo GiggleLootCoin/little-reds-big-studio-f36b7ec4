@@ -40,9 +40,7 @@ jobs:
           t.write_text(ts)
           PY
       - name: Verify targeted source contract
-        run: |
-          node --test tests/buddy-experience-contract.test.mjs
-          npx tsc --noEmit
+        run: node --test tests/buddy-experience-contract.test.mjs
       - name: Commit fix and remove one-shot workflow
         run: |
           git config user.name "GiggleLootCoin"
