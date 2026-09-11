@@ -11,6 +11,7 @@ import { StudioButton } from "./ui";
 const CLONE_TEXT = "Hello. This is your cloned voice sample. Would you like to use this voice for Buddy now, or would you like to record again?";
 const REFERENCE_TRANSCRIPT = CLONE_TEXT;
 const PREVIEW_TEXT = "Hello. This is Buddy. This is a real voice preview, so you can listen before choosing this voice.";
+const normalizePresetSpeaker = (speaker: string) => speaker.startsWith("aura-2-") ? speaker : BUDDY_EXPANDED_VOICES.some((v) => v.id === `aura-2-${speaker}-en`) ? `aura-2-${speaker}-en` : speaker;
 const FAILURE = "Buddy couldn't create the voice clone yet.";
 
 export function BuddyVoicePicker() {
@@ -95,11 +96,11 @@ export function BuddyVoicePicker() {
   const stopRecording = () => { if (!recorderRef.current || recorderRef.current.state === "inactive") return; recorderRef.current.stop(); recorderRef.current = null; setRecording(false); };
 
   const previewPreset = async () => {
-    const speaker = String(presetCandidate || "").trim();
+    const speaker = normalizePresetSpeaker(String(presetCandidate || "").trim());
     if (!speaker) { setStatus("Choose a preset voice to preview."); return; }
     setBusy(true);
     setPreviewVoice(speaker);
-    setStatus(`Generating ${allVoices.find((v) => v.id === speaker)?.label || speaker} preview…`);
+    setStatus(`Generating ${allVoices.find((v) => v.id === speaker)?.label || allVoices.find((v) => v.id === `aura-2-${speaker}-en`)?.label || speaker} preview…`);
     try {
       const stored = getStoredPresetPreview(speaker);
       if (stored) {
@@ -173,7 +174,7 @@ export function BuddyVoicePicker() {
           <select value={presetCandidate} onChange={(e) => { setPresetCandidate(e.target.value); setPreviewVoice(null); setStatus("Preset selected for preview — it is not committed until you use this voice."); }} className="w-full rounded-xl border border-border bg-background/70 px-3 py-2 text-xs">
             {["Buddy's Original Voice", "Buddy Originals", "Aura Studio — 40 distinct English voices"].map((family) => <optgroup key={family} label={family}>{allVoices.filter((v) => v.family === family).map((voice) => <option key={voice.id} value={voice.id}>{voice.label} — {voice.note}</option>)}</optgroup>)}
           </select>
-          <div className="mt-2 grid grid-cols-2 gap-2"><StudioButton type="button" className="w-full justify-center" onClick={() => void previewPreset()} disabled={busy}><Volume2 className="size-4" /> Preview Voice</StudioButton><button type="button" onClick={() => update({ mode: "preset", speaker: presetCandidate })} disabled={busy} className="rounded-xl border border-primary bg-primary/10 px-3 py-2 text-xs font-semibold"><CheckCircle2 className="mr-1 inline size-4" /> Use This Voice</button></div>
+          <div className="mt-2 grid grid-cols-2 gap-2"><StudioButton type="button" className="w-full justify-center" onClick={() => void previewPreset()} disabled={busy}><Volume2 className="size-4" /> Preview Voice</StudioButton><button type="button" onClick={() => update({ mode: "preset", speaker: normalizePresetSpeaker(presetCandidate) })} disabled={busy} className="rounded-xl border border-primary bg-primary/10 px-3 py-2 text-xs font-semibold"><CheckCircle2 className="mr-1 inline size-4" /> Use This Voice</button></div>
           {audioUrl && previewVoice === presetCandidate && <div className="mt-2 rounded-xl border border-primary/30 bg-background/70 p-2"><p className="mb-2 text-[10px] font-semibold text-primary">Preset voice preview</p><audio className="w-full" controls preload="auto" src={audioUrl} /></div>}
           <p role="status" aria-live="polite" className="mt-2 rounded-xl border border-border/70 bg-background/50 px-3 py-2 text-[10px] leading-relaxed text-muted-foreground">{status}</p>
         </div>
