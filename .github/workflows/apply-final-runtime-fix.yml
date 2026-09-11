@@ -1,0 +1,123 @@
+name: Apply final Buddy runtime fix
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [main]
+permissions:
+  contents: write
+jobs:
+  patch:
+    if: github.event.pull_request.head.ref == 'fix/final-buddy-runtime-20260911'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+      - name: Patch preset preview fallback and chat failover
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+          p = Path('src/lib/studio-runtime.ts')
+          s = p.read_text()
+          old = '''    if ((input.previewOnly === true || legacyPreviewRequest) && effectiveSpeaker) {
+      const previewUrl = getStoredPresetPreview(effectiveSpeaker);
+      if (!previewUrl)
+        throw new Error("This preset does not have a stored preview audio asset yet.");
+      return {
+        capability: "tts",
+        value: { previewOnly: true, speaker: effectiveSpeaker },
+        url: previewUrl,
+        provider: "Stored preset preview",
+      };
+    }'''
+          new = '''    if ((input.previewOnly === true || legacyPreviewRequest) && effectiveSpeaker) {
+      const previewUrl = getStoredPresetPreview(effectiveSpeaker);
+      if (previewUrl) {
+        return {
+          capability: "tts",
+          value: { previewOnly: true, speaker: effectiveSpeaker },
+          url: previewUrl,
+          provider: "Stored preset preview",
+        };
+      }
+      if (effectiveSpeaker === "Red")
+        throw new Error("Buddy's Red preview asset is unavailable.");
+      // Expanded Aura presets may not have a bundled preview asset. Generate the
+      // selected speaker directly through the normal preset TTS route instead of
+      // sending its Aura ID into a Qwen voice-clone endpoint.
+      const generated = await mod.runStudioJob("tts", {
+        speaker: effectiveSpeaker,
+        language,
+        text,
+        target_text: text,
+      }, onStatus);
+      if (!generated.url) throw new Error("The selected preset returned no playable preview audio.");
+      return generated;
+    }'''
+          if old not in s: raise SystemExit('Expected preset preview block not found')
+          p.write_text(s.replace(old, new, 1))
+
+          p = Path('src/server.ts')
+          s = p.read_text()
+          old = '''async function openRouterChat(env: ServerEnv, messages: unknown[]): Promise<unknown> {
+  if (env.AI) {
+    const model = hasImageContent(messages)
+      ? "@cf/qwen/qwen3.8-27b"
+      : "@cf/qwen/qwen3-30b-a3b-fp8";
+    const result = await env.AI.run(model, {
+      messages,
+      max_tokens: 320,
+      temperature: 0.55,
+      stream: false,
+    });
+    return result;
+  }
+  const key = env.OPENROUTERAI_API_KEY?.trim();'''
+          new = '''async function openRouterChat(env: ServerEnv, messages: unknown[]): Promise<unknown> {
+  let cloudflareError: unknown;
+  if (env.AI) {
+    try {
+      const model = hasImageContent(messages)
+        ? "@cf/qwen/qwen3.8-27b"
+        : "@cf/qwen/qwen3-30b-a3b-fp8";
+      return await env.AI.run(model, {
+        messages,
+        max_tokens: 320,
+        temperature: 0.55,
+        stream: false,
+      });
+    } catch (error) {
+      cloudflareError = error;
+      console.warn("Cloudflare Buddy chat failed; trying configured free fallback", error);
+    }
+  }
+  const key = env.OPENROUTERAI_API_KEY?.trim();'''
+          if old not in s: raise SystemExit('Expected chat provider block not found')
+          s = s.replace(old, new, 1)
+          old = '''  if (!key) throw new Error("Buddy chat engine is not configured");'''
+          new = '''  if (!key) {
+    if (cloudflareError instanceof Error) throw cloudflareError;
+    throw new Error("Buddy chat engine is not configured");
+  }'''
+          if old not in s: raise SystemExit('Expected chat key guard not found')
+          p.write_text(s.replace(old, new, 1))
+          print('source patches applied')
+          PY
+      - name: Typecheck and build
+        run: |
+          npm ci --ignore-scripts --legacy-peer-deps
+          npm run typecheck
+          npm run build
+      - name: Commit source fixes
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/lib/studio-runtime.ts src/server.ts
+          git commit -m 'fix: route expanded preset previews through Aura and add chat failover'
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
+      - name: Remove temporary workflow
+        run: |
+          git rm .github/workflows/apply-final-runtime-fix.yml
+          git commit -m 'chore: remove temporary runtime fix workflow'
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
