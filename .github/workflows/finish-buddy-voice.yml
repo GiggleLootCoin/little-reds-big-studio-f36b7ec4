@@ -1,76 +1,14 @@
 name: Finish Buddy Voice Routing
 
 on:
-  push:
-    paths:
-      - .github/workflows/finish-buddy-voice.yml
+  workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  finish:
+  disabled:
+    if: ${{ false }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - name: Patch production voice IDs and routing
-        shell: python
-        run: |
-          from pathlib import Path
-          import re
-
-          expanded = Path('src/lib/buddy-voice-expanded.ts')
-          text = expanded.read_text()
-          # Deepgram Aura 2 requires the full model identifier, not the bare voice name.
-          def fix_id(m):
-              voice = m.group(1)
-              if voice.startswith('aura-2-'):
-                  return m.group(0)
-              return f'id: "aura-2-{voice}-en"'
-          text = re.sub(r'id: "([a-z0-9_-]+)"', fix_id, text)
-          expanded.write_text(text)
-
-          picker = Path('src/components/studio/BuddyVoicePicker.tsx')
-          text = picker.read_text()
-          text = text.replace(
-              'const PREVIEW_TEXT = "Hello. This is Buddy. This is a real voice preview, so you can listen before choosing this voice.";',
-              'const PREVIEW_TEXT = "Hello. This is Buddy. This is a real voice preview, so you can listen before choosing this voice.";\nconst normalizePresetSpeaker = (speaker: string) => speaker.startsWith("aura-2-") ? speaker : BUDDY_EXPANDED_VOICES.some((v) => v.id === `aura-2-${speaker}-en`) ? `aura-2-${speaker}-en` : speaker;'
-          )
-          text = text.replace(
-              'const speaker = String(presetCandidate || "").trim();',
-              'const speaker = normalizePresetSpeaker(String(presetCandidate || "").trim());'
-          )
-          text = text.replace(
-              'setStatus(`Generating ${allVoices.find((v) => v.id === speaker)?.label || speaker} preview…`);',
-              'setStatus(`Generating ${allVoices.find((v) => v.id === speaker)?.label || allVoices.find((v) => v.id === `aura-2-${speaker}-en`)?.label || speaker} preview…`);'
-          )
-          text = text.replace(
-              'onClick={() => update({ mode: "preset", speaker: presetCandidate })}',
-              'onClick={() => update({ mode: "preset", speaker: normalizePresetSpeaker(presetCandidate) })}'
-          )
-          picker.write_text(text)
-
-      - name: Commit production fix
-        shell: bash
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add src/lib/buddy-voice-expanded.ts src/components/studio/BuddyVoicePicker.tsx
-          git diff --cached --quiet && exit 0
-          git commit -m "fix: use full Aura 2 preset model IDs"
-          git push origin HEAD:main
-
-      - name: Remove one-shot fixer
-        if: always()
-        shell: bash
-        run: |
-          git pull --rebase origin main || true
-          if [ -f .github/workflows/finish-buddy-voice.yml ]; then
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git rm .github/workflows/finish-buddy-voice.yml
-            git commit -m "chore: remove one-shot Buddy voice fixer"
-            git push origin HEAD:main
-          fi
+      - run: echo "One-shot Buddy voice fixer disabled; production routing is maintained by the normal validation and deploy workflows."
