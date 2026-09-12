@@ -1,0 +1,47 @@
+name: Fix preset voice router
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: ${{ !contains(github.event.head_commit.message, '[preset-router-fixed]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Route preset TTS through production Aura-2 handler
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          p = Path('src/worker.ts')
+          s = p.read_text()
+          old = '''    if (path === "/api/ai/tts" && request.method === "POST")\n      return reliablePresetTTS(request, env);'''
+          new = '''    // The production server handler owns preset TTS. It supports the full\n    // Aura-2 speaker catalogue, including the expanded voice IDs such as\n    // atlas (Gus). Do not intercept this route with the legacy Aura-1 map.\n    if (path === "/api/ai/tts" && request.method === "POST")\n      return studioServer.fetch(request, env, ctx);'''
+          if old not in s:
+              raise SystemExit('Expected legacy /api/ai/tts worker route was not found')
+          p.write_text(s.replace(old, new, 1))
+          print('Preset TTS now routes to src/server.ts Aura-2 production handler.')
+          PY
+
+      - name: Verify the stale atlas rejection is no longer the active route
+        run: |
+          grep -n -A4 -B2 'path === "/api/ai/tts"' src/worker.ts
+          grep -n 'aura-2-en' src/server.ts
+
+      - name: Commit patch
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/worker.ts
+          git diff --cached --check
+          git commit -m 'fix: route preset TTS through Aura-2 production handler [preset-router-fixed]'
+          git push origin main
