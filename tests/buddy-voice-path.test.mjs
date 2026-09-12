@@ -2,8 +2,9 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-const [runtime, gateway, picker, chat, voice, server, previews, routing, twa] = await Promise.all([
+const [runtime, engine, gateway, picker, chat, voice, server, previews, routing, twa] = await Promise.all([
   readFile("src/lib/studio-runtime.ts", "utf8"),
+  readFile("src/lib/little-red-engine.ts", "utf8"),
   readFile("src/lib/voice-clone-gateway.ts", "utf8"),
   readFile("src/components/studio/BuddyVoicePicker.tsx", "utf8"),
   readFile("src/components/studio/BuddyLiveChat.tsx", "utf8"),
@@ -28,6 +29,14 @@ test("production Red clone uses the Worker endpoint and verifies returned audio"
   assert.match(gateway, /REFERENCE_CACHE_TTL_MS/);
   assert.match(gateway, /x-red-voice-route.*qwen3-tts-reference-clone/);
   assert.doesNotMatch(gateway, /openbmb-voxcpm-demo\.hf\.space/);
+});
+
+test("Little Red Engine is the stable capability boundary", () => {
+  assert.match(engine, /export async function runLittleRedJob/);
+  assert.match(engine, /privacy\?: "private" \| "personal" \| "community" \| "public"/);
+  assert.match(engine, /Community processing requires explicit user authorization/);
+  assert.match(picker, /runLittleRedJob/);
+  assert.doesNotMatch(picker, /import \{ runStudioJob \} from "@\/lib\/studio-runtime"/);
 });
 
 test("Qwen clone uses reference text when available and x-vector-only mode otherwise", () => {
@@ -73,7 +82,7 @@ test("Qwen FileData matches the current Gradio input contract", () => {
   assert.match(gateway, /meta:\s*\{ _type: "gradio\.FileData" \}/);
 });
 
-test("preset voice previews are playback-only and use stored assets", () => {
+test("preset voice previews are playback-only and only expose assets that actually exist", () => {
   assert.match(picker, /const previewPreset = async \(\) =>/);
   assert.match(picker, /const storedPreview = getStoredPresetPreview\(speaker\)/);
   assert.match(picker, /setGeneratedAudio\(storedPreview\)/);
@@ -81,24 +90,19 @@ test("preset voice previews are playback-only and use stored assets", () => {
   assert.match(picker, /Preview will not generate audio/);
   const previewBlock = picker.slice(picker.indexOf("const previewPreset"), picker.indexOf("const test", picker.indexOf("const previewPreset")));
   assert.doesNotMatch(previewBlock, /fetch\("\/api\/ai\/tts"/);
+  assert.doesNotMatch(previewBlock, /runLittleRedJob/);
   assert.doesNotMatch(previewBlock, /runStudioJob/);
   assert.doesNotMatch(previewBlock, /PREVIEW_TEXT/);
   assert.doesNotMatch(runtime, /legacyPreviewRequest/);
   assert.doesNotMatch(runtime, /input\.previewOnly === true/);
-  assert.match(previews, /Red:\s*"\/red_voice_mic_device10_30s_C\.wav"/);
-  assert.match(previews, /Ryan:\s*"https:\/\/huggingface\.co/);
-  assert.match(previews, /Aiden:\s*"https:\/\/huggingface\.co/);
-  assert.match(previews, /Vivian:\s*"https:\/\/huggingface\.co/);
-  assert.match(previews, /Serena:\s*"https:\/\/huggingface\.co/);
-  assert.match(previews, /Uncle_Fu:\s*"https:\/\/huggingface\.co/);
-  assert.match(previews, /Dylan:\s*"https:\/\/huggingface\.co/);
-  assert.match(previews, /Eric:\s*"https:\/\/huggingface\.co/);
-  assert.match(previews, /Ono_Anna:\s*"https:\/\/huggingface\.co/);
-  assert.match(previews, /Sohee:\s*"https:\/\/huggingface\.co/);
-  assert.match(previews, /NORMALIZED_PRESET_ALIASES/);
-  assert.match(previews, /"aura-2-luna-en":\s*"Ryan"/);
-  assert.match(previews, /"aura-2-orpheus-en":\s*"Aiden"/);
-  assert.match(previews, /"aura-2-athena-en":\s*"Vivian"/);
+  for (const speaker of ["Red", "Ryan", "Aiden", "Vivian", "Serena", "Uncle_Fu", "Dylan", "Eric", "Ono_Anna", "Sohee"]) {
+    assert.match(previews, new RegExp(`${speaker}:`));
+  }
+  assert.doesNotMatch(previews, /NORMALIZED_PRESET_ALIASES/);
+  assert.doesNotMatch(previews, /aura-2-luna-en/);
+  assert.doesNotMatch(previews, /aura-2-orpheus-en/);
+  assert.doesNotMatch(previews, /aura-2-athena-en/);
+  assert.doesNotMatch(previews, /atlas.*Uncle_Fu/);
   assert.doesNotMatch(chat, /if \("speechSynthesis" in window\)/);
 });
 
