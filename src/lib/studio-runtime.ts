@@ -255,18 +255,6 @@ export async function runStudioJob(
     const language = String(input.language ?? profile.language ?? "English");
     const modelSize = input.model_size === "0.6B" ? "0.6B" : "1.7B";
     const effectiveSpeaker = typeof input.speaker === "string" ? input.speaker : profile.speaker;
-    const legacyPreviewRequest = text === PREVIEW_TEXT;
-    if ((input.previewOnly === true || legacyPreviewRequest) && effectiveSpeaker) {
-      const previewUrl = getStoredPresetPreview(effectiveSpeaker);
-      if (!previewUrl)
-        throw new Error("This preset does not have a stored preview audio asset yet.");
-      return {
-        capability: "tts",
-        value: { previewOnly: true, speaker: effectiveSpeaker },
-        url: previewUrl,
-        provider: "Stored preset preview",
-      };
-    }
     const wantsRedPreset = effectiveSpeaker === "Red" && profile.mode !== "clone";
     const wantsSavedClone = !input.speaker && profile.mode === "clone";
     const wantsRedVoice = wantsRedPreset || wantsSavedClone || input.speaker === "Red";

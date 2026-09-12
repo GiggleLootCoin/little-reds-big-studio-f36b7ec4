@@ -71,8 +71,6 @@ export function BuddyVoicePicker() {
     if (!speaker) { setStatus("Choose a preset voice to preview."); return; }
     setBusy(true); setPreviewVoice(speaker); setStatus(`Generating ${displaySpeaker(speaker)} preview…`);
     try {
-      const stored = getStoredPresetPreview(speaker) || getStoredPresetPreview(`aura-2-${speaker}-en`);
-      if (stored) { setGeneratedAudio(stored); const player = new Audio(stored); player.preload = "auto"; try { await player.play(); setStatus(`✓ ${displaySpeaker(speaker)} preview playing.`); } catch { setStatus("✓ Preview loaded — press Play on the audio player below if Android blocks automatic playback."); } return; }
       if (speaker === "Red") throw new Error("Buddy's Red preview asset is unavailable.");
       const response = await fetch("/api/ai/tts", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ capability: "tts", text: PREVIEW_TEXT, target_text: PREVIEW_TEXT, language: profile.language || "English", speaker, mood: profile.mood || "natural", tone: profile.tone || "conversational" }) });
       if (!response.ok) { const detail = (await response.text().catch(() => "")).slice(0, 400); throw new Error(`Preset preview generation failed (${response.status}). ${detail}`.trim()); }
