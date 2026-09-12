@@ -1,46 +1,25 @@
-name: Apply preset preview fix
+name: Verify preset preview is playback-only
 on:
   push:
     branches: [main]
 permissions:
-  contents: write
+  contents: read
 jobs:
-  patch:
-    if: ${{ !contains(github.event.head_commit.message, '[preset-preview-patched]') }}
+  verify:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - name: Patch preset preview routing
+      - name: Verify preset preview has no TTS generation call
         run: |
           python3 - <<'PY'
           from pathlib import Path
-
-          p = Path('src/components/studio/BuddyVoicePicker.tsx')
-          s = p.read_text()
-          old = '''      const stored = getStoredPresetPreview(speaker) || getStoredPresetPreview(`aura-2-${speaker}-en`);\n      if (stored) { setGeneratedAudio(stored); const player = new Audio(stored); player.preload = "auto"; try { await player.play(); setStatus(`✓ ${displaySpeaker(speaker)} preview playing.`); } catch { setStatus("✓ Preview loaded — press Play on the audio player below if Android blocks automatic playback."); } return; }\n      if (speaker === "Red") throw new Error("Buddy's Red preview asset is unavailable.");'''
-          new = '''      if (speaker === "Red") throw new Error("Buddy's Red preview asset is unavailable.");'''
-          if old not in s:
-              raise SystemExit('BuddyVoicePicker preview block not found')
-          p.write_text(s.replace(old, new, 1))
-
-          p = Path('src/lib/studio-runtime.ts')
-          s = p.read_text()
-          old = '''    const legacyPreviewRequest = text === PREVIEW_TEXT;\n    if ((input.previewOnly === true || legacyPreviewRequest) && effectiveSpeaker) {\n      const previewUrl = getStoredPresetPreview(effectiveSpeaker);\n      if (!previewUrl)\n        throw new Error("This preset does not have a stored preview audio asset yet.");\n      return {\n        capability: "tts",\n        value: { previewOnly: true, speaker: effectiveSpeaker },\n        url: previewUrl,\n        provider: "Stored preset preview",\n      };\n    }\n'''
-          if old not in s:
-              raise SystemExit('studio-runtime legacy preview block not found')
-          p.write_text(s.replace(old, '', 1))
-          print('Preset preview routing patched: all non-Red presets now use the live Buddy/Aura TTS route.')
+          s = Path('src/components/studio/BuddyVoicePicker.tsx').read_text()
+          start = s.index('const previewPreset = async () =>')
+          end = s.index('  const test = async () =>', start)
+          block = s[start:end]
+          if '/api/ai/tts' in block or 'runStudioJob' in block:
+              raise SystemExit('Preset preview must not call a generation route.')
+          if 'getStoredPresetPreview' not in block:
+              raise SystemExit('Preset preview must use stored audio assets.')
+          print('OK: preset Preview Voice is playback-only and uses stored preview assets.')
           PY
-      - name: Commit patch
-        run: |
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add src/components/studio/BuddyVoicePicker.tsx src/lib/studio-runtime.ts
-          if git diff --cached --quiet; then
-            echo 'No patch needed.'
-            exit 0
-          fi
-          git commit -m 'fix: route preset previews through live Aura TTS [preset-preview-patched]'
-          git push origin main
