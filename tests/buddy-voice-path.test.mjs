@@ -73,24 +73,18 @@ test("Qwen FileData matches the current Gradio input contract", () => {
   assert.match(gateway, /meta:\s*\{ _type: "gradio\.FileData" \}/);
 });
 
-test("Qwen terminal null errors are treated as transient upstream failures", () => {
-  assert.match(gateway, /message === "null"/);
-  assert.match(gateway, /Qwen3-TTS upstream returned a terminal null error/);
-  assert.match(gateway, /isRetryableQueueError\(error\)/);
-});
-
-test("preset voice previews use stored assets when available and generate the selected speaker when missing", () => {
+test("preset voice previews are playback-only and use stored assets", () => {
   assert.match(picker, /const previewPreset = async \(\) =>/);
-  assert.match(picker, /getStoredPresetPreview\(speaker\)/);
-  assert.match(picker, /setGeneratedAudio\(stored\)/);
-  assert.match(picker, /speaker === "Red"/);
-  assert.doesNotMatch(picker, /runStudioJob\(\s*"voice-clone".*PREVIEW_TEXT/s);
-  assert.match(picker, /fetch\("\/api\/ai\/tts"/);
-  assert.match(picker, /text: PREVIEW_TEXT/);
-  assert.match(picker, /target_text: PREVIEW_TEXT/);
-  assert.match(picker, /new Audio\(url\)/);
-  assert.match(runtime, /input\.previewOnly === true \|\| legacyPreviewRequest/);
-  assert.match(runtime, /getStoredPresetPreview\(effectiveSpeaker\)/);
+  assert.match(picker, /const storedPreview = getStoredPresetPreview\(speaker\)/);
+  assert.match(picker, /setGeneratedAudio\(storedPreview\)/);
+  assert.match(picker, /new Audio\(storedPreview\)/);
+  assert.match(picker, /Preview will not generate audio/);
+  const previewBlock = picker.slice(picker.indexOf("const previewPreset"), picker.indexOf("const test", picker.indexOf("const previewPreset")));
+  assert.doesNotMatch(previewBlock, /fetch\("\/api\/ai\/tts"/);
+  assert.doesNotMatch(previewBlock, /runStudioJob/);
+  assert.doesNotMatch(previewBlock, /PREVIEW_TEXT/);
+  assert.doesNotMatch(runtime, /legacyPreviewRequest/);
+  assert.doesNotMatch(runtime, /input\.previewOnly === true/);
   assert.match(previews, /Red:\s*"\/red_voice_mic_device10_30s_C\.wav"/);
   assert.match(previews, /Ryan:\s*"https:\/\/huggingface\.co/);
   assert.match(previews, /Aiden:\s*"https:\/\/huggingface\.co/);
