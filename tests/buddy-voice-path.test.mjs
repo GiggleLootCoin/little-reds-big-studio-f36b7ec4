@@ -83,7 +83,7 @@ test("Qwen FileData matches the current Gradio input contract", () => {
 });
 
 test("preset voice previews are playback-only and load the stored player directly", () => {
-  assert.match(picker, /const previewPreset = async \(\) =>/);
+  assert.match(picker, /const previewPreset = \(\) =>/);
   assert.match(picker, /const storedPreview = getStoredPresetPreview\(speaker\)/);
   assert.match(picker, /setGeneratedAudio\(storedPreview\)/);
   assert.doesNotMatch(picker, /new Audio\(storedPreview\)/);
