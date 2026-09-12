@@ -24,5 +24,21 @@ export async function runLittleRedJob(
   if (options.privacy === "community" && input._communityAuthorized !== true) {
     throw new Error("Community processing requires explicit user authorization.");
   }
+
+  // A preset test may arrive through the older voice-clone capability call.
+  // If it has an explicit speaker but no reference audio, it is a preset TTS
+  // request, not a clone request. Never let the saved Red sample become the
+  // accidental fallback for a selected preset.
+  if (
+    capability === "voice-clone" &&
+    typeof input.speaker === "string" &&
+    input.speaker.trim() &&
+    !(input.audio instanceof Blob) &&
+    !(input.refAudio instanceof Blob) &&
+    !(input.referenceAudio instanceof Blob)
+  ) {
+    return runStudioJob("tts", input, options.onStatus);
+  }
+
   return runStudioJob(capability, input, options.onStatus);
 }
