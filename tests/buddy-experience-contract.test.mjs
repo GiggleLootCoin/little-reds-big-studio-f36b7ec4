@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-const [picker, chat, agent, voice, runtime, wrapper, twa] = await Promise.all([
+const [picker, chat, agent, voice, runtime, wrapper, twa, engine] = await Promise.all([
   readFile("src/components/studio/BuddyVoicePicker.tsx", "utf8"),
   readFile("src/components/studio/BuddyLiveChat.tsx", "utf8"),
   readFile("src/lib/buddy-agent.ts", "utf8"),
@@ -10,20 +10,24 @@ const [picker, chat, agent, voice, runtime, wrapper, twa] = await Promise.all([
   readFile("src/lib/studio-runtime.ts", "utf8"),
   readFile("scripts/write-worker-wrapper.mjs", "utf8"),
   readFile("twa/twa-manifest.json", "utf8"),
+  readFile("src/lib/little-red-engine.ts", "utf8"),
 ]);
 
-test("Red personal voice is a visible preset choice and remains clone-routed", () => {
-  assert.match(picker, /id: "Red"[\s\S]*?family: "Buddy's Original Voice"/);
-  assert.match(picker, /label: "Red — The Original Voice of Buddy"/);
+test("Red personal voice is isolated from the stored preset list and remains clone-routed", () => {
+  assert.match(voice, /speaker: "Red"/);
+  assert.match(picker, /profile\.mode === "preset"/);
+  assert.match(picker, /current\.mode === "clone" \|\| current\.speaker === "Red"/);
   assert.match(chat, /v\.speaker === "Red" \|\| \(v\.mode === "clone" \&\& !v\.speaker\)/);
 });
 
-test("saved Red voice is selected without hiding the preset voice list", () => {
-  assert.match(voice, /speaker: "Red"/);
+test("preset selection is persisted without entering the saved Red clone branch", () => {
   assert.match(picker, /presetCandidate/);
   assert.match(picker, /setPresetCandidate\(e\.target\.value\)/);
-  assert.match(picker, /setPresetCandidate\(next\.speaker\)/);
-  assert.match(picker, /mode: "preset"/);
+  assert.match(picker, /setPresetCandidate\(speaker\)/);
+  assert.match(picker, /update\(\{ mode: "preset", speaker: normalizePresetSpeaker\(presetCandidate\) \}\)/);
+  assert.match(picker, /runLittleRedJob\("voice-clone"/);
+  assert.match(engine, /capability === "voice-clone"/);
+  assert.match(engine, /return runStudioJob\("tts", input, options\.onStatus\)/);
 });
 
 test("non-Red preset selection cannot enter the saved clone branch", () => {
@@ -35,6 +39,7 @@ test("preset voices are not silently replaced by a saved Red sample", () => {
   assert.match(runtime, /effectiveSpeaker === "Red"/);
   assert.match(runtime, /input\.speaker === "Red"/);
   assert.match(runtime, /getBuiltInRedVoiceSample\(\)/);
+  assert.match(engine, /Never let the saved Red sample become the/);
 });
 
 test("Buddy sends mood and tone into the conversational model instead of storing them as dead UI state", () => {
