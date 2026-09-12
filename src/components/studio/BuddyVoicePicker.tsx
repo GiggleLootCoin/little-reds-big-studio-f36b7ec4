@@ -11,7 +11,6 @@ import { StudioButton } from "./ui";
 
 const CLONE_TEXT = "Hello. This is your cloned voice sample. Would you like to use this voice for Buddy now, or would you like to record again?";
 const REFERENCE_TRANSCRIPT = CLONE_TEXT;
-const PREVIEW_TEXT = "Hello. This is Buddy. This is a real voice preview, so you can listen before choosing this voice.";
 const normalizePresetSpeaker = (speaker: string) => normalizeBuddyPresetSpeaker(speaker);
 const displaySpeaker = (speaker: string) => { const raw = normalizePresetSpeaker(speaker); return BUDDY_EXPANDED_VOICES.find((v) => v.id === raw)?.label || BUDDY_VOICE_PRESETS.find((v) => v.id === speaker)?.label || speaker; };
 const FAILURE = "Buddy couldn't create the voice clone yet.";
@@ -36,7 +35,6 @@ export function BuddyVoicePicker() {
     setProfile(canonicalNext);
     setPresetCandidate(next.speaker);
     setPresetCandidate(normalizePresetSpeaker(speaker));
-    // setPresetCandidate(next.speaker) is intentionally retained as the saved-selection contract.
     setPreviewVoice(null);
     saveBuddyVoiceProfile(canonicalNext);
     const voice = allVoices.find((v) => v.id === speaker) || allVoices.find((v) => normalizePresetSpeaker(v.id) === speaker);
@@ -69,14 +67,14 @@ export function BuddyVoicePicker() {
   const previewPreset = async () => {
     const speaker = normalizePresetSpeaker(String(presetCandidate || ""));
     if (!speaker) { setStatus("Choose a preset voice to preview."); return; }
-    setBusy(true); setPreviewVoice(speaker); setStatus(`Generating ${displaySpeaker(speaker)} preview…`);
+    const storedPreview = getStoredPresetPreview(speaker);
+    if (!storedPreview) { setPreviewVoice(null); setStatus(`No stored preview is installed for ${displaySpeaker(speaker)} yet. Preview will not generate audio.`); return; }
+    setBusy(true); setPreviewVoice(speaker); setStatus(`Playing the stored ${displaySpeaker(speaker)} preview…`);
     try {
-      if (speaker === "Red") throw new Error("Buddy's Red preview asset is unavailable.");
-      const response = await fetch("/api/ai/tts", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ capability: "tts", text: PREVIEW_TEXT, target_text: PREVIEW_TEXT, language: profile.language || "English", speaker, mood: profile.mood || "natural", tone: profile.tone || "conversational" }) });
-      if (!response.ok) { const detail = (await response.text().catch(() => "")).slice(0, 400); throw new Error(`Preset preview generation failed (${response.status}). ${detail}`.trim()); }
-      const blob = await response.blob(); if (!blob.size) throw new Error("The selected preset returned empty audio."); const url = URL.createObjectURL(blob); setGeneratedAudio(url); const player = new Audio(url); player.preload = "auto";
-      try { await player.play(); setStatus(`✓ ${displaySpeaker(speaker)} preview playing.`); } catch { setStatus("✓ Preview generated — press Play on the audio player below if Android blocks automatic playback."); }
-    } catch (error) { setStatus(`Preview failed. ${error instanceof Error ? error.message : "The voice engine failed."}`); } finally { setBusy(false); }
+      setGeneratedAudio(storedPreview);
+      const player = new Audio(storedPreview); player.preload = "auto";
+      try { await player.play(); setStatus(`✓ ${displaySpeaker(speaker)} stored preview playing.`); } catch { setStatus(`✓ ${displaySpeaker(speaker)} stored preview ready — press Play below.`); }
+    } catch (error) { setStatus(`Preview failed. ${error instanceof Error ? error.message : "The stored preview could not be played."}`); } finally { setBusy(false); }
   };
   const test = async () => {
     setBusy(true); setStatus("Generating your real voice clone…");
