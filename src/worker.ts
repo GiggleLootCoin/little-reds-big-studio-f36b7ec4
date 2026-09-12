@@ -238,8 +238,11 @@ export default {
           return handleProductionVoiceClone(request, env);
       } catch {}
     }
+    // The production server handler owns preset TTS. It supports the full
+    // Aura-2 speaker catalogue, including the expanded voice IDs such as
+    // atlas (Gus). Do not intercept this route with the legacy Aura-1 map.
     if (path === "/api/ai/tts" && request.method === "POST")
-      return reliablePresetTTS(request, env);
+      return studioServer.fetch(request, env, ctx);
     if (path === "/api/ai/speech-to-text" && request.method === "POST")
       return reliableSpeechToText(request, env);
     if (path === "/api/ai/chat" && request.method === "POST") {
