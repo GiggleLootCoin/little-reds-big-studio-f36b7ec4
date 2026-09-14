@@ -3,18 +3,21 @@
  *
  * A preview is an existing audio asset. Previewing a preset never invokes
  * TTS, voice cloning, Aura, Qwen, or any Buddy backend generation route.
+ *
+ * Non-Red samples are served through the app-origin proxy so Android/TWA
+ * never has to decode a Hugging Face redirect or cross-origin WAV response.
  */
 const STORED_PRESET_PREVIEWS: Record<string, string> = {
   Red: "/red_voice_mic_device10_30s_C.wav",
-  Ryan: "https://huggingface.co/datasets/malaiwah/qwen3-tts-customvoice-ab-clips/resolve/main/original/ryan_English.wav?download=true",
-  Aiden: "https://huggingface.co/datasets/malaiwah/qwen3-tts-customvoice-ab-clips/resolve/main/original/aiden_English.wav?download=true",
-  Vivian: "https://huggingface.co/datasets/malaiwah/qwen3-tts-customvoice-ab-clips/resolve/main/original/vivian_English.wav?download=true",
-  Serena: "https://huggingface.co/datasets/malaiwah/qwen3-tts-customvoice-ab-clips/resolve/main/original/serena_English.wav?download=true",
-  Uncle_Fu: "https://huggingface.co/datasets/malaiwah/qwen3-tts-customvoice-ab-clips/resolve/main/original/uncle_fu_English.wav?download=true",
-  Dylan: "https://huggingface.co/datasets/malaiwah/qwen3-tts-customvoice-ab-clips/resolve/main/original/dylan_English.wav?download=true",
-  Eric: "https://huggingface.co/datasets/malaiwah/qwen3-tts-customvoice-ab-clips/resolve/main/original/eric_English.wav?download=true",
-  Ono_Anna: "https://huggingface.co/datasets/malaiwah/qwen3-tts-customvoice-ab-clips/resolve/main/original/ono_anna_English.wav?download=true",
-  Sohee: "https://huggingface.co/datasets/malaiwah/qwen3-tts-customvoice-ab-clips/resolve/main/original/sohee_English.wav?download=true",
+  Ryan: "/api/preset-preview/Ryan",
+  Aiden: "/api/preset-preview/Aiden",
+  Vivian: "/api/preset-preview/Vivian",
+  Serena: "/api/preset-preview/Serena",
+  Uncle_Fu: "/api/preset-preview/Uncle_Fu",
+  Dylan: "/api/preset-preview/Dylan",
+  Eric: "/api/preset-preview/Eric",
+  Ono_Anna: "/api/preset-preview/Ono_Anna",
+  Sohee: "/api/preset-preview/Sohee",
 };
 
 export function getStoredPresetPreview(speaker: string): string | null {

@@ -2,6 +2,7 @@ import "./lib/error-capture";
 import { consumeLastCapturedError } from "./lib/error-capture";
 import { renderErrorPage } from "./lib/error-page";
 import { handleVoiceClone } from "./lib/voice-clone-gateway";
+import { proxyPresetPreview } from "./lib/preset-preview-proxy";
 
 type WorkersAI = { run: (model: string, input: unknown, options?: unknown) => Promise<unknown> };
 type ServerEnv = {
@@ -144,4 +145,4 @@ async function cloudflareAI(request: Request, env: ServerEnv): Promise<Response 
     return jsonError(`Unsupported capability: ${capability}`, 400);
   } catch (error) { console.error("Cloudflare AI route failed", error); return jsonError(error instanceof Error ? error.message : "Cloudflare AI request failed.", 502); }
 }
-export default { async fetch(request: Request, env: unknown, ctx: unknown) { try { const voice = await (handleVoiceClone as unknown as (request: Request, env: unknown) => Promise<Response | null>)(request, env); if (voice) return voice; const ai = await cloudflareAI(request, env as ServerEnv); if (ai) return ai; const proxied = await proxyHfSpace(request); if (proxied) return proxied; const entry = await getServerEntry(); return entry.fetch(request, env, ctx); } catch (error) { const captured = consumeLastCapturedError(); return new Response(renderErrorPage(), { status: 500, headers: { "content-type": "text/html; charset=utf-8" } }); } } };
+export default { async fetch(request: Request, env: unknown, ctx: unknown) { try { const voice = await (handleVoiceClone as unknown as (request: Request, env: unknown) => Promise<Response | null>)(request, env); if (voice) return voice; const presetPreview = await proxyPresetPreview(request); if (presetPreview) return presetPreview; const ai = await cloudflareAI(request, env as ServerEnv); if (ai) return ai; const proxied = await proxyHfSpace(request); if (proxied) return proxied; const entry = await getServerEntry(); return entry.fetch(request, env, ctx); } catch (error) { const captured = consumeLastCapturedError(); return new Response(renderErrorPage(), { status: 500, headers: { "content-type": "text/html; charset=utf-8" } }); } } };
