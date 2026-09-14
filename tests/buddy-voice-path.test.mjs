@@ -82,11 +82,13 @@ test("Qwen FileData matches the current Gradio input contract", () => {
   assert.match(gateway, /meta:\s*\{ _type: "gradio\.FileData" \}/);
 });
 
-test("preset voice previews are playback-only and only expose assets that actually exist", () => {
-  assert.match(picker, /const previewPreset = async \(\) =>/);
+test("preset voice previews are playback-only and load the stored player directly", () => {
+  assert.match(picker, /const previewPreset = \(\) =>/);
   assert.match(picker, /const storedPreview = getStoredPresetPreview\(speaker\)/);
   assert.match(picker, /setGeneratedAudio\(storedPreview\)/);
-  assert.match(picker, /new Audio\(storedPreview\)/);
+  assert.doesNotMatch(picker, /new Audio\(storedPreview\)/);
+  assert.match(picker, /onError=/);
+  assert.match(picker, /onLoadedMetadata=/);
   assert.match(picker, /Preview will not generate audio/);
   const previewBlock = picker.slice(picker.indexOf("const previewPreset"), picker.indexOf("const test", picker.indexOf("const previewPreset")));
   assert.doesNotMatch(previewBlock, /fetch\("\/api\/ai\/tts"/);
