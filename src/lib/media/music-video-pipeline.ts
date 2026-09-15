@@ -15,9 +15,12 @@ const MAX_GENERATION_SECONDS = 14;
 const DEFAULT_SCENE_SECONDS = 10;
 const MIN_VIDEO_ARTIFACT_BYTES = 100_000;
 
+// MiniMax-H3's current public Space documents a 2–14 second UI range and a
+// standard Gradio `generate_video` endpoint. Keep the second engine as the
+// verified fallback candidate; runtime execution still validates its schema.
 export const MUSIC_VIDEO_ENGINE_SPACES = [
-  "MiniMaxAI/MiniMax-H3-Turbo-Lora",
-  "zerogpu-aoti/wan2-2-fp8da-aoti-faster",
+  "abidlabs/MiniMax-H3-Turbo-Lora",
+  "kulkas2pintu/Wan2.2-14B-Fast-Preview",
 ] as const;
 
 export function chooseMusicVideoChunkSeconds(requestedSeconds: number): number {
