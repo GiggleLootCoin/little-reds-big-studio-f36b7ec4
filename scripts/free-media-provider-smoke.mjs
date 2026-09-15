@@ -154,7 +154,12 @@ async function smokeVideo() {
     console.log(`VIDEO_H3_UNAVAILABLE ${error instanceof Error ? error.message : String(error)}`);
   }
 
-  return predictVideoFallback(await Client.connect(providers.videoFallback));
+  try {
+    return await predictVideoFallback(await Client.connect(providers.videoFallback));
+  } catch (error) {
+    console.log(`VIDEO_FALLBACK_UNAVAILABLE ${error instanceof Error ? error.message : String(error)}`);
+    return false;
+  }
 }
 
 const failures = [];
