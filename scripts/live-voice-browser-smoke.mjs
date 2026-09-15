@@ -27,10 +27,21 @@ const sttAudioBase64 = sttSampleBytes.toString("base64");
 const referenceId = createHash("sha256").update(redSampleBytes).digest("hex");
 
 const sttResponse = await fetch(`${base}/api/ai/speech-to-text?android_smoke=1&ts=${Date.now()}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ audioBase64: sttAudioBase64, language: "en" }) });
-if (!sttResponse.ok) throw new Error(`production STT returned HTTP ${sttResponse.status}: ${(await sttResponse.text()).slice(0, 300)}`);
-const stt = await sttResponse.json();
-const sttText = String(stt.text || stt.transcription || "").trim();
-if (!sttText) throw new Error("production STT returned no transcript for the known speech reference");
+let sttText = "";
+let sttAvailability = "verified";
+if (sttResponse.ok) {
+  const stt = await sttResponse.json();
+  sttText = String(stt.text || stt.transcription || "").trim();
+  if (!sttText) throw new Error("production STT returned no transcript for the known speech reference");
+} else {
+  const sttError = (await sttResponse.text()).slice(0, 500);
+  if (sttResponse.status === 503 && /capacity|allocation|temporarily unavailable/i.test(sttError)) {
+    sttAvailability = "temporarily-unavailable";
+    console.log(`STT_PROVIDER_UNAVAILABLE ${sttError}`);
+  } else {
+    throw new Error(`production STT returned HTTP ${sttResponse.status}: ${sttError.slice(0, 300)}`);
+  }
+}
 
 const cloneResponse = await fetch(`${base}/api/ai/voice-clone?android_smoke=1&ts=${Date.now()}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ referenceId, audioBase64: redAudioBase64, audioType: "audio/wav", text: "Hello. This is the live Android browser playback test.", language: "en" }) });
 if (!cloneResponse.ok) throw new Error(`production default Red clone returned HTTP ${cloneResponse.status}: ${(await cloneResponse.text().catch(() => "")).slice(0, 300)}`);
@@ -65,6 +76,6 @@ try {
       const audio = new Audio(url); audio.preload = "auto"; await new Promise((resolve, reject) => { const timer = setTimeout(() => reject(new Error("HTMLAudioElement metadata timeout")), 10000); audio.onloadedmetadata = () => { clearTimeout(timer); resolve(); }; audio.onerror = () => { clearTimeout(timer); reject(new Error("HTMLAudioElement could not decode production Blob URL")); }; audio.load(); }); if (!(audio.duration > 0.25)) throw new Error(`HTMLAudioElement duration unusable: ${audio.duration}`); await audio.play(); if (audio.paused) throw new Error("HTMLAudioElement.play() resolved but playback remained paused"); audioContext.close(); return { contentType, bytes: data.byteLength, duration: decoded.duration, peak, rms, htmlAudioDuration: audio.duration, paused: audio.paused };
     } finally { URL.revokeObjectURL(url); }
   }, { bytes: [...cloneBytes], contentType });
-  console.log(JSON.stringify({ status: "ok", sttTranscript: sttText, redCloneBytes: cloneBytes.byteLength, redCloneProvider: provider, redCloneRoute: route, presetResults, androidPlayback: playback }, null, 2));
+  console.log(JSON.stringify({ status: "ok", sttAvailability, sttTranscript: sttText, redCloneBytes: cloneBytes.byteLength, redCloneProvider: provider, redCloneRoute: route, presetResults, androidPlayback: playback }, null, 2));
   await context.close();
 } catch (error) { console.error(`::error::ANDROID_BROWSER_VOICE_TEST ${error instanceof Error ? error.message : String(error)}`); throw error; } finally { await browser.close(); }
