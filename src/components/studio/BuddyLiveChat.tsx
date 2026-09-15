@@ -19,12 +19,73 @@ type Message = {
   createdAt: number;
   attachments?: { id: string; name: string; type: string; size: number }[];
 };
+
+type BrowserSpeechRecognition = {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  onresult: ((event: { results: ArrayLike<{ 0: { transcript: string }; isFinal: boolean }> }) => void) | null;
+  onerror: ((event: { error?: string }) => void) | null;
+  onend: (() => void) | null;
+  start: () => void;
+  stop: () => void;
+};
+
+type BrowserSpeechConstructor = new () => BrowserSpeechRecognition;
+
 const KEY = "lrbgs-buddy-chat-v4";
 const IDENTITY = "You are Buddy, Little Red's personal creative studio companion. Your name is Buddy. Never identify yourself as Qwen, an AI model, a provider, or another assistant. Do not mention hidden model/provider machinery unless explicitly asked. Speak like a real, attentive person: natural, concise, warm, direct, and quick to the useful point. Avoid canned filler, repetitive greetings, unnecessary disclaimers, and long preambles. Match the user's energy without becoming theatrical. When an image is attached, actually inspect it and answer what you can see. Use conversation context when provided. The final user message is the current turn: answer that message directly, do not repeat an earlier answer unless the user explicitly asks you to repeat it.";
 
 export function BuddyLiveChat() {
   const [messages, setMessages] = useState<Message[]>([]), [input, setInput] = useState(""), [busy, setBusy] = useState(false), [live, setLive] = useState(false), [recording, setRecording] = useState(false), [muted, setMuted] = useState(false), [status, setStatus] = useState("Buddy is ready."), [attachments, setAttachments] = useState<File[]>([]), [mics, setMics] = useState<MicrophoneInfo[]>([]), [micId, setMicId] = useState(""), [micPermission, setMicPermission] = useState("unknown"), [awareness, setAwareness] = useState(() => getBuddyAwarenessCapabilities()), [transcript, setTranscript] = useState("");
   const stream = useRef<MediaStream | null>(null), rec = useRef<MediaRecorder | null>(null), chunks = useRef<Blob[]>([]), audio = useRef<HTMLAudioElement | null>(null), liveRef = useRef(false), busyRef = useRef(false), speakingRef = useRef(false), silenceTimer = useRef<number | null>(null), raf = useRef<number | null>(null), ctx = useRef<AudioContext | null>(null), speech = useRef(false);
+  const nativeSpeech = useRef<BrowserSpeechRecognition | null>(null), nativeTranscript = useRef(""), nativeSpeechAvailable = useRef(false);
+
+  function browserSpeechConstructor(): BrowserSpeechConstructor | null {
+    if (typeof window === "undefined") return null;
+    const w = window as typeof window & { SpeechRecognition?: BrowserSpeechConstructor; webkitSpeechRecognition?: BrowserSpeechConstructor };
+    return w.SpeechRecognition || w.webkitSpeechRecognition || null;
+  }
+
+  function stopNativeSpeech() {
+    const current = nativeSpeech.current;
+    nativeSpeech.current = null;
+    if (!current) return;
+    try { current.stop(); } catch {}
+  }
+
+  function startNativeSpeech() {
+    stopNativeSpeech();
+    nativeTranscript.current = "";
+    const Constructor = browserSpeechConstructor();
+    nativeSpeechAvailable.current = Boolean(Constructor);
+    if (!Constructor) return;
+    try {
+      const recognition = new Constructor();
+      recognition.continuous = true;
+      recognition.interimResults = false;
+      recognition.lang = String(getBuddyVoiceProfile().language || "en-US").replace("English", "en-US");
+      recognition.onresult = (event) => {
+        const parts: string[] = [];
+        for (let i = 0; i < event.results.length; i += 1) {
+          const result = event.results[i];
+          if (result?.isFinal && result[0]?.transcript) parts.push(result[0].transcript);
+        }
+        if (parts.length) nativeTranscript.current = parts.join(" ").trim();
+      };
+      recognition.onerror = () => undefined;
+      recognition.onend = () => {
+        if (liveRef.current && recording && nativeSpeech.current === recognition) {
+          try { recognition.start(); } catch {}
+        }
+      };
+      nativeSpeech.current = recognition;
+      recognition.start();
+    } catch {
+      nativeSpeech.current = null;
+      nativeSpeechAvailable.current = false;
+    }
+  }
 
   useEffect(() => {
     try { const x = JSON.parse(localStorage.getItem(KEY) || "[]"); if (Array.isArray(x)) setMessages(x.slice(-50)); } catch {}
@@ -32,6 +93,7 @@ export function BuddyLiveChat() {
     void listMicrophones().then(setMics).catch(() => setMics([]));
     return () => {
       liveRef.current = false;
+      stopNativeSpeech();
       if (silenceTimer.current) clearTimeout(silenceTimer.current);
       silenceTimer.current = null;
       if (raf.current) cancelAnimationFrame(raf.current);
@@ -77,20 +139,39 @@ export function BuddyLiveChat() {
     } catch { setStatus("Live microphone is active. Tap End Buddy when you finish speaking."); }
   }
   async function stt(blob: Blob) {
-    if (!blob.size) throw Error("I didn't catch any audio. Try again."); setStatus("Transcribing what you said…");
-    const r = await runStudioJob("speech-to-text", { audio: blob }, setStatus), t = artifactText(r.value).trim(); if (!t) throw Error("I couldn't understand that. Try again."); return t;
+    if (!blob.size) throw Error("I didn't catch any audio. Try again.");
+    setStatus("Transcribing what you said…");
+    try {
+      const r = await runStudioJob("speech-to-text", { audio: blob }, setStatus);
+      const t = artifactText(r.value).trim();
+      if (!t) throw Error("I couldn't understand that. Try again.");
+      return t;
+    } catch (error) {
+      const browserText = nativeTranscript.current.trim();
+      if (browserText) {
+        setStatus("Speech service is busy; using your phone's speech recognition.");
+        return browserText;
+      }
+      throw error;
+    }
   }
   function start(s: MediaStream, isLive: boolean) {
     if (typeof MediaRecorder === "undefined") throw Error("This browser cannot capture microphone audio.");
     const type = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/ogg"].find((x) => MediaRecorder.isTypeSupported(x));
     const r = type ? new MediaRecorder(s, { mimeType: type }) : new MediaRecorder(s); chunks.current = []; speech.current = false;
     r.ondataavailable = (e) => { if (e.data.size) chunks.current.push(e.data); };
-    r.onstop = () => { stopMonitor(); const b = new Blob(chunks.current, { type: r.mimeType || "audio/webm" }); chunks.current = []; rec.current = null; setRecording(false); if (b.size) void stt(b).then((t) => { setTranscript(t); return answer(t, true); }).catch((e) => setStatus(e instanceof Error ? e.message : "Speech recognition failed.")); };
-    rec.current = r; r.start(250); setRecording(true); setBuddyStatus("listening", { message: "Buddy is listening…" }); setStatus(isLive ? "Listening… pause naturally or tap End Buddy." : "Recording… tap Stop & Send when you're finished."); if (isLive) monitor(s);
+    r.onstop = () => {
+      stopMonitor();
+      if (isLive) stopNativeSpeech();
+      const b = new Blob(chunks.current, { type: r.mimeType || "audio/webm" });
+      chunks.current = []; rec.current = null; setRecording(false);
+      if (b.size) void stt(b).then((t) => { setTranscript(t); return answer(t, true); }).catch((e) => setStatus(e instanceof Error ? e.message : "Speech recognition failed."));
+    };
+    rec.current = r; r.start(250); setRecording(true); setBuddyStatus("listening", { message: "Buddy is listening…" }); setStatus(isLive ? "Listening… pause naturally or tap End Buddy." : "Recording… tap Stop & Send when you're finished."); if (isLive) { startNativeSpeech(); monitor(s); }
   }
   async function beginLive() { if (!liveRef.current || busyRef.current || speakingRef.current || rec.current) return; const s = stream.current?.active ? stream.current : await openMic(); if (s) try { start(s, true); } catch (e) { setStatus(e instanceof Error ? e.message : "Microphone capture failed."); } }
   async function toggleLive() {
-    if (liveRef.current) { liveRef.current = false; setLive(false); try { rec.current?.stop(); } catch {} stopMonitor(); stopMicrophone(stream.current); stream.current = null; setRecording(false); setBuddyStatus("idle"); setStatus("Buddy call ended."); return; }
+    if (liveRef.current) { liveRef.current = false; setLive(false); stopNativeSpeech(); try { rec.current?.stop(); } catch {} stopMonitor(); stopMicrophone(stream.current); stream.current = null; setRecording(false); setBuddyStatus("idle"); setStatus("Buddy call ended."); return; }
     liveRef.current = true; setLive(true); await beginLive();
   }
   async function recordOnce() {
@@ -174,7 +255,7 @@ export function BuddyLiveChat() {
     } catch (error) { setStatus(error instanceof Error ? error.message : "Buddy's selected voice could not be generated."); throw error; }
     finally { speakingRef.current = false; setBuddyStatus("idle"); if (liveRef.current) setTimeout(() => void beginLive(), 250); }
   }
-  function stopAll() { liveRef.current = false; stopMonitor(); try { rec.current?.stop(); } catch {} rec.current = null; stopMicrophone(stream.current); stream.current = null; try { audio.current?.pause(); } catch {} }
+  function stopAll() { liveRef.current = false; stopNativeSpeech(); stopMonitor(); try { rec.current?.stop(); } catch {} rec.current = null; stopMicrophone(stream.current); stream.current = null; try { audio.current?.pause(); } catch {} }
 
   return (
     <section className="glass-panel overflow-hidden rounded-3xl border border-primary/25 shadow-[0_18px_60px_oklch(0_0_0_/_0.22)]">
