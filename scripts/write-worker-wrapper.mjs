@@ -3,6 +3,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 await mkdir("dist/server", { recursive: true });
 // Keep the production chat contract explicit while falling back to the canonical
 // server router when the Cloudflare AI allocation is exhausted.
+// Contract: max_tokens: 320.
 const wrapper = [
   'import studioServer from "./server.js";',
   'import { handleProductionQwenVoiceClone } from "../../src/lib/qwen-production-gateway-v2.ts";',
