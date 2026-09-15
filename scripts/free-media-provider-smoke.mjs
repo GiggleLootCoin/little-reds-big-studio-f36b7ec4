@@ -4,7 +4,7 @@ const providers = {
   music: "Upsampler/minimax-music3",
   image: "mrfakename/Z-Image-Turbo",
   video: "abidlabs/MiniMax-H3-Turbo-Lora",
-  videoFallback: "kulkas2pintu/Wan2.2-14B-Fast-Preview",
+  videoFallback: "zerogpu-aoti/wan2-2-fp8da-aoti",
 };
 
 async function getFileValue(value, label) {
@@ -23,13 +23,7 @@ async function getFileValue(value, label) {
 
 async function smokeMusic() {
   const client = await Client.connect(providers.music);
-  const response = await client.predict("/generate_music", [
-    "A short upbeat instrumental synth-pop test track",
-    10,
-    7,
-    true,
-    "",
-  ]);
+  const response = await client.predict("/generate_music", ["A short upbeat instrumental synth-pop test track", 10, 7, true, ""]);
   const candidates = (response.data ?? []).flat(Infinity);
   const file = candidates.find((value) => value && typeof value === "object" && (value.url || value.path)) ?? candidates[0];
   const blob = await getFileValue(file, "MiniMax Music 3");
@@ -38,120 +32,36 @@ async function smokeMusic() {
 }
 
 async function smokeImage() {
-  const client = await Client.connect(providers.image);
-  const api = await client.view_api();
-  const endpoints = { ...(api.named_endpoints ?? {}), ...(api.unnamed_endpoints ?? {}) };
-  const candidates = Object.entries(endpoints).filter(([, endpoint]) =>
-    (endpoint.parameters ?? []).some((parameter) => {
-      const key = (parameter.parameter_name ?? parameter.label ?? "").toLowerCase();
-      return key.includes("prompt") || key === "text";
-    }),
-  );
+  const client = await Client.connect(providers.image); const api = await client.view_api(); const endpoints = { ...(api.named_endpoints ?? {}), ...(api.unnamed_endpoints ?? {}) };
+  const candidates = Object.entries(endpoints).filter(([, endpoint]) => (endpoint.parameters ?? []).some((parameter) => { const key = (parameter.parameter_name ?? parameter.label ?? "").toLowerCase(); return key.includes("prompt") || key === "text"; }));
   if (!candidates.length) throw new Error("Z-Image Turbo exposes no prompt endpoint.");
   let lastError = null;
-  for (const [name, endpoint] of candidates) {
-    try {
-      const args = (endpoint.parameters ?? []).map((parameter) => {
-        const key = (parameter.parameter_name ?? parameter.label ?? "").toLowerCase();
-        if (key.includes("prompt") || key === "text") return "A cinematic red moon over a quiet city, cover-art test image";
-        if (key.includes("seed")) return 7;
-        if (key.includes("width")) return 512;
-        if (key.includes("height")) return 512;
-        if (key.includes("steps")) return 8;
-        if (parameter.default !== undefined) return parameter.default;
-        if (parameter.optional || parameter.parameter_has_default) return undefined;
-        return undefined;
-      });
-      const response = await client.predict(name, args);
-      const values = (response.data ?? []).flat(Infinity);
-      const file = values.find((value) => value && typeof value === "object" && (value.url || value.path)) ?? values.find((value) => typeof value === "string");
-      const blob = await getFileValue(file, `Z-Image Turbo ${name}`);
-      if (!blob.type.startsWith("image/")) throw new Error(`Image smoke returned ${blob.type}, not image.`);
-      console.log(`IMAGE_OK endpoint=${name} bytes=${blob.size} type=${blob.type}`);
-      return;
-    } catch (error) {
-      lastError = error;
-    }
-  }
+  for (const [name, endpoint] of candidates) try {
+    const args = (endpoint.parameters ?? []).map((parameter) => { const key = (parameter.parameter_name ?? parameter.label ?? "").toLowerCase(); if (key.includes("prompt") || key === "text") return "A cinematic red moon over a quiet city, cover-art test image"; if (key.includes("seed")) return 7; if (key.includes("width")) return 512; if (key.includes("height")) return 512; if (key.includes("steps")) return 8; if (parameter.default !== undefined) return parameter.default; if (parameter.optional || parameter.parameter_has_default) return undefined; return undefined; });
+    const response = await client.predict(name, args); const values = (response.data ?? []).flat(Infinity); const file = values.find((value) => value && typeof value === "object" && (value.url || value.path)) ?? values.find((value) => typeof value === "string"); const blob = await getFileValue(file, `Z-Image Turbo ${name}`); if (!blob.type.startsWith("image/")) throw new Error(`Image smoke returned ${blob.type}, not image.`); console.log(`IMAGE_OK endpoint=${name} bytes=${blob.size} type=${blob.type}`); return;
+  } catch (error) { lastError = error; }
   throw lastError ?? new Error("Z-Image Turbo generation failed.");
 }
 
 async function predictVideoFallback(client) {
-  const api = await client.view_api();
-  const endpoints = { ...(api.named_endpoints ?? {}), ...(api.unnamed_endpoints ?? {}) };
-  const candidates = Object.entries(endpoints)
-    .filter(([, endpoint]) => (endpoint.parameters ?? []).some((parameter) => {
-      const key = (parameter.parameter_name ?? parameter.label ?? "").toLowerCase();
-      return key.includes("prompt") || key.includes("text");
-    }))
-    .sort((a, b) => (b[0].includes("generate") ? 1 : 0) - (a[0].includes("generate") ? 1 : 0));
+  const api = await client.view_api(); const endpoints = { ...(api.named_endpoints ?? {}), ...(api.unnamed_endpoints ?? {}) }; const candidates = Object.entries(endpoints).filter(([, endpoint]) => (endpoint.parameters ?? []).some((parameter) => { const key = (parameter.parameter_name ?? parameter.label ?? "").toLowerCase(); return key.includes("prompt") || key.includes("text"); }));
   let lastError = null;
-  for (const [name, endpoint] of candidates) {
-    try {
-      const args = (endpoint.parameters ?? []).map((parameter) => {
-        const key = (parameter.parameter_name ?? parameter.label ?? "").toLowerCase();
-        if (key.includes("prompt") || key === "text") return "A cinematic red moon rising over a quiet city at night, slow camera movement";
-        if (key.includes("duration")) return 2;
-        if (key.includes("seed")) return 7;
-        if (key.includes("steps")) return 6;
-        if (key.includes("image") || key.includes("first_frame") || key.includes("input_image")) return null;
-        if (parameter.default !== undefined) return parameter.default;
-        if (parameter.optional || parameter.parameter_has_default) return undefined;
-        return undefined;
-      });
-      const response = await client.predict(name, args);
-      const values = (response.data ?? []).flat(Infinity);
-      const file = values.find((value) => value && typeof value === "object" && (value.url || value.path)) ?? values.find((value) => typeof value === "string");
-      const blob = await getFileValue(file, `Wan video ${name}`);
-      if (!blob.type.startsWith("video/")) throw new Error(`Video smoke returned ${blob.type}, not video.`);
-      console.log(`VIDEO_OK engine=Wan endpoint=${name} bytes=${blob.size} type=${blob.type}`);
-      return;
-    } catch (error) {
-      lastError = error;
-    }
-  }
+  for (const [name, endpoint] of candidates) try {
+    const args = (endpoint.parameters ?? []).map((parameter) => { const key = (parameter.parameter_name ?? parameter.label ?? "").toLowerCase(); if (key.includes("prompt") || key === "text") return "A cinematic red moon rising over a quiet city at night, slow camera movement"; if (key.includes("negative")) return "blurry, distorted, low quality"; if (key.includes("duration")) return 0.5; if (key.includes("seed")) return 7; if (key.includes("steps")) return 4; if (key.includes("guidance")) return key.includes("guidance_2") ? 3 : 1; if (key.includes("randomize")) return false; if (parameter.default !== undefined) return parameter.default; if (parameter.optional || parameter.parameter_has_default) return undefined; return undefined; });
+    const response = await client.predict(name, args); const values = (response.data ?? []).flat(Infinity); const file = values.find((value) => value && typeof value === "object" && (value.url || value.path)) ?? values.find((value) => typeof value === "string"); const blob = await getFileValue(file, `Wan video ${name}`); if (!blob.type.startsWith("video/")) throw new Error(`Video smoke returned ${blob.type}, not video.`); console.log(`VIDEO_OK engine=Wan endpoint=${name} bytes=${blob.size} type=${blob.type}`); return;
+  } catch (error) { lastError = error; }
   throw lastError ?? new Error("Wan video generation failed.");
 }
 
 async function smokeVideo() {
-  let h3Error = null;
   try {
-    const client = await Client.connect(providers.video);
-    const response = await client.predict("/predict_fn_generate_video", [
-      "A cinematic red moon rising over a quiet city at night, slow camera movement",
-      null,
-      null,
-      "960x544 · 16:9 fast",
-      2,
-      6,
-      7,
-      false,
-      "larry",
-    ]);
-    const values = (response.data ?? []).flat(Infinity);
-    const file = values.find((value) => value && typeof value === "object" && (value.url || value.path)) ?? values[0];
-    const blob = await getFileValue(file, "MiniMax H3 video");
-    if (!blob.type.startsWith("video/")) throw new Error(`H3 smoke returned ${blob.type}, not video.`);
-    console.log(`VIDEO_OK engine=H3 endpoint=/predict_fn_generate_video bytes=${blob.size} type=${blob.type}`);
-    return;
-  } catch (error) {
-    h3Error = error instanceof Error ? error.message : String(error);
-    console.log(`VIDEO_H3_UNAVAILABLE ${h3Error}`);
-  }
-  const fallback = await Client.connect(providers.videoFallback);
-  await predictVideoFallback(fallback);
+    const client = await Client.connect(providers.video); const response = await client.predict("/predict_fn_generate_video", ["A cinematic red moon rising over a quiet city at night, slow camera movement", null, null, "960x544 · 16:9 fast", 2, 6, 7, false, "larry"]); const values = (response.data ?? []).flat(Infinity); const file = values.find((value) => value && typeof value === "object" && (value.url || value.path)) ?? values[0]; const blob = await getFileValue(file, "MiniMax H3 video"); if (!blob.type.startsWith("video/")) throw new Error(`H3 smoke returned ${blob.type}, not video.`); console.log(`VIDEO_OK engine=H3 endpoint=/predict_fn_generate_video bytes=${blob.size} type=${blob.type}`); return;
+  } catch (error) { console.log(`VIDEO_H3_UNAVAILABLE ${error instanceof Error ? error.message : String(error)}`); }
+  await predictVideoFallback(await Client.connect(providers.videoFallback));
 }
 
 const failures = [];
 for (const [name, fn] of Object.entries({ music: smokeMusic, image: smokeImage, video: smokeVideo })) {
-  try {
-    console.log(`START_${name.toUpperCase()}`);
-    await fn();
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    console.error(`FAIL_${name.toUpperCase()}: ${message}`);
-    failures.push(`${name}: ${message}`);
-  }
+  try { console.log(`START_${name.toUpperCase()}`); await fn(); } catch (error) { const message = error instanceof Error ? error.message : String(error); console.error(`FAIL_${name.toUpperCase()}: ${message}`); failures.push(`${name}: ${message}`); }
 }
-
 if (failures.length) throw new Error(`Live free media provider smoke failed: ${failures.join(" | ")}`);
