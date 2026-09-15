@@ -9,6 +9,7 @@ import {
 } from "@tanstack/react-router";
 import { type ReactNode } from "react";
 import appCss from "../styles.css?url";
+import "../lib/buddy-audio-unlock";
 
 function NotFoundComponent() {
   return (

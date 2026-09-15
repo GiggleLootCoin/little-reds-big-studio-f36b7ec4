@@ -14,7 +14,7 @@ permissions:
 jobs:
   validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -29,6 +29,10 @@ jobs:
         run: node --experimental-strip-types --test tests/audio-artifact.test.ts
       - name: Music video AV regression tests
         run: node --experimental-strip-types --test tests/music-video-av-validation.test.mjs tests/music-video-pipeline.test.mjs
+      - name: Full music-video package contract tests
+        run: node --experimental-strip-types --test tests/track-package-flow.test.mjs
+      - name: Buddy awareness contract tests
+        run: node --experimental-strip-types --test tests/buddy-awareness-contract.test.mjs
       - name: Buddy voice regression tests
         run: npm run test:voice
       - name: Buddy memory and cognitive integration tests
@@ -51,6 +55,10 @@ jobs:
         run: node --experimental-strip-types --test tests/rvc-applio.test.mjs
       - name: Live ApplioX API contract test
         run: node --experimental-strip-types --test tests/rvc-applio-live-contract.test.mjs
+      - name: Live free music, image and video provider smoke
+        run: node scripts/free-media-provider-smoke.mjs
+      - name: Live free chat Space discovery and smoke
+        run: node scripts/free-chat-space-smoke.mjs
       - name: Type-check
         run: npx tsc --noEmit
       - name: Normalize formatting
