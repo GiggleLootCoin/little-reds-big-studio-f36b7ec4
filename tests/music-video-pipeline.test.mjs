@@ -1,10 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-
 import { buildMusicVideoPlan, chooseMusicVideoChunkSeconds, validateMusicVideoArtifact, validateRenderedMusicVideoArtifact, MUSIC_VIDEO_ENGINE_SPACES } from "../src/lib/media/music-video-pipeline.ts";
 
 test("music video engines point at currently published free Spaces", () => {
-  assert.deepEqual(MUSIC_VIDEO_ENGINE_SPACES, ["abidlabs/MiniMax-H3-Turbo-Lora", "Lightricks/ltx-video-distilled"]);
+  assert.deepEqual(MUSIC_VIDEO_ENGINE_SPACES, ["abidlabs/MiniMax-H3-Turbo-Lora", "Lightricks/ltx-2.3-distilled"]);
 });
 
 test("music video planner covers the complete song with bounded generation chunks", () => {
