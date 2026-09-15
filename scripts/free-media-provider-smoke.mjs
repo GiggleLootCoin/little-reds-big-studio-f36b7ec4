@@ -1,4 +1,4 @@
-import { Client, handle_file } from "@gradio/client";
+import { Client } from "@gradio/client";
 
 const providers = {
   music: "Upsampler/minimax-music3",
@@ -22,7 +22,7 @@ async function getFileValue(value, label) {
 
 async function smokeMusic() {
   const client = await Client.connect(providers.music);
-  const response = await client.predict("/generate", [
+  const response = await client.predict("/generate_music", [
     "A short upbeat instrumental synth-pop test track",
     "[instrumental]",
     "Synth-Pop. BPM 120. C major. Bright, polished, compact test generation.",
@@ -35,8 +35,7 @@ async function smokeMusic() {
     8,
     3.5,
   ]);
-  const data = response.data ?? [];
-  const candidates = data.flat(Infinity);
+  const candidates = (response.data ?? []).flat(Infinity);
   const file = candidates.find((value) => value && typeof value === "object" && value.url) ?? candidates[0];
   const blob = await getFileValue(file, "MiniMax Music 3");
   if (!blob.type.startsWith("audio/")) throw new Error(`Music smoke returned ${blob.type}, not audio.`);
@@ -84,7 +83,7 @@ async function smokeImage() {
 
 async function smokeVideo() {
   const client = await Client.connect(providers.video);
-  const response = await client.predict("/generate_video", [
+  const response = await client.predict("/predict_fn_generate_video", [
     "A cinematic red moon rising over a quiet city at night, slow camera movement",
     null,
     null,
