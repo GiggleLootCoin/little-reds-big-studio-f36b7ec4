@@ -18,6 +18,7 @@ import {
 } from "@/lib/studio-runtime";
 import { buildFullMusicVideoRequest } from "@/lib/media/track-package";
 import { generateFullMusicVideo } from "@/lib/media/full-music-video";
+import { saveLocalArtifact } from "@/lib/local-first/artifacts";
 import { Note, Panel, Readout, StudioButton } from "./ui";
 import { CreatorExportButton } from "./CreatorExportButton";
 
@@ -147,6 +148,7 @@ export function FreeCreatePanel() {
       );
       const musicBlob = await artifactBlob(music, "audio/");
       const actualSongDuration = await audioDurationSeconds(musicBlob);
+      await saveLocalArtifact(musicBlob, `${brief.trim() || "generated-song"}.wav`);
       setTrackMusic({ ...music, value: musicBlob });
 
       setStatus("2/3 — Generating cover artwork for this exact track…");
@@ -158,6 +160,7 @@ export function FreeCreatePanel() {
         setStatus,
       );
       const artworkBlob = await artifactBlob(artwork, "image/");
+      await saveLocalArtifact(artworkBlob, `${brief.trim() || "generated-song"}-artwork.png`);
       setTrackArtwork({ ...artwork, value: artworkBlob });
 
       setStatus(
@@ -185,6 +188,10 @@ export function FreeCreatePanel() {
               : null,
         onProgress: (update) => setStatus(update.message),
       });
+      await saveLocalArtifact(
+        video.blob,
+        `${brief.trim() || "generated-song"}-music-video.${video.mimeType.includes("mp4") ? "mp4" : "webm"}`,
+      );
       const videoArtifact: StudioArtifact = {
         capability: "video",
         value: video.blob,
@@ -194,7 +201,7 @@ export function FreeCreatePanel() {
       setTrackVideo(videoArtifact);
       setArtifact(music);
       setStatus(
-        `Track package ready: the full ${Math.round(video.durationSeconds)} second song, matching artwork, and complete music video are verified.`,
+        `Track package ready: the full ${Math.round(video.durationSeconds)} second song, matching artwork, and complete music video are verified and saved on this device.`,
       );
     } catch (error) {
       setStatus(
