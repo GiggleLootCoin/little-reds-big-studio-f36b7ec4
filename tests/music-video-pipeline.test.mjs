@@ -11,8 +11,8 @@ import {
 
 test("music video engines point at currently published free Spaces", () => {
   assert.deepEqual(MUSIC_VIDEO_ENGINE_SPACES, [
-    "MiniMaxAI/MiniMax-H3-Turbo-Lora",
-    "zerogpu-aoti/wan2-2-fp8da-aoti-faster",
+    "abidlabs/MiniMax-H3-Turbo-Lora",
+    "kulkas2pintu/Wan2.2-14B-Fast-Preview",
   ]);
 });
 
