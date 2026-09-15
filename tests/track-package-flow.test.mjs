@@ -8,7 +8,7 @@ test("track package passes the finished song to the full music-video pipeline", 
     audioDurationSeconds: 187,
     title: "Test Song",
     direction: "cinematic and nocturnal",
-    artwork: "cover-art",
+    referenceImage: "cover-art",
   });
 
   assert.equal(request.audio, "finished-song");
