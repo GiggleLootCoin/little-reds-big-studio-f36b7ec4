@@ -16,6 +16,8 @@ import {
   type StudioArtifact,
   type StudioCapability,
 } from "@/lib/studio-runtime";
+import { buildFullMusicVideoRequest } from "@/lib/media/track-package";
+import { generateFullMusicVideo } from "@/lib/media/full-music-video";
 import { Note, Panel, Readout, StudioButton } from "./ui";
 import { CreatorExportButton } from "./CreatorExportButton";
 
@@ -38,6 +40,36 @@ async function blobToDataUrl(value: unknown): Promise<string | null> {
     reader.onerror = () => resolve(null);
     reader.readAsDataURL(value);
   });
+}
+
+async function artifactBlob(artifact: StudioArtifact, expectedType: string): Promise<Blob> {
+  if (artifact.value instanceof Blob && artifact.value.size) return artifact.value;
+  if (!artifact.url) throw new Error(`The generated ${expectedType} has no downloadable artifact.`);
+  const response = await fetch(artifact.url);
+  if (!response.ok) throw new Error(`The generated ${expectedType} could not be downloaded.`);
+  const blob = await response.blob();
+  if (!blob.size || !blob.type.startsWith(expectedType))
+    throw new Error(`The generated ${expectedType} artifact could not be validated.`);
+  return blob;
+}
+
+async function audioDurationSeconds(blob: Blob): Promise<number> {
+  if (typeof Audio === "undefined") throw new Error("This browser cannot inspect generated audio duration.");
+  const url = URL.createObjectURL(blob);
+  try {
+    const audio = new Audio();
+    audio.preload = "metadata";
+    const duration = await new Promise<number>((resolve, reject) => {
+      audio.onloadedmetadata = () => resolve(audio.duration);
+      audio.onerror = () => reject(new Error("The generated song could not be decoded."));
+      audio.src = url;
+    });
+    if (!Number.isFinite(duration) || duration <= 0)
+      throw new Error("The generated song has no valid duration.");
+    return duration;
+  } finally {
+    URL.revokeObjectURL(url);
+  }
 }
 
 export function FreeCreatePanel() {
@@ -113,7 +145,10 @@ export function FreeCreatePanel() {
         },
         setStatus,
       );
-      setTrackMusic(music);
+      const musicBlob = await artifactBlob(music, "audio/");
+      const actualSongDuration = await audioDurationSeconds(musicBlob);
+      setTrackMusic({ ...music, value: musicBlob });
+
       setStatus("2/3 — Generating cover artwork for this exact track…");
       const artwork = await runStudioJob(
         "image",
@@ -122,25 +157,45 @@ export function FreeCreatePanel() {
         },
         setStatus,
       );
-      setTrackArtwork(artwork);
-      setStatus("3/3 — Animating that artwork into the track's music video…");
-      const imageDataUrl = await blobToDataUrl(artwork.value);
-      const video = await runStudioJob(
-        "video",
-        {
-          prompt: `${brief.trim() || "Original song"}. Create a cinematic music video for this exact track. Keep the visual identity, characters, setting, color language, and mood consistent with the cover artwork.`,
-          ...(imageDataUrl ? { image: imageDataUrl } : {}),
-          ...(requestedDuration
-            ? { duration: Math.min(12, Math.max(4, requestedDuration)) }
-            : { duration: 5 }),
-          aspectRatio: "16:9",
-          resolution: "720p",
-        },
-        setStatus,
+      const artworkBlob = await artifactBlob(artwork, "image/");
+      setTrackArtwork({ ...artwork, value: artworkBlob });
+
+      setStatus(
+        `3/3 — Building the complete ${Math.round(actualSongDuration)} second music video from the finished song…`,
       );
-      setTrackVideo(video);
+      const imageDataUrl = await blobToDataUrl(artworkBlob);
+      const request = buildFullMusicVideoRequest({
+        audio: musicBlob,
+        audioDurationSeconds: actualSongDuration,
+        title: brief.trim() || undefined,
+        direction: brief.trim() || undefined,
+        referenceImage: imageDataUrl || artworkBlob,
+      });
+      const video = await generateFullMusicVideo({
+        audioBlob: request.audio as Blob,
+        audioDurationSeconds: request.audioDurationSeconds,
+        title: request.title,
+        direction: request.direction,
+        storyboard: request.storyboard,
+        referenceImageBlob:
+          request.referenceImage instanceof Blob
+            ? request.referenceImage
+            : imageDataUrl
+              ? await (await fetch(imageDataUrl)).blob()
+              : null,
+        onProgress: (update) => setStatus(update.message),
+      });
+      const videoArtifact: StudioArtifact = {
+        capability: "video",
+        value: video.blob,
+        url: URL.createObjectURL(video.blob),
+        provider: `Full music-video renderer (${video.engine})`,
+      };
+      setTrackVideo(videoArtifact);
       setArtifact(music);
-      setStatus("Track package ready: music + artwork + video are all generated.");
+      setStatus(
+        `Track package ready: the full ${Math.round(video.durationSeconds)} second song, matching artwork, and complete music video are verified.`,
+      );
     } catch (error) {
       setStatus(
         error instanceof Error
@@ -275,7 +330,7 @@ export function FreeCreatePanel() {
           icon={Film}
           title="Video"
           disabled={!!busy}
-          onClick={() => void run("video", { prompt: brief || "Cinematic music video" })}
+          onClick={() => void run("video", { prompt: brief || "Cinematic short video" })}
         />
         <EngineButton
           icon={Scissors}
@@ -308,14 +363,14 @@ export function FreeCreatePanel() {
         <TrackArtifact title="Track Artwork" kind="image" url={trackArtwork.url} />
       )}
       {trackVideo?.url && (
-        <TrackArtifact title="Track Music Video" kind="video" url={trackVideo.url} />
+        <TrackArtifact title="Complete Track Music Video" kind="video" url={trackVideo.url} />
       )}
       {artifact?.url && !trackMusic && (
         <TrackArtifact title="Verified result" kind={artifact.capability} url={artifact.url} />
       )}
       <Note>
         <Readout label="Routing" value="Automatic capability + live schema + fallback" />
-        <Readout label="Track package" value="Music + matching artwork + matching video" />
+        <Readout label="Track package" value="Full song + matching artwork + complete music video" />
         <Readout label="Voice" value="Speaking clone + singing voice conversion" />
         <Readout label="Cost target" value="Free/open first" />
         <Readout label="Success rule" value="Usable artifact required" />
