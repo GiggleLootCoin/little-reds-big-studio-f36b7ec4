@@ -11,15 +11,10 @@ type ServerEnv = {
   HF_TOKEN?: string;
   QWEN_TTS_SPACE_URL?: string;
 };
-type ServerEntry = {
-  fetch: (request: Request, env: unknown, ctx: unknown) => Promise<Response> | Response;
-};
+type ServerEntry = { fetch: (request: Request, env: unknown, ctx: unknown) => Promise<Response> | Response };
 let serverEntryPromise: Promise<ServerEntry> | undefined;
 async function getServerEntry(): Promise<ServerEntry> {
-  if (!serverEntryPromise)
-    serverEntryPromise = import("@tanstack/react-start/server-entry").then(
-      (m) => (m.default ?? m) as ServerEntry,
-    );
+  if (!serverEntryPromise) serverEntryPromise = import("@tanstack/react-start/server-entry").then((m) => (m.default ?? m) as ServerEntry);
   return serverEntryPromise;
 }
 const HF_PROXY_PREFIX = "/api/hf-space/";
@@ -29,17 +24,11 @@ const HF_SPACE_RE = /^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/;
 const WEB_SEARCH_PATH = "/api/ai/web-search/";
 function decodeSpaceToken(token: string) { try { return decodeURIComponent(token); } catch { return ""; } }
 async function proxyHfSpace(request: Request): Promise<Response | null> {
-  const url = new URL(request.url);
-  if (!url.pathname.startsWith(HF_PROXY_PREFIX)) return null;
-  const rest = url.pathname.slice(HF_PROXY_PREFIX.length);
-  const slash = rest.indexOf("/");
-  if (slash < 1) return new Response("Missing Space", { status: 400 });
-  const space = decodeSpaceToken(rest.slice(0, slash));
-  if (!HF_SPACE_RE.test(space)) return new Response("Invalid Space", { status: 400 });
-  const upstreamPath = rest.slice(slash) || "/";
-  const upstream = new URL(`https://${space.replace("/", "-")}.hf.space${upstreamPath}`); upstream.search = url.search;
-  const headers = new Headers();
-  for (const name of ["accept", "accept-language", "authorization", "content-type", "cookie", "origin", "range", "referer", "user-agent", "x-ip-token", "x-requested-with", "upgrade", "connection", "sec-websocket-key", "sec-websocket-version", "sec-websocket-protocol", "sec-websocket-extensions"]) { const value = request.headers.get(name); if (value) headers.set(name, value); }
+  const url = new URL(request.url); if (!url.pathname.startsWith(HF_PROXY_PREFIX)) return null;
+  const rest = url.pathname.slice(HF_PROXY_PREFIX.length), slash = rest.indexOf("/"); if (slash < 1) return new Response("Missing Space", { status: 400 });
+  const space = decodeSpaceToken(rest.slice(0, slash)); if (!HF_SPACE_RE.test(space)) return new Response("Invalid Space", { status: 400 });
+  const upstreamPath = rest.slice(slash) || "/", upstream = new URL(`https://${space.replace("/", "-")}.hf.space${upstreamPath}`); upstream.search = url.search;
+  const headers = new Headers(); for (const name of ["accept", "accept-language", "authorization", "content-type", "cookie", "origin", "range", "referer", "user-agent", "x-ip-token", "x-requested-with", "upgrade", "connection", "sec-websocket-key", "sec-websocket-version", "sec-websocket-protocol", "sec-websocket-extensions"]) { const value = request.headers.get(name); if (value) headers.set(name, value); }
   const upstreamResponse = await fetch(upstream, { method: request.method, headers, body: request.method === "GET" || request.method === "HEAD" ? undefined : request.body, redirect: "follow" });
   const responseHeaders = new Headers(upstreamResponse.headers); responseHeaders.delete("content-security-policy"); responseHeaders.delete("content-encoding"); responseHeaders.set("cache-control", "no-store"); responseHeaders.set("x-studio-upstream", space);
   return new Response(upstreamResponse.body, { status: upstreamResponse.status, statusText: upstreamResponse.statusText, headers: responseHeaders });
@@ -57,7 +46,7 @@ function mediaUrl(value: unknown, keys: string[]): string | null {
   return null;
 }
 function fromBase64(value: string): ArrayBuffer { const bytes = Uint8Array.from(atob(value), (c) => c.charCodeAt(0)); return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength); }
-function isCapacityError(error: unknown) { const message = error instanceof Error ? error.message : String(error); return message.includes("3040") || message.toLowerCase().includes("capacity temporarily exceeded") || message.toLowerCase().includes("out of capacity"); }
+function isCapacityError(error: unknown) { const message = error instanceof Error ? error.message : String(error); return message.includes("3040") || message.includes("4006") || message.toLowerCase().includes("capacity temporarily exceeded") || message.toLowerCase().includes("out of capacity") || message.toLowerCase().includes("daily free allocation"); }
 async function rawAudioResponse(result: unknown): Promise<Response | null> {
   if (result instanceof Response) { if (!result.ok) return result; const headers = new Headers(result.headers); headers.set("cache-control", "no-store"); if (!headers.get("content-type")) headers.set("content-type", "audio/mpeg"); return new Response(result.body, { status: result.status, headers }); }
   if (result instanceof ReadableStream) return new Response(result, { headers: { "content-type": "audio/mpeg", "cache-control": "no-store" } });
@@ -82,16 +71,26 @@ function chatText(result: unknown): string {
   return "";
 }
 async function openRouterChat(env: ServerEnv, messages: unknown[]): Promise<unknown> {
-  if (env.AI) {
-    const model = hasImageContent(messages) ? "@cf/qwen/qwen3.8-27b" : "@cf/meta/llama-3.1-8b-instruct-fast";
-    return await env.AI.run(model, { messages, max_tokens: 192, temperature: 0.55, stream: false });
-  }
   const key = env.OPENROUTERAI_API_KEY?.trim();
-  if (!key) throw new Error("Buddy chat engine is not configured");
-  const response = await fetch("https://openrouter.ai/api/v1/chat/completions", { method: "POST", headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json", "HTTP-Referer": "https://little-reds-big-studio-f36b7ec4.workers.dev", "X-Title": "Buddy AI" }, body: JSON.stringify({ model: "openrouter/free", messages, max_tokens: 192, temperature: 0.6 }) });
-  const payload: unknown = await response.json().catch(() => null);
-  if (!response.ok) { const payloadRecord = payload && typeof payload === "object" ? (payload as Record<string, unknown>) : null; const detail = payloadRecord?.error ? JSON.stringify(payloadRecord.error) : `HTTP ${response.status}`; throw new Error(`OpenRouter request failed: ${detail}`); }
-  return payload;
+  if (key) {
+    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", { method: "POST", headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json", "HTTP-Referer": "https://little-reds-big-studio-f36b7ec4.workers.dev", "X-Title": "Buddy AI" }, body: JSON.stringify({ model: "openrouter/free", messages, max_tokens: 192, temperature: 0.6 }) });
+    const payload: unknown = await response.json().catch(() => null);
+    if (response.ok) return payload;
+    if (!env.AI) { const payloadRecord = payload && typeof payload === "object" ? (payload as Record<string, unknown>) : null; const detail = payloadRecord?.error ? JSON.stringify(payloadRecord.error) : `HTTP ${response.status}`; throw new Error(`OpenRouter request failed: ${detail}`); }
+  }
+  if (env.AI) {
+    try {
+      const model = hasImageContent(messages) ? "@cf/qwen/qwen3.8-27b" : "@cf/meta/llama-3.1-8b-instruct-fast";
+      return await env.AI.run(model, { messages, max_tokens: 192, temperature: 0.55, stream: false });
+    } catch (error) {
+      if (key && isCapacityError(error)) {
+        const response = await fetch("https://openrouter.ai/api/v1/chat/completions", { method: "POST", headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json", "HTTP-Referer": "https://little-reds-big-studio-f36b7ec4.workers.dev", "X-Title": "Buddy AI" }, body: JSON.stringify({ model: "openrouter/free", messages, max_tokens: 192, temperature: 0.6 }) });
+        const payload: unknown = await response.json().catch(() => null); if (response.ok) return payload;
+      }
+      throw error;
+    }
+  }
+  throw new Error("Buddy chat engine is not configured");
 }
 function ttsLanguage(value: string | undefined): string {
   const raw = String(value || "en").trim().toLowerCase();
