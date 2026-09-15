@@ -48,8 +48,16 @@ async function cloudflareAI(request: Request, env: ServerEnv): Promise<Response 
       const input = { audio, task: "transcribe", ...(body.language && body.language !== "Auto" ? { language: body.language } : {}) };
       let result: unknown; let lastError: unknown;
       for (const model of ["@cf/openai/whisper-large-v3-turbo", "@cf/openai/whisper"]) {
-        for (let attempt = 0; attempt < 2 && !result; attempt += 1) {
-          try { result = await env.AI.run(model, input); } catch (error) { lastError = error; if (attempt === 0) await new Promise((resolve) => setTimeout(resolve, 300)); }
+        result = undefined;
+        for (let attempt = 0; attempt < 2; attempt += 1) {
+          try {
+            const candidate = await env.AI.run(model, input);
+            const candidateText = speechText(candidate);
+            if (candidateText) { result = candidate; break; }
+          } catch (error) {
+            lastError = error;
+            if (attempt === 0) await new Promise((resolve) => setTimeout(resolve, 300));
+          }
         }
         if (result) break;
       }
@@ -64,8 +72,7 @@ async function cloudflareAI(request: Request, env: ServerEnv): Promise<Response 
     if (capability === "image") { const result = await env.AI.run("@cf/stabilityai/stable-diffusion-xl-base-1.0", { prompt, num_steps: 20 }); const image = await rawImageResponse(result); if (!image) return jsonError("The image model returned no image.", 502); return image; }
     if (capability === "video") { const result = await env.AI.run("@cf/bytedance/seedance-1.0-lite", { prompt, duration: Math.max(2, Math.min(5, Math.round(body.duration || 4))), aspect_ratio: body.aspectRatio || "16:9", resolution: body.resolution || "720p" }); return Response.json(result, { headers: { "cache-control": "no-store" } }); }
     if (capability === "music") { const result = await env.AI.run("@cf/meta/musicgen-1", { prompt, duration: Math.max(1, Math.min(30, Math.round(body.duration || 8))) }); const audio = await rawAudioResponse(result); if (!audio) return jsonError("The music model returned no audio.", 502); return audio; }
-    if (capability === "instrumental") { const result = await env.AI.run("@cf/meta/musicgen-1", { prompt: `${prompt}
-Instrumental only. No vocals.`, duration: Math.max(1, Math.min(30, Math.round(body.duration || 8))) }); const audio = await rawAudioResponse(result); if (!audio) return jsonError("The instrumental model returned no audio.", 502); return audio; }
+    if (capability === "instrumental") { const result = await env.AI.run("@cf/meta/musicgen-1", { prompt: `${prompt}\nInstrumental only. No vocals.`, duration: Math.max(1, Math.min(30, Math.round(body.duration || 8))) }); const audio = await rawAudioResponse(result); if (!audio) return jsonError("The instrumental model returned no audio.", 502); return audio; }
     return jsonError(`Unsupported capability: ${capability}`, 400);
   } catch (error) { console.error("Cloudflare AI route failed", error); return jsonError(error instanceof Error ? error.message : "Cloudflare AI request failed.", 502); }
 }
