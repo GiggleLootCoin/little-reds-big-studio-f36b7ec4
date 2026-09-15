@@ -108,6 +108,35 @@ export function BuddyLiveChat() {
     } catch (error) { setStatus(error instanceof Error ? error.message : `${kind} awareness could not be captured.`); }
   }
   async function dataUrl(file: File) { return new Promise<string>((resolve, reject) => { const r = new FileReader(); r.onload = () => resolve(String(r.result)); r.onerror = () => reject(r.error || new Error("Could not read attachment.")); r.readAsDataURL(file); }); }
+  async function videoFrameDataUrl(file: File): Promise<string> {
+    const url = URL.createObjectURL(file);
+    try {
+      const video = document.createElement("video"); video.preload = "metadata"; video.muted = true; video.playsInline = true; video.src = url;
+      await new Promise<void>((resolve, reject) => { video.onloadeddata = () => resolve(); video.onerror = () => reject(new Error("The video attachment could not be decoded.")); });
+      const width = Math.min(video.videoWidth || 1280, 1280), height = Math.min(video.videoHeight || 720, 720);
+      const canvas = document.createElement("canvas"); canvas.width = width; canvas.height = height; const context = canvas.getContext("2d");
+      if (!context) throw new Error("The video frame could not be rendered.");
+      video.currentTime = 0; await new Promise<void>((resolve) => { video.onseeked = () => resolve(); }); context.drawImage(video, 0, 0, width, height);
+      return canvas.toDataURL("image/jpeg", 0.84);
+    } finally { URL.revokeObjectURL(url); }
+  }
+  async function attachmentContext(files: File[]) {
+    const textParts: string[] = [];
+    const imageParts: { type: string; image_url: { url: string } }[] = [];
+    for (const file of files) {
+      if (file.type.startsWith("image/")) imageParts.push({ type: "image_url", image_url: { url: await dataUrl(file) } });
+      else if (file.type.startsWith("audio/")) {
+        try { const r = await runStudioJob("speech-to-text", { audio: file }, setStatus); const t = artifactText(r.value).trim(); if (t) textParts.push(`Audio attachment "${file.name}" transcript:\n${t}`); }
+        catch (error) { textParts.push(`Audio attachment "${file.name}" could not be transcribed: ${error instanceof Error ? error.message : String(error)}`); }
+      } else if (file.type.startsWith("video/")) {
+        try { imageParts.push({ type: "image_url", image_url: { url: await videoFrameDataUrl(file) } }); textParts.push(`Video attachment "${file.name}" is attached; Buddy is shown its first decoded frame.`); }
+        catch (error) { textParts.push(`Video attachment "${file.name}" could not be decoded: ${error instanceof Error ? error.message : String(error)}`); }
+      } else if (file.type === "text/plain" || file.type === "text/markdown" || file.type === "application/json" || file.type === "application/rtf") {
+        const text = (await file.text()).slice(0, 12000); textParts.push(`Text attachment "${file.name}":\n${text}`);
+      } else if (file.type === "application/pdf") textParts.push(`PDF attachment "${file.name}" is attached, but this browser path does not claim to have read PDF contents.`);
+    }
+    return { textParts, imageParts };
+  }
   async function answer(text: string, spoken = false) {
     const clean = text.trim(); if (!clean || busyRef.current) return; busyRef.current = true; setBusy(true); setStatus("Buddy is thinking…");
     const u: Message = { id: crypto.randomUUID(), role: "user", content: clean, createdAt: Date.now(), attachments: attachments.map((f) => ({ id: crypto.randomUUID(), name: f.name, type: f.type, size: f.size })) };
@@ -115,10 +144,12 @@ export function BuddyLiveChat() {
     try {
       const prior = messages.slice(-12).map((m) => ({ role: m.role, content: m.content }));
       const content: { type: string; text?: string; image_url?: { url: string } }[] = [{ type: "text", text: clean }];
-      for (const file of attachments) if (file.type.startsWith("image/")) content.push({ type: "image_url", image_url: { url: await dataUrl(file) } });
+      const attachmentInfo = await attachmentContext(attachments);
+      if (attachmentInfo.textParts.length) content[0].text = `${clean}\n\n${attachmentInfo.textParts.join("\n\n")}`;
+      content.push(...attachmentInfo.imageParts);
       const voiceProfile = getBuddyVoiceProfile(), language = voiceProfile.language || "English", mood = voiceProfile.mood || "natural", tone = voiceProfile.tone || "conversational";
       const systemPrompt = `${IDENTITY} ${buildAgentSystemPrompt()} Respond in ${language}. Your current mood is ${mood}; your conversational tone is ${tone}. Keep replies compact when the user asks something simple, but give enough detail when the task needs it. Do not switch back to English unless the user asks for English.`;
-      const history = [{ role: "system", content: systemPrompt }, ...prior, { role: "user", content: Array.isArray(content) && content.length === 1 ? clean : content }];
+      const history = [{ role: "system", content: systemPrompt }, ...prior, { role: "user", content: content.length === 1 ? clean : content }];
       const r = await runStudioJob("chat", { prompt: clean, text: clean, messages: history, history, language, mood, tone }, setStatus), reply = artifactText(r.value).trim();
       if (!reply) throw Error("Buddy did not return a response.");
       setMessages((x) => [...x, { id: crypto.randomUUID(), role: "assistant", content: reply, createdAt: Date.now() }]); setAttachments([]); setStatus("Buddy responded."); if (spoken || liveRef.current) await speak(reply);
@@ -130,7 +161,6 @@ export function BuddyLiveChat() {
     if (muted || speakingRef.current) return; speakingRef.current = true; setBuddyStatus("working", { message: "Buddy is speaking…" }); const v = getBuddyVoiceProfile();
     try {
       let r;
-      // An explicitly selected non-Red preset must always win over any saved clone state.
       if (v.speaker === "Red" || (v.mode === "clone" && !v.speaker)) {
         let sample: Blob | null = null; if (v.mode === "clone") sample = await getBuddyVoiceSample(); else sample = await getBuiltInRedVoiceSample(); if (!sample) throw Error("The Red voice reference is unavailable right now.");
         r = await runStudioJob("tts", { refAudio: sample, referenceAudio: sample, audio: sample, referenceTranscript: v.referenceTranscript || "", refText: v.referenceTranscript || "", target_text: text, text, language: v.language || "English", mood: v.mood || "natural", tone: v.tone || "conversational", use_xvector_only: !v.referenceTranscript, model_size: liveRef.current ? "0.6B" : "1.7B" }, setStatus);
