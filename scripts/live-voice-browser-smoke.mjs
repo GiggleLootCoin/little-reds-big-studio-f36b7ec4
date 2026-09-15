@@ -57,10 +57,13 @@ if (cloneBytes.byteLength <= 4096) throw new Error(`Red clone audio is too small
 const presetVoices = ["Ryan", "Aiden", "Vivian", "Serena", "Uncle_Fu", "Dylan", "Eric", "Ono_Anna", "Sohee"];
 const presetResults = [];
 for (const speaker of presetVoices) {
-  const response = await fetch(`${base}/api/ai/tts?android_smoke=1&ts=${Date.now()}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ speaker, language: "en", text: `Hello. This is Buddy's ${speaker} preset voice test.` }) });
-  if (!response.ok) throw new Error(`production preset ${speaker} returned HTTP ${response.status}: ${(await response.text()).slice(0, 300)}`);
-  const type = response.headers.get("content-type") || ""; if (!/^audio\//i.test(type)) throw new Error(`production preset ${speaker} returned unexpected MIME: ${type}`);
-  const bytes = Buffer.from(await response.arrayBuffer()); if (bytes.byteLength <= 4096) throw new Error(`production preset ${speaker} audio is too small: ${bytes.byteLength} bytes`); presetResults.push({ speaker, bytes: bytes.byteLength, contentType: type });
+  const response = await fetch(`${base}/api/preset-preview/${encodeURIComponent(speaker)}?android_smoke=1&ts=${Date.now()}`);
+  if (!response.ok) throw new Error(`stored preset ${speaker} returned HTTP ${response.status}: ${(await response.text()).slice(0, 300)}`);
+  const type = response.headers.get("content-type") || "";
+  if (!/^audio\//i.test(type)) throw new Error(`stored preset ${speaker} returned unexpected MIME: ${type}`);
+  const bytes = Buffer.from(await response.arrayBuffer());
+  if (bytes.byteLength <= 4096) throw new Error(`stored preset ${speaker} audio is too small: ${bytes.byteLength} bytes`);
+  presetResults.push({ speaker, bytes: bytes.byteLength, contentType: type, playbackOnly: true });
 }
 
 const browser = await chromium.launch({ headless: true, args: ["--autoplay-policy=no-user-gesture-required"] });
