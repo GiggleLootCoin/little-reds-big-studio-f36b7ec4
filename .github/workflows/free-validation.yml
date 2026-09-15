@@ -57,6 +57,8 @@ jobs:
         run: node --experimental-strip-types --test tests/rvc-applio-live-contract.test.mjs
       - name: Live free music, image and video provider smoke
         run: node scripts/free-media-provider-smoke.mjs
+      - name: Live free chat Space discovery and smoke
+        run: node scripts/free-chat-space-smoke.mjs
       - name: Type-check
         run: npx tsc --noEmit
       - name: Normalize formatting
