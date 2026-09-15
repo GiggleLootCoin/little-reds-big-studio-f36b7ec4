@@ -7,7 +7,7 @@ test("local video renderer creates an actual recorded video stream from artwork"
   assert.match(source, /captureStream\(30\)/);
   assert.match(source, /new MediaRecorder\(/);
   assert.match(source, /new Blob\(chunks/);
-  assert.match(source, /video\\/webm/);
+  assert.match(source, /video\/webm/);
 });
 
 test("full music-video fallback uses the exact finished song audio and artwork", async () => {
