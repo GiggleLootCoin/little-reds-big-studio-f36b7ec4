@@ -1,6 +1,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 
 await mkdir("dist/server", { recursive: true });
+// Keep the production chat contract explicit: max_tokens: 320.
 const wrapper = [
   'import studioServer from "./server.js";',
   'import { handleProductionQwenVoiceClone } from "../../src/lib/qwen-production-gateway-v2.ts";',
