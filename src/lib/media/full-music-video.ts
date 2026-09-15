@@ -73,7 +73,7 @@ function scenePrompt(options: FullMusicVideoOptions, chunk: MusicVideoChunk): st
     options.direction?.trim() ||
     options.storyboard?.trim() ||
     "cinematic music video with strong visual storytelling and polished professional cinematography";
-  const title = options.title?.trim() ? ` for the song \"${options.title.trim()}\"` : "";
+  const title = options.title?.trim() ? ` for the song "${options.title.trim()}"` : "";
   return [
     `Create scene ${chunk.index + 1}${title}.`,
     base,
@@ -84,68 +84,31 @@ function scenePrompt(options: FullMusicVideoOptions, chunk: MusicVideoChunk): st
   ].join(" ");
 }
 
-async function generateMiniMaxChunk(
-  chunk: MusicVideoChunk,
-  prompt: string,
-  imageBlob: Blob | null,
-): Promise<Blob> {
+async function generateMiniMaxChunk(chunk: MusicVideoChunk, prompt: string, imageBlob: Blob | null): Promise<Blob> {
   const client = await Client.connect(PRIMARY_VIDEO_SPACE);
-  const response = await client.predict(VIDEO_ENDPOINT, [
-    prompt,
-    imageBlob ? handle_file(imageBlob) : null,
-    null,
-    VIDEO_CANVAS,
-    chunk.durationSeconds,
-    VIDEO_STEPS,
-    1000 + chunk.index,
-    false,
-    "larry",
-  ]);
+  const response = await client.predict(VIDEO_ENDPOINT, [prompt, imageBlob ? handle_file(imageBlob) : null, null, VIDEO_CANVAS, chunk.durationSeconds, VIDEO_STEPS, 1000 + chunk.index, false, "larry"]);
   const data = response.data as unknown[];
   return outputBlob(data?.[0]);
 }
 
-async function generateFallbackChunk(
-  chunk: MusicVideoChunk,
-  prompt: string,
-  imageBlob: Blob | null,
-): Promise<Blob> {
+async function generateFallbackChunk(chunk: MusicVideoChunk, prompt: string, imageBlob: Blob | null): Promise<Blob> {
   const client = await Client.connect(FALLBACK_VIDEO_SPACE);
   const api = await client.view_api();
-  const endpoints = {
-    ...(api.named_endpoints ?? {}),
-    ...(api.unnamed_endpoints ?? {}),
-  } as Record<
-    string,
-    {
-      parameters?: Array<{
-        parameter_name?: string;
-        label?: string;
-        optional?: boolean;
-        parameter_has_default?: boolean;
-        default?: unknown;
-      }>;
-    }
-  >;
-  const candidates = Object.entries(endpoints)
-    .filter(([, endpoint]) => (endpoint.parameters ?? []).length > 0)
-    .sort((a, b) => {
-      const score = (name: string) => {
-        const value = name.toLowerCase();
-        return (value.includes("generate") ? 10 : 0) +
-          (value.includes("video") ? 10 : 0) +
-          (value.includes("image") ? 4 : 0);
-      };
-      return score(b[0]) - score(a[0]);
-    });
+  const endpoints = { ...(api.named_endpoints ?? {}), ...(api.unnamed_endpoints ?? {}) } as Record<string, { parameters?: Array<{ parameter_name?: string; label?: string; optional?: boolean; parameter_has_default?: boolean; default?: unknown }> }>;
+  const candidates = Object.entries(endpoints).filter(([, endpoint]) => (endpoint.parameters ?? []).length > 0).sort((a, b) => {
+    const score = (name: string) => {
+      const value = name.toLowerCase();
+      return (value.includes("generate") ? 10 : 0) + (value.includes("video") ? 10 : 0) + (value.includes("image") ? 4 : 0);
+    };
+    return score(b[0]) - score(a[0]);
+  });
   let lastError = "No compatible video endpoint was found.";
   for (const [name, endpoint] of candidates) {
     try {
       const args = (endpoint.parameters ?? []).map((parameter) => {
         const key = (parameter.parameter_name ?? parameter.label ?? "").toLowerCase();
         if (key.includes("prompt") || key === "text") return prompt;
-        if (key.includes("image") || key.includes("input_image") || key.includes("start_image"))
-          return imageBlob ? handle_file(imageBlob) : null;
+        if (key.includes("image") || key.includes("input_image") || key.includes("start_image")) return imageBlob ? handle_file(imageBlob) : null;
         if (key.includes("duration")) return chunk.durationSeconds;
         if (key.includes("seed")) return 1000 + chunk.index;
         if (parameter.default !== undefined) return parameter.default;
@@ -154,8 +117,7 @@ async function generateFallbackChunk(
       });
       const response = await client.predict(name, args);
       const data = response.data as unknown[];
-      const blob = await outputBlob(data?.[0]);
-      return blob;
+      return await outputBlob(data?.[0]);
     } catch (error) {
       lastError = error instanceof Error ? error.message : String(error);
     }
@@ -164,252 +126,66 @@ async function generateFallbackChunk(
 }
 
 function chooseMimeType(): string {
-  const candidates = [
-    "video/mp4;codecs=avc1.42E01E,mp4a.40.2",
-    "video/mp4",
-    "video/webm;codecs=vp9,opus",
-    "video/webm;codecs=vp8,opus",
-    "video/webm",
-  ];
-  return (
-    candidates.find((candidate) => MediaRecorder.isTypeSupported(candidate)) ||
-    "video/webm"
-  );
+  const candidates = ["video/mp4;codecs=avc1.42E01E,mp4a.40.2", "video/mp4", "video/webm;codecs=vp9,opus", "video/webm;codecs=vp8,opus", "video/webm"];
+  return candidates.find((candidate) => MediaRecorder.isTypeSupported(candidate)) || "video/webm";
 }
 
 function waitForEvent(target: EventTarget, event: string): Promise<void> {
   return new Promise((resolve, reject) => {
-    const onResolve = () => {
-      target.removeEventListener(event, onResolve);
-      target.removeEventListener("error", onReject);
-      resolve();
-    };
-    const onReject = () => {
-      target.removeEventListener(event, onResolve);
-      target.removeEventListener("error", onReject);
-      reject(new Error("The browser could not decode a generated video scene."));
-    };
+    const onResolve = () => { target.removeEventListener(event, onResolve); target.removeEventListener("error", onReject); resolve(); };
+    const onReject = () => { target.removeEventListener(event, onResolve); target.removeEventListener("error", onReject); reject(new Error("The browser could not decode a generated video scene.")); };
     target.addEventListener(event, onResolve, { once: true });
     target.addEventListener("error", onReject, { once: true });
   });
 }
 
 async function validateRenderedBlob(blob: Blob, expectedDurationSeconds: number): Promise<void> {
-  if (
-    !validateRenderedMusicVideoArtifact({
-      contentType: blob.type,
-      durationSeconds: expectedDurationSeconds,
-      expectedDurationSeconds,
-      byteLength: blob.size,
-    })
-  )
-    throw new Error("The rendered music video failed its basic artifact validation.");
-
-  const video = document.createElement("video");
-  video.preload = "metadata";
-  video.muted = true;
+  if (!validateRenderedMusicVideoArtifact({ contentType: blob.type, durationSeconds: expectedDurationSeconds, expectedDurationSeconds, byteLength: blob.size })) throw new Error("The rendered music video failed its basic artifact validation.");
+  const video = document.createElement("video"); video.preload = "metadata"; video.muted = true;
   const url = URL.createObjectURL(blob);
   try {
-    video.src = url;
-    await waitForEvent(video, "loadedmetadata");
-    if (
-      !validateRenderedMusicVideoArtifact({
-        contentType: blob.type,
-        durationSeconds: video.duration,
-        expectedDurationSeconds,
-        byteLength: blob.size,
-      })
-    ) {
-      throw new Error(
-        `The rendered music video duration is invalid (${Number.isFinite(video.duration) ? video.duration.toFixed(2) : "unknown"}s; expected about ${expectedDurationSeconds.toFixed(2)}s).`,
-      );
-    }
-  } finally {
-    video.removeAttribute("src");
-    video.load();
-    URL.revokeObjectURL(url);
-  }
+    video.src = url; await waitForEvent(video, "loadedmetadata");
+    if (!validateRenderedMusicVideoArtifact({ contentType: blob.type, durationSeconds: video.duration, expectedDurationSeconds, byteLength: blob.size })) throw new Error(`The rendered music video duration is invalid (${Number.isFinite(video.duration) ? video.duration.toFixed(2) : "unknown"}s; expected about ${expectedDurationSeconds.toFixed(2)}s).`);
+  } finally { video.removeAttribute("src"); video.load(); URL.revokeObjectURL(url); }
 }
 
-async function renderFullVideo(
-  chunks: Array<{ chunk: MusicVideoChunk; blob: Blob }>,
-  audioBlob: Blob,
-  durationSeconds: number,
-  onProgress?: Progress,
-): Promise<{ blob: Blob; mimeType: string }> {
-  if (!HTMLCanvasElement.prototype.captureStream || typeof MediaRecorder === "undefined")
-    throw new Error("This Android browser does not support in-browser music-video rendering.");
-
-  const canvas = document.createElement("canvas");
-  canvas.width = 1280;
-  canvas.height = 720;
-  const context = canvas.getContext("2d");
-  if (!context) throw new Error("The browser could not create the video renderer.");
-
-  const AudioContextCtor =
-    window.AudioContext ||
-    (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-  if (!AudioContextCtor) throw new Error("This browser does not support audio rendering.");
-
-  const audioContext = new AudioContextCtor();
-  const audioData = await audioBlob.arrayBuffer();
-  const audioBuffer = await audioContext.decodeAudioData(audioData.slice(0));
-  const audioDestination = audioContext.createMediaStreamDestination();
-  const audioSource = audioContext.createBufferSource();
-  audioSource.buffer = audioBuffer;
-  audioSource.connect(audioDestination);
-
-  const stream = canvas.captureStream(30);
-  for (const track of audioDestination.stream.getAudioTracks()) stream.addTrack(track);
-
-  const mimeType = chooseMimeType();
-  const recorder = new MediaRecorder(stream, { mimeType });
-  const recorded: Blob[] = [];
-  recorder.ondataavailable = (event) => {
-    if (event.data.size) recorded.push(event.data);
-  };
-  const stopped = new Promise<void>((resolve, reject) => {
-    recorder.onstop = () => resolve();
-    recorder.onerror = () =>
-      reject(new Error("The browser stopped recording the music video unexpectedly."));
-  });
-
-  recorder.start(1000);
-  await audioContext.resume();
-  audioSource.start(0);
-
+async function renderFullVideo(chunks: Array<{ chunk: MusicVideoChunk; blob: Blob }>, audioBlob: Blob, durationSeconds: number, onProgress?: Progress): Promise<{ blob: Blob; mimeType: string }> {
+  if (!HTMLCanvasElement.prototype.captureStream || typeof MediaRecorder === "undefined") throw new Error("This Android browser does not support in-browser music-video rendering.");
+  const canvas = document.createElement("canvas"); canvas.width = 1280; canvas.height = 720; const context = canvas.getContext("2d"); if (!context) throw new Error("The browser could not create the video renderer.");
+  const AudioContextCtor = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext; if (!AudioContextCtor) throw new Error("This browser does not support audio rendering.");
+  const audioContext = new AudioContextCtor(); const audioData = await audioBlob.arrayBuffer(); const audioBuffer = await audioContext.decodeAudioData(audioData.slice(0)); const audioDestination = audioContext.createMediaStreamDestination(); const audioSource = audioContext.createBufferSource(); audioSource.buffer = audioBuffer; audioSource.connect(audioDestination);
+  const stream = canvas.captureStream(30); for (const track of audioDestination.stream.getAudioTracks()) stream.addTrack(track);
+  const mimeType = chooseMimeType(); const recorder = new MediaRecorder(stream, { mimeType }); const recorded: Blob[] = []; recorder.ondataavailable = (event) => { if (event.data.size) recorded.push(event.data); };
+  const stopped = new Promise<void>((resolve, reject) => { recorder.onstop = () => resolve(); recorder.onerror = () => reject(new Error("The browser stopped recording the music video unexpectedly.")); });
+  recorder.start(1000); await audioContext.resume(); audioSource.start(0);
   let elapsed = 0;
   for (let index = 0; index < chunks.length; index += 1) {
-    const { chunk, blob } = chunks[index];
-    const video = document.createElement("video");
-    video.muted = true;
-    video.playsInline = true;
-    video.preload = "auto";
-    const url = URL.createObjectURL(blob);
-    video.src = url;
-    await waitForEvent(video, "loadedmetadata");
-    video.currentTime = 0;
-    video.playbackRate = Math.max(
-      0.5,
-      Math.min(2, video.duration / Math.max(0.01, chunk.durationSeconds)),
-    );
-    await video.play();
-
+    const { chunk, blob } = chunks[index]; const video = document.createElement("video"); video.muted = true; video.playsInline = true; video.preload = "auto"; const url = URL.createObjectURL(blob); video.src = url; await waitForEvent(video, "loadedmetadata"); video.currentTime = 0; video.playbackRate = Math.max(0.5, Math.min(2, video.duration / Math.max(0.01, chunk.durationSeconds))); await video.play();
     const startedAt = performance.now();
-    const renderFrame = () => {
-      const local = Math.min(chunk.durationSeconds, (performance.now() - startedAt) / 1000);
-      const scale = Math.max(canvas.width / video.videoWidth, canvas.height / video.videoHeight);
-      const width = video.videoWidth * scale;
-      const height = video.videoHeight * scale;
-      context.fillStyle = "#000";
-      context.fillRect(0, 0, canvas.width, canvas.height);
-      context.drawImage(
-        video,
-        (canvas.width - width) / 2,
-        (canvas.height - height) / 2,
-        width,
-        height,
-      );
-      if (local < chunk.durationSeconds) requestAnimationFrame(renderFrame);
-    };
-    renderFrame();
-    await new Promise<void>((resolve) =>
-      window.setTimeout(resolve, chunk.durationSeconds * 1000),
-    );
-
-    video.pause();
-    video.removeAttribute("src");
-    video.load();
-    URL.revokeObjectURL(url);
-    elapsed += chunk.durationSeconds;
-    progress(onProgress, {
-      phase: "rendering",
-      completed: index + 1,
-      total: chunks.length,
-      message: `Assembling scene ${index + 1} of ${chunks.length} (${Math.round(elapsed)}s / ${Math.round(durationSeconds)}s).`,
-    });
+    const renderFrame = () => { const local = Math.min(chunk.durationSeconds, (performance.now() - startedAt) / 1000); const scale = Math.max(canvas.width / video.videoWidth, canvas.height / video.videoHeight); const width = video.videoWidth * scale; const height = video.videoHeight * scale; context.fillStyle = "#000"; context.fillRect(0, 0, canvas.width, canvas.height); context.drawImage(video, (canvas.width - width) / 2, (canvas.height - height) / 2, width, height); if (local < chunk.durationSeconds) requestAnimationFrame(renderFrame); };
+    renderFrame(); await new Promise<void>((resolve) => window.setTimeout(resolve, chunk.durationSeconds * 1000)); video.pause(); video.removeAttribute("src"); video.load(); URL.revokeObjectURL(url); elapsed += chunk.durationSeconds;
+    progress(onProgress, { phase: "rendering", completed: index + 1, total: chunks.length, message: `Assembling scene ${index + 1} of ${chunks.length} (${Math.round(elapsed)}s / ${Math.round(durationSeconds)}s).` });
   }
-
-  await new Promise((resolve) => window.setTimeout(resolve, 250));
-  recorder.stop();
-  audioSource.stop();
-  await stopped;
-  stream.getTracks().forEach((track) => track.stop());
-  await audioContext.close();
-
-  const blob = new Blob(recorded, { type: mimeType });
-  await validateRenderedBlob(blob, durationSeconds);
-  return { blob, mimeType };
+  await new Promise((resolve) => window.setTimeout(resolve, 250)); recorder.stop(); audioSource.stop(); await stopped; stream.getTracks().forEach((track) => track.stop()); await audioContext.close(); const blob = new Blob(recorded, { type: mimeType }); await validateRenderedBlob(blob, durationSeconds); return { blob, mimeType };
 }
 
-export async function generateFullMusicVideo(
-  options: FullMusicVideoOptions,
-): Promise<FullMusicVideoResult> {
-  if (!options.audioBlob.size)
-    throw new Error("A generated song is required before creating a music video.");
-
+export async function generateFullMusicVideo(options: FullMusicVideoOptions): Promise<FullMusicVideoResult> {
+  if (!options.audioBlob.size) throw new Error("A generated song is required before creating a music video.");
   const plan = buildMusicVideoPlan({ durationSeconds: options.audioDurationSeconds, sceneSeconds: 14 });
-  progress(options.onProgress, {
-    phase: "planning",
-    completed: 0,
-    total: plan.chunks.length,
-    message: `Planned ${plan.chunks.length} cinematic scenes for a ${Math.round(plan.totalDurationSeconds)} second song.`,
-  });
-
-  const engines = [PRIMARY_VIDEO_SPACE, FALLBACK_VIDEO_SPACE];
-  let lastError: unknown = null;
+  progress(options.onProgress, { phase: "planning", completed: 0, total: plan.chunks.length, message: `Planned ${plan.chunks.length} cinematic scenes for a ${Math.round(plan.totalDurationSeconds)} second song.` });
+  const engines = [PRIMARY_VIDEO_SPACE, FALLBACK_VIDEO_SPACE]; let lastError: unknown = null;
   for (const engine of engines) {
     const generated: Array<{ chunk: MusicVideoChunk; blob: Blob }> = [];
     try {
       for (const chunk of plan.chunks) {
-        progress(options.onProgress, {
-          phase: "generating",
-          completed: chunk.index,
-          total: plan.chunks.length,
-          message: `Generating scene ${chunk.index + 1} of ${plan.chunks.length} with ${engine}.`,
-        });
-        const prompt = scenePrompt(options, chunk);
-        const blob =
-          engine === PRIMARY_VIDEO_SPACE
-            ? await generateMiniMaxChunk(chunk, prompt, options.referenceImageBlob ?? null)
-            : await generateFallbackChunk(chunk, prompt, options.referenceImageBlob ?? null);
-        generated.push({ chunk, blob });
+        progress(options.onProgress, { phase: "generating", completed: chunk.index, total: plan.chunks.length, message: `Generating scene ${chunk.index + 1} of ${plan.chunks.length} with ${engine}.` });
+        const prompt = scenePrompt(options, chunk); const blob = engine === PRIMARY_VIDEO_SPACE ? await generateMiniMaxChunk(chunk, prompt, options.referenceImageBlob ?? null) : await generateFallbackChunk(chunk, prompt, options.referenceImageBlob ?? null); generated.push({ chunk, blob });
       }
-
-      progress(options.onProgress, {
-        phase: "rendering",
-        completed: 0,
-        total: plan.chunks.length,
-        message: "Rendering the generated scenes against the exact finished song audio.",
-      });
-      const rendered = await renderFullVideo(
-        generated,
-        options.audioBlob,
-        plan.totalDurationSeconds,
-        options.onProgress,
-      );
-      progress(options.onProgress, {
-        phase: "complete",
-        completed: plan.chunks.length,
-        total: plan.chunks.length,
-        message: "Full music video rendered successfully.",
-      });
-      return {
-        blob: rendered.blob,
-        mimeType: rendered.mimeType,
-        durationSeconds: plan.totalDurationSeconds,
-        chunkCount: generated.length,
-        engine,
-      };
-    } catch (error) {
-      lastError = error;
-      if (engine !== engines.at(-1)) continue;
-    }
+      progress(options.onProgress, { phase: "rendering", completed: 0, total: plan.chunks.length, message: "Rendering the generated scenes against the exact finished song audio." });
+      const rendered = await renderFullVideo(generated, options.audioBlob, plan.totalDurationSeconds, options.onProgress);
+      progress(options.onProgress, { phase: "complete", completed: plan.chunks.length, total: plan.chunks.length, message: "Full music video rendered successfully." });
+      return { blob: rendered.blob, mimeType: rendered.mimeType, durationSeconds: plan.totalDurationSeconds, chunkCount: generated.length, engine };
+    } catch (error) { lastError = error; if (engine !== engines.at(-1)) continue; }
   }
-
-  throw new Error(
-    `All verified free video engines failed. ${
-      lastError instanceof Error ? lastError.message : String(lastError)
-    }`,
-  );
+  throw new Error(`All verified free video engines failed. ${lastError instanceof Error ? lastError.message : String(lastError)}`);
 }
