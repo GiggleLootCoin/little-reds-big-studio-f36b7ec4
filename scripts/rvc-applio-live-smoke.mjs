@@ -10,17 +10,13 @@ const labelFor = (parameter) =>
   `${parameter.label ?? ""} ${parameter.parameter_name ?? ""}`.toLowerCase();
 
 function findEndpoint(api) {
-  const entries = Object.entries(api.named_endpoints ?? {}).filter(
-    ([name, endpoint]) =>
-      !name.toLowerCase().includes("enforce_terms") &&
-      !name.toLowerCase().includes("terms") &&
-      (endpoint.returns ?? []).some((output) =>
-        String(output.component ?? "").toLowerCase().includes("audio"),
-      ),
+  const audioEntries = Object.entries(api.named_endpoints ?? {}).filter(([, endpoint]) =>
+    (endpoint.returns ?? []).some((output) => String(output.component ?? "").toLowerCase().includes("audio")),
   );
-  const preferred = entries.find(([name]) => /rvc|infer|convert|voice/.test(name.toLowerCase()));
+  const nonTerms = audioEntries.filter(([name]) => !name.toLowerCase().includes("terms"));
+  const preferred = nonTerms.find(([name]) => /rvc|infer|convert|voice/.test(name.toLowerCase()));
   if (preferred) return preferred;
-  const heuristic = entries.find(([, endpoint]) => {
+  const heuristic = audioEntries.find(([, endpoint]) => {
     const labels = (endpoint.parameters ?? []).map(labelFor);
     return (
       labels.some((label) => label.includes("voice model")) &&
