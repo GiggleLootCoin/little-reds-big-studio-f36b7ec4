@@ -22,9 +22,23 @@ function getFallbackAudio(): HTMLAudioElement | null {
   return audio;
 }
 
+async function unlockMediaElement(audio: HTMLAudioElement): Promise<boolean> {
+  try {
+    audio.muted = true;
+    audio.src = "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=";
+    await audio.play();
+    audio.pause();
+    audio.currentTime = 0;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export async function unlockBuddyAudio(): Promise<void> {
   if (typeof window === "undefined") return;
 
+  let contextUnlocked = false;
   const ctx = getAudioContext();
   if (ctx) {
     try {
@@ -35,28 +49,91 @@ export async function unlockBuddyAudio(): Promise<void> {
       oscillator.connect(gain).connect(ctx.destination);
       oscillator.start();
       oscillator.stop(ctx.currentTime + 0.01);
-      unlocked = true;
-      return;
+      contextUnlocked = true;
     } catch {
-      // Fall through to the persistent HTMLAudio unlock attempt.
+      // Continue with the media-element unlock below.
     }
   }
 
   const audio = getFallbackAudio();
-  if (!audio) return;
-  try {
-    audio.src = "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=";
-    await audio.play();
-    audio.pause();
-    audio.currentTime = 0;
-    unlocked = true;
-  } catch {
-    // A later user gesture can retry the unlock.
-  }
+  const mediaUnlocked = audio ? await unlockMediaElement(audio) : false;
+  unlocked = contextUnlocked || mediaUnlocked;
+}
+
+async function playWithMediaElement(url: string): Promise<void> {
+  const audio = getFallbackAudio();
+  if (!audio) throw new Error("This browser cannot play Buddy audio.");
+  audio.muted = false;
+  audio.preload = "auto";
+  audio.setAttribute("playsinline", "true");
+  audio.src = url;
+  audio.currentTime = 0;
+  await new Promise<void>((resolve, reject) => {
+    let settled = false;
+    const cleanup = () => {
+      audio.onplaying = null;
+      audio.onended = null;
+      audio.onerror = null;
+    };
+    const fail = (error: Error) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(error);
+    };
+    audio.onplaying = () => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      void audio.play().catch(() => undefined);
+      resolve();
+    };
+    audio.onended = () => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve();
+    };
+    audio.onerror = () => fail(new Error("Audio playback failed."));
+    const timer = window.setTimeout(() => fail(new Error("Buddy audio playback timed out.")), 15000);
+    const originalCleanup = cleanup;
+    const cleanupWithTimer = () => {
+      window.clearTimeout(timer);
+      originalCleanup();
+    };
+    audio.onplaying = () => {
+      if (settled) return;
+      settled = true;
+      cleanupWithTimer();
+      resolve();
+    };
+    audio.onended = () => {
+      if (settled) return;
+      settled = true;
+      cleanupWithTimer();
+      resolve();
+    };
+    void audio.play().catch((error) => fail(error instanceof Error ? error : new Error("Audio playback failed.")));
+  });
+  await new Promise<void>((resolve) => {
+    if (audio.paused || audio.ended) return resolve();
+    const finish = () => { audio.removeEventListener("ended", finish); resolve(); };
+    audio.addEventListener("ended", finish, { once: true });
+  });
 }
 
 export async function playBuddyAudio(url: string): Promise<void> {
   if (typeof window === "undefined" || !url) throw new Error("Buddy audio is unavailable.");
+
+  const audio = getFallbackAudio();
+  if (audio && unlocked) {
+    try {
+      await playWithMediaElement(url);
+      return;
+    } catch {
+      // Fall through to Web Audio for browsers that authorize the context but not the media element.
+    }
+  }
 
   const ctx = getAudioContext();
   if (ctx) {
@@ -79,26 +156,12 @@ export async function playBuddyAudio(url: string): Promise<void> {
         }
       });
       return;
-    } catch (error) {
-      if (error instanceof Error && error.message === "Buddy audio playback failed.") throw error;
-      // Fall through to the media-element path for browsers that cannot decode the buffer.
+    } catch {
+      // Fall through to the media-element path.
     }
   }
 
-  const audio = getFallbackAudio();
-  if (!audio) throw new Error("This browser cannot play Buddy audio.");
-  audio.muted = false;
-  audio.src = url;
-  audio.currentTime = 0;
-  await new Promise<void>((resolve, reject) => {
-    const cleanup = () => {
-      audio.onended = null;
-      audio.onerror = null;
-    };
-    audio.onended = () => { cleanup(); resolve(); };
-    audio.onerror = () => { cleanup(); reject(new Error("Audio playback failed.")); };
-    void audio.play().catch((error) => { cleanup(); reject(error instanceof Error ? error : new Error("Audio playback failed.")); });
-  });
+  await playWithMediaElement(url);
 }
 
 if (typeof window !== "undefined") {
