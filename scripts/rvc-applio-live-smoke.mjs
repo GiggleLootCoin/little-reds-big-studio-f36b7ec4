@@ -154,14 +154,35 @@ function validateWav(bytes) {
   return { channels, bitsPerSample, dataBytes: dataLength, peak };
 }
 
-const app = await Client.connect(SPACE);
+const app = await Client.connect(SPACE, { events: ["data", "status"] });
 const api = await app.view_api();
 const [endpointName, endpoint] = findEndpoint(api);
 const args = (endpoint.parameters ?? []).map(valueFor);
 console.log(`Using live Applio endpoint: ${endpointName}`);
 console.log("Submitting real source audio + RedsVoiceSwap model…");
 
-const result = await app.predict(endpointName, args);
+const job = app.submit(endpointName, args);
+let result = null;
+for await (const message of job) {
+  if (message.type === "status") {
+    if (message.stage === "error") {
+      throw new Error(
+        `Applio RVC job failed at ${endpointName}: ${JSON.stringify({
+          title: message.title,
+          message: message.message,
+          code: message.code,
+          stage: message.stage,
+          success: message.success,
+        })}`,
+      );
+    }
+    console.log(`Applio status: ${message.stage}`);
+  } else if (message.type === "data") {
+    result = message.data;
+  }
+}
+if (!result) throw new Error("Applio completed without emitting a data result.");
+
 const audioUrl = findAudioUrl(result);
 if (!audioUrl) throw new Error(`Applio completed without returning a playable audio URL: ${JSON.stringify(result).slice(0, 1000)}`);
 
