@@ -113,6 +113,8 @@ function valueForApplioParameter(
   if (label.includes("protect voiceless")) return request.protect ?? DEFAULT_PROTECT;
   if (label === "pitch" || label.endsWith(" pitch")) return request.pitch ?? DEFAULT_PITCH;
   if (label.includes("autotune")) return request.autotune ?? false;
+  if (label.includes("embedder model")) return "contentvec";
+  if (label.includes("custom embedder")) return null;
 
   const booleanControls = [
     "split audio",
