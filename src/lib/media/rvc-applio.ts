@@ -25,6 +25,7 @@ type ApplioEndpoint = {
 
 type ApplioApi = {
   named_endpoints?: Record<string, ApplioEndpoint>;
+  unnamed_endpoints?: Record<string, ApplioEndpoint>;
 };
 
 const DEFAULT_PITCH = 0;
@@ -141,26 +142,26 @@ function valueForApplioParameter(parameter: ApplioParameter, request: ApplioConv
 }
 
 function findApplioEndpoint(api: ApplioApi): [string, ApplioEndpoint] {
-  const entries = Object.entries(api.named_endpoints ?? {});
+  const entries = [
+    ...Object.entries(api.named_endpoints ?? {}),
+    ...Object.entries(api.unnamed_endpoints ?? {}),
+  ];
   const nonTerms = entries.filter(([name]) => !name.toLowerCase().includes("terms"));
   const preferred = nonTerms.find(([name, endpoint]) =>
     /rvc|infer|convert|voice/.test(name.toLowerCase()) && hasInferenceInputs(endpoint),
   );
   if (preferred) return preferred;
-
   const heuristic = nonTerms.find(([, endpoint]) => hasInferenceInputs(endpoint));
   if (heuristic) return heuristic;
-
   const termsFallback = entries.find(([name, endpoint]) =>
     name.toLowerCase().includes("terms") && hasInferenceInputs(endpoint),
   );
   if (termsFallback) return termsFallback;
-
   const candidates = entries
     .map(([name, endpoint]) => ({ name, labels: endpoint.parameters.map(labelFor) }))
     .filter(({ labels }) => labels.some((label) => label.includes("voice model")));
   throw new Error(
-    `The current Applio Space does not expose a compatible named RVC inference endpoint. Candidates: ${JSON.stringify(candidates).slice(0, 3000)}`,
+    `The current Applio Space does not expose a compatible named or unnamed RVC inference endpoint. Candidates: ${JSON.stringify(candidates).slice(0, 3000)}`,
   );
 }
 
@@ -193,7 +194,7 @@ export async function convertWithApplioSpace(
   if (!request.model) throw new Error("An Applio RVC voice model is required.");
 
   const app = await Client.connect(APPLIO_SPACE, { token: request.hfToken });
-  const api = (await app.view_api()) as unknown as ApplioApi;
+  const api = (await app.view_api({ all_endpoints: true })) as unknown as ApplioApi;
   const [endpointName, endpoint] = findApplioEndpoint(api);
   const values = endpoint.parameters.map((parameter) => valueForApplioParameter(parameter, request));
   const result = await app.predict(endpointName, values);
