@@ -10,8 +10,9 @@ const labelFor = (parameter) =>
   `${parameter.label ?? ""} ${parameter.parameter_name ?? ""}`.toLowerCase();
 
 function findEndpoint(api) {
-  const endpoints = Object.entries(api.named_endpoints ?? {});
-  const candidate = endpoints.find(([, endpoint]) => {
+  const endpoints = Object.entries(api.named_endpoints ?? {}).filter(([name, endpoint]) => {
+    const endpointName = name.toLowerCase();
+    if (endpointName.includes("enforce_terms") || endpointName.includes("terms")) return false;
     const labels = (endpoint.parameters ?? []).map(labelFor);
     const returnsAudio = (endpoint.returns ?? []).some((output) =>
       String(output.component ?? "").toLowerCase().includes("audio"),
@@ -23,8 +24,9 @@ function findEndpoint(api) {
       returnsAudio
     );
   });
-  if (!candidate) throw new Error("No compatible named Applio RVC inference endpoint was exposed.");
-  return candidate;
+  if (!endpoints.length) throw new Error("No compatible named Applio RVC inference endpoint was exposed.");
+  const preferred = endpoints.find(([name]) => /rvc|infer|convert|voice/.test(name.toLowerCase()));
+  return preferred ?? endpoints[0];
 }
 
 function valueFor(parameter) {
@@ -91,7 +93,20 @@ const args = (endpoint.parameters ?? []).map(valueFor);
 console.log(`Using live Applio endpoint: ${endpointName}`);
 console.log("Submitting real source audio + RedsVoiceSwap model…");
 
-const result = await app.predict(endpointName, args);
+const job = app.submit(endpointName, args);
+for await (const message of job) {
+  if (message?.type === "status") {
+    if (message.stage === "error") {
+      throw new Error(
+        `Applio RVC job failed at ${message.endpoint ?? endpointName}: ${
+          message.original_msg || message.title || JSON.stringify(message)
+        }`,
+      );
+    }
+    if (message.stage === "error" || message.stage === "complete") console.log(JSON.stringify(message));
+  }
+}
+const result = await job.result();
 const audioUrl = findAudioUrl(result);
 if (!audioUrl) throw new Error("Applio returned no playable audio URL.");
 
