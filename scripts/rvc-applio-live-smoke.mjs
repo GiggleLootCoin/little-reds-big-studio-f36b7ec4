@@ -3,7 +3,7 @@ import { Client, handle_file } from "@gradio/client";
 const SPACE = "IAHispano/ApplioX";
 const MODEL_URL = "https://drive.google.com/uc?id=19yLeLybGU8csalpLFuK6ORSS3aqaDkrW";
 const SOURCE_URL =
-  "https://raw.githubusercontent.com/GiggleLootCoin/little-reds-big-studio-f36b7ec4/feat/studio-production-completion/13.7s%20Recording%20%28Jul%202%20%40%205%3A53%20PM%29.mp3";
+  "https://raw.githubusercontent.com/GiggleLootCoin/little-reds-big-studio-f36b7ec4/feat/studio-production-completion/13.7s%20Recording%20%28Jul%202%20%40%205_53%20PM%29.mp3";
 const MIN_AUDIO_BYTES = 256;
 
 const labelFor = (parameter) =>
