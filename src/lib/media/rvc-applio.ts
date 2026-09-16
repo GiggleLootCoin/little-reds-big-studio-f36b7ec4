@@ -42,11 +42,9 @@ export function normalizeApplioUrl(value: string): string {
   } catch {
     throw new Error("Applio must be configured with a valid HTTP URL.");
   }
-
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
     throw new Error("Applio must be configured with a valid HTTP URL.");
   }
-
   return parsed.toString().replace(/\/+$/, "");
 }
 
@@ -54,15 +52,11 @@ export function buildApplioFormData(input: ApplioConversionRequest): FormData {
   if (!input.audio || input.audio.size < MIN_AUDIO_BYTES) {
     throw new Error("A non-empty source vocal is required for RVC conversion.");
   }
-
   const form = new FormData();
   const audio =
     input.audio instanceof File
       ? input.audio
-      : new File([input.audio], "source-vocals.wav", {
-          type: input.audio.type || "audio/wav",
-        });
-
+      : new File([input.audio], "source-vocals.wav", { type: input.audio.type || "audio/wav" });
   form.set("audio", audio);
   if (input.model) form.set("model", String(input.model));
   if (input.index) form.set("index", String(input.index));
@@ -71,16 +65,13 @@ export function buildApplioFormData(input: ApplioConversionRequest): FormData {
   form.set("protect", String(input.protect ?? DEFAULT_PROTECT));
   form.set("f0_method", input.f0Method ?? DEFAULT_F0_METHOD);
   form.set("autotune", String(input.autotune ?? false));
-
   return form;
 }
 
 export async function validateApplioResponse(response: Response): Promise<boolean> {
   if (!response.ok) return false;
-
   const contentType = (response.headers.get("content-type") || "").toLowerCase();
   if (!contentType.startsWith("audio/")) return false;
-
   const bytes = new Uint8Array(await response.clone().arrayBuffer());
   return bytes.byteLength >= MIN_AUDIO_BYTES;
 }
@@ -89,20 +80,13 @@ function labelFor(parameter: ApplioParameter): string {
   return `${parameter.label ?? ""} ${parameter.parameter_name ?? ""}`.toLowerCase();
 }
 
-function valueForApplioParameter(
-  parameter: ApplioParameter,
-  request: ApplioConversionRequest,
-): unknown {
+function valueForApplioParameter(parameter: ApplioParameter, request: ApplioConversionRequest): unknown {
   const label = labelFor(parameter);
-
   if (label.includes("voice model")) {
     if (!request.model) throw new Error("An Applio RVC voice model is required.");
     return handle_file(request.model);
   }
-  if (label.includes("index file")) {
-    if (!request.index) return null;
-    return handle_file(request.index);
-  }
+  if (label.includes("index file")) return request.index ? handle_file(request.index) : null;
   if (
     label.includes("select audio") ||
     label.includes("input audio") ||
@@ -140,24 +124,19 @@ function valueForApplioParameter(
     "delay",
   ];
   if (booleanControls.some((name) => label.includes(name))) return false;
-
   if (parameter.parameter_has_default) return parameter.parameter_default;
   throw new Error(`Applio API introduced an unsupported required input: ${label}`);
 }
 
 function findApplioEndpoint(api: ApplioApi): [string, ApplioEndpoint] {
-  const entries = Object.entries(api.named_endpoints ?? {}).filter(
-    ([name, endpoint]) =>
-      !name.toLowerCase().includes("enforce_terms") &&
-      !name.toLowerCase().includes("terms") &&
-      endpoint.returns.some((output) =>
-        String(output.component ?? "").toLowerCase().includes("audio"),
-      ),
+  const audioEntries = Object.entries(api.named_endpoints ?? {}).filter(([, endpoint]) =>
+    endpoint.returns.some((output) => String(output.component ?? "").toLowerCase().includes("audio")),
   );
-  const preferred = entries.find(([name]) => /rvc|infer|convert|voice/.test(name.toLowerCase()));
+  const nonTerms = audioEntries.filter(([name]) => !name.toLowerCase().includes("terms"));
+  const preferred = nonTerms.find(([name]) => /rvc|infer|convert|voice/.test(name.toLowerCase()));
   if (preferred) return preferred;
 
-  const heuristic = entries.find(([, endpoint]) => {
+  const heuristic = audioEntries.find(([, endpoint]) => {
     const labels = endpoint.parameters.map((parameter) => labelFor(parameter));
     return (
       labels.some((label) => label.includes("voice model")) &&
@@ -183,14 +162,10 @@ function findAudioUrl(value: unknown): string | null {
     }
     return null;
   }
-
   const record = value as Record<string, unknown>;
   for (const key of ["url", "path"]) {
-    if (typeof record[key] === "string" && /^https?:\/\//i.test(record[key])) {
-      return record[key] as string;
-    }
+    if (typeof record[key] === "string" && /^https?:\/\//i.test(record[key])) return record[key] as string;
   }
-
   for (const nested of Object.values(record)) {
     const found = findAudioUrl(nested);
     if (found) return found;
@@ -204,27 +179,17 @@ export async function convertWithApplioSpace(
   if (!request.audio || request.audio.size < MIN_AUDIO_BYTES) {
     throw new Error("A non-empty source vocal is required for RVC conversion.");
   }
-  if (!request.model) {
-    throw new Error("An Applio RVC voice model is required.");
-  }
+  if (!request.model) throw new Error("An Applio RVC voice model is required.");
 
-  const app = await Client.connect(APPLIO_SPACE, {
-    token: request.hfToken,
-  });
+  const app = await Client.connect(APPLIO_SPACE, { token: request.hfToken });
   const api = (await app.view_api()) as unknown as ApplioApi;
   const [endpointName, endpoint] = findApplioEndpoint(api);
-  const values = endpoint.parameters.map((parameter) =>
-    valueForApplioParameter(parameter, request),
-  );
+  const values = endpoint.parameters.map((parameter) => valueForApplioParameter(parameter, request));
   const result = await app.predict(endpointName, values);
-
   const audioUrl = findAudioUrl(result);
   if (!audioUrl) throw new Error("Applio completed without returning a playable audio artifact.");
-
   const response = await fetch(audioUrl);
-  if (!(await validateApplioResponse(response))) {
-    throw new Error("Applio returned an invalid audio artifact.");
-  }
+  if (!(await validateApplioResponse(response))) throw new Error("Applio returned an invalid audio artifact.");
   return response;
 }
 
@@ -232,26 +197,14 @@ export async function convertWithApplio({
   baseUrl,
   apiToken,
   ...request
-}: ApplioConversionRequest & {
-  baseUrl: string;
-  apiToken?: string;
-}): Promise<Response> {
+}: ApplioConversionRequest & { baseUrl: string; apiToken?: string }): Promise<Response> {
   const url = `${normalizeApplioUrl(baseUrl)}/rvc/convert`;
   const headers = new Headers();
   if (apiToken) headers.set("Authorization", `Bearer ${apiToken}`);
-
-  const response = await fetch(url, {
-    method: "POST",
-    headers,
-    body: buildApplioFormData(request),
-  });
-
+  const response = await fetch(url, { method: "POST", headers, body: buildApplioFormData(request) });
   if (!(await validateApplioResponse(response))) {
     const detail = (await response.clone().text()).slice(0, 500);
-    throw new Error(
-      `Applio RVC conversion failed: HTTP ${response.status}${detail ? ` — ${detail}` : ""}`,
-    );
+    throw new Error(`Applio RVC conversion failed: HTTP ${response.status}${detail ? ` — ${detail}` : ""}`);
   }
-
   return response;
 }
