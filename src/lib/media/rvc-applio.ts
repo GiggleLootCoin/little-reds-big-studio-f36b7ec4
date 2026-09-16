@@ -147,10 +147,12 @@ function findApplioEndpoint(api: ApplioApi): [string, ApplioEndpoint] {
       )
     );
   });
-  if (!heuristic) {
-    throw new Error("The current Applio Space does not expose a compatible named RVC inference endpoint.");
-  }
-  return heuristic;
+  if (heuristic) return heuristic;
+
+  const termsFallback = audioEntries.find(([name]) => name.toLowerCase().includes("terms"));
+  if (termsFallback) return termsFallback;
+
+  throw new Error("The current Applio Space does not expose a compatible named RVC inference endpoint.");
 }
 
 function findAudioUrl(value: unknown): string | null {
