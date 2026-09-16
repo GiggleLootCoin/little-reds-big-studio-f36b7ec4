@@ -10,30 +10,42 @@ const labelFor = (parameter) =>
   `${parameter.label ?? ""} ${parameter.parameter_name ?? ""}`.toLowerCase();
 
 function findEndpoint(api) {
-  const endpoints = Object.entries(api.named_endpoints ?? {}).filter(([name, endpoint]) => {
-    const endpointName = name.toLowerCase();
-    if (endpointName.includes("enforce_terms") || endpointName.includes("terms")) return false;
+  const entries = Object.entries(api.named_endpoints ?? {}).filter(
+    ([name, endpoint]) =>
+      !name.toLowerCase().includes("enforce_terms") &&
+      !name.toLowerCase().includes("terms") &&
+      (endpoint.returns ?? []).some((output) =>
+        String(output.component ?? "").toLowerCase().includes("audio"),
+      ),
+  );
+  const preferred = entries.find(([name]) => /rvc|infer|convert|voice/.test(name.toLowerCase()));
+  if (preferred) return preferred;
+  const heuristic = entries.find(([, endpoint]) => {
     const labels = (endpoint.parameters ?? []).map(labelFor);
-    const returnsAudio = (endpoint.returns ?? []).some((output) =>
-      String(output.component ?? "").toLowerCase().includes("audio"),
-    );
     return (
-      labels.some((label) => label.includes("select audio")) &&
       labels.some((label) => label.includes("voice model")) &&
       labels.some((label) => label.includes("index file")) &&
-      returnsAudio
+      labels.some(
+        (label) =>
+          label.includes("select audio") || label.includes("input audio") || label.includes("audio input"),
+      )
     );
   });
-  if (!endpoints.length) throw new Error("No compatible named Applio RVC inference endpoint was exposed.");
-  const preferred = endpoints.find(([name]) => /rvc|infer|convert|voice/.test(name.toLowerCase()));
-  return preferred ?? endpoints[0];
+  if (!heuristic) throw new Error("No compatible named Applio RVC inference endpoint was exposed.");
+  return heuristic;
 }
 
 function valueFor(parameter) {
   const label = labelFor(parameter);
   if (label.includes("voice model")) return handle_file(MODEL_URL);
   if (label.includes("index file")) return null;
-  if (label.includes("select audio")) return handle_file(SOURCE_URL);
+  if (
+    label.includes("select audio") ||
+    label.includes("input audio") ||
+    label.includes("audio input")
+  ) {
+    return handle_file(SOURCE_URL);
+  }
   if (label.includes("agree to the terms")) return true;
   if (label.includes("output path")) return "assets/audios/ci-red-rvc-output.wav";
   if (label.includes("export format")) return "WAV";
@@ -95,15 +107,12 @@ console.log("Submitting real source audio + RedsVoiceSwap model…");
 
 const job = app.submit(endpointName, args);
 for await (const message of job) {
-  if (message?.type === "status") {
-    if (message.stage === "error") {
-      throw new Error(
-        `Applio RVC job failed at ${message.endpoint ?? endpointName}: ${
-          message.original_msg || message.title || JSON.stringify(message)
-        }`,
-      );
-    }
-    if (message.stage === "error" || message.stage === "complete") console.log(JSON.stringify(message));
+  if (message?.type === "status" && message.stage === "error") {
+    throw new Error(
+      `Applio RVC job failed at ${message.endpoint ?? endpointName}: ${
+        message.original_msg || message.title || JSON.stringify(message)
+      }`,
+    );
   }
 }
 const result = await job.result();
