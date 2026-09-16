@@ -80,6 +80,18 @@ function labelFor(parameter: ApplioParameter): string {
   return `${parameter.label ?? ""} ${parameter.parameter_name ?? ""}`.toLowerCase();
 }
 
+function hasInferenceInputs(endpoint: ApplioEndpoint): boolean {
+  const labels = endpoint.parameters.map((parameter) => labelFor(parameter));
+  return (
+    labels.some((label) => label.includes("voice model")) &&
+    labels.some((label) => label.includes("index file")) &&
+    labels.some(
+      (label) =>
+        label.includes("select audio") || label.includes("input audio") || label.includes("audio input"),
+    )
+  );
+}
+
 function valueForApplioParameter(parameter: ApplioParameter, request: ApplioConversionRequest): unknown {
   const label = labelFor(parameter);
   if (label.includes("voice model")) {
@@ -129,30 +141,27 @@ function valueForApplioParameter(parameter: ApplioParameter, request: ApplioConv
 }
 
 function findApplioEndpoint(api: ApplioApi): [string, ApplioEndpoint] {
-  const audioEntries = Object.entries(api.named_endpoints ?? {}).filter(([, endpoint]) =>
-    endpoint.returns.some((output) => String(output.component ?? "").toLowerCase().includes("audio")),
+  const entries = Object.entries(api.named_endpoints ?? {});
+  const nonTerms = entries.filter(([name]) => !name.toLowerCase().includes("terms"));
+  const preferred = nonTerms.find(([name, endpoint]) =>
+    /rvc|infer|convert|voice/.test(name.toLowerCase()) && hasInferenceInputs(endpoint),
   );
-  const nonTerms = audioEntries.filter(([name]) => !name.toLowerCase().includes("terms"));
-  const preferred = nonTerms.find(([name]) => /rvc|infer|convert|voice/.test(name.toLowerCase()));
   if (preferred) return preferred;
 
-  const heuristic = audioEntries.find(([, endpoint]) => {
-    const labels = endpoint.parameters.map((parameter) => labelFor(parameter));
-    return (
-      labels.some((label) => label.includes("voice model")) &&
-      labels.some((label) => label.includes("index file")) &&
-      labels.some(
-        (label) =>
-          label.includes("select audio") || label.includes("input audio") || label.includes("audio input"),
-      )
-    );
-  });
+  const heuristic = nonTerms.find(([, endpoint]) => hasInferenceInputs(endpoint));
   if (heuristic) return heuristic;
 
-  const termsFallback = audioEntries.find(([name]) => name.toLowerCase().includes("terms"));
+  const termsFallback = entries.find(([name, endpoint]) =>
+    name.toLowerCase().includes("terms") && hasInferenceInputs(endpoint),
+  );
   if (termsFallback) return termsFallback;
 
-  throw new Error("The current Applio Space does not expose a compatible named RVC inference endpoint.");
+  const candidates = entries
+    .map(([name, endpoint]) => ({ name, labels: endpoint.parameters.map(labelFor) }))
+    .filter(({ labels }) => labels.some((label) => label.includes("voice model")));
+  throw new Error(
+    `The current Applio Space does not expose a compatible named RVC inference endpoint. Candidates: ${JSON.stringify(candidates).slice(0, 3000)}`,
+  );
 }
 
 function findAudioUrl(value: unknown): string | null {
