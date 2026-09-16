@@ -41,6 +41,8 @@ function valueFor(parameter) {
   if (label.includes("protect voiceless")) return 0.5;
   if (label === "pitch" || label.endsWith(" pitch")) return 0;
   if (label.includes("autotune")) return false;
+  if (label.includes("embedder model")) return "contentvec";
+  if (label.includes("custom embedder")) return null;
   if (parameter.parameter_has_default) return parameter.parameter_default;
   const booleans = [
     "split audio",
