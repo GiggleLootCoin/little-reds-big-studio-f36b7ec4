@@ -103,7 +103,13 @@ function valueForApplioParameter(
     if (!request.index) return null;
     return handle_file(request.index);
   }
-  if (label.includes("select audio")) return handle_file(request.audio);
+  if (
+    label.includes("select audio") ||
+    label.includes("input audio") ||
+    label.includes("audio input")
+  ) {
+    return handle_file(request.audio);
+  }
   if (label.includes("agree to the terms")) return true;
   if (label.includes("output path")) return "assets/audios/little-red-rvc-output.wav";
   if (label.includes("export format")) return "WAV";
@@ -140,29 +146,32 @@ function valueForApplioParameter(
 }
 
 function findApplioEndpoint(api: ApplioApi): [string, ApplioEndpoint] {
-  const candidates = Object.entries(api.named_endpoints ?? {}).filter(([name, endpoint]) => {
-    const endpointName = name.toLowerCase();
-    if (endpointName.includes("enforce_terms") || endpointName.includes("terms")) return false;
+  const entries = Object.entries(api.named_endpoints ?? {}).filter(
+    ([name, endpoint]) =>
+      !name.toLowerCase().includes("enforce_terms") &&
+      !name.toLowerCase().includes("terms") &&
+      endpoint.returns.some((output) =>
+        String(output.component ?? "").toLowerCase().includes("audio"),
+      ),
+  );
+  const preferred = entries.find(([name]) => /rvc|infer|convert|voice/.test(name.toLowerCase()));
+  if (preferred) return preferred;
+
+  const heuristic = entries.find(([, endpoint]) => {
     const labels = endpoint.parameters.map((parameter) => labelFor(parameter));
-    const returnsAudio = endpoint.returns.some((output) =>
-      String(output.component ?? "").toLowerCase().includes("audio"),
-    );
     return (
-      labels.some((label) => label.includes("select audio")) &&
       labels.some((label) => label.includes("voice model")) &&
       labels.some((label) => label.includes("index file")) &&
-      returnsAudio
+      labels.some(
+        (label) =>
+          label.includes("select audio") || label.includes("input audio") || label.includes("audio input"),
+      )
     );
   });
-
-  if (!candidates.length) {
+  if (!heuristic) {
     throw new Error("The current Applio Space does not expose a compatible named RVC inference endpoint.");
   }
-
-  const preferred = candidates.find(([name]) =>
-    /rvc|infer|convert|voice/.test(name.toLowerCase()),
-  );
-  return preferred ?? candidates[0];
+  return heuristic;
 }
 
 function findAudioUrl(value: unknown): string | null {
