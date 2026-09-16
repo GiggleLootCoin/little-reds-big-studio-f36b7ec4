@@ -194,7 +194,7 @@ export async function convertWithApplioSpace(
   if (!request.model) throw new Error("An Applio RVC voice model is required.");
 
   const app = await Client.connect(APPLIO_SPACE, { token: request.hfToken });
-  const api = (await app.view_api({ all_endpoints: true })) as unknown as ApplioApi;
+  const api = (await app.view_api()) as unknown as ApplioApi;
   const [endpointName, endpoint] = findApplioEndpoint(api);
   const values = endpoint.parameters.map((parameter) => valueForApplioParameter(parameter, request));
   const result = await app.predict(endpointName, values);
