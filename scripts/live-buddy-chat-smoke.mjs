@@ -37,10 +37,19 @@ try {
   if (!response.ok) {
     throw new Error(`Buddy chat returned HTTP ${response.status}: ${bodyText.slice(0, 500)}`);
   }
+
+  const openAiContent = body?.choices?.[0]?.message?.content;
   const reply =
     typeof body === "string"
       ? body.trim()
-      : String(body?.response || body?.text || body?.result?.response || body?.result?.text || "").trim();
+      : String(
+          body?.response ||
+            body?.text ||
+            body?.result?.response ||
+            body?.result?.text ||
+            openAiContent ||
+            "",
+        ).trim();
   if (!reply) {
     throw new Error(`Buddy chat returned HTTP 200 but no response text: ${bodyText.slice(0, 1000)}`);
   }
