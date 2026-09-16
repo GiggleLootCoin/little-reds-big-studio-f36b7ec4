@@ -140,7 +140,9 @@ function valueForApplioParameter(
 }
 
 function findApplioEndpoint(api: ApplioApi): [string, ApplioEndpoint] {
-  const candidate = Object.entries(api.named_endpoints ?? {}).find(([, endpoint]) => {
+  const candidates = Object.entries(api.named_endpoints ?? {}).filter(([name, endpoint]) => {
+    const endpointName = name.toLowerCase();
+    if (endpointName.includes("enforce_terms") || endpointName.includes("terms")) return false;
     const labels = endpoint.parameters.map((parameter) => labelFor(parameter));
     const returnsAudio = endpoint.returns.some((output) =>
       String(output.component ?? "").toLowerCase().includes("audio"),
@@ -153,11 +155,14 @@ function findApplioEndpoint(api: ApplioApi): [string, ApplioEndpoint] {
     );
   });
 
-  if (!candidate) {
+  if (!candidates.length) {
     throw new Error("The current Applio Space does not expose a compatible named RVC inference endpoint.");
   }
 
-  return candidate;
+  const preferred = candidates.find(([name]) =>
+    /rvc|infer|convert|voice/.test(name.toLowerCase()),
+  );
+  return preferred ?? candidates[0];
 }
 
 function findAudioUrl(value: unknown): string | null {
