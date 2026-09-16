@@ -27,8 +27,10 @@ function findEndpoint(api) {
       )
     );
   });
-  if (!heuristic) throw new Error("No compatible named Applio RVC inference endpoint was exposed.");
-  return heuristic;
+  if (heuristic) return heuristic;
+  const termsFallback = audioEntries.find(([name]) => name.toLowerCase().includes("terms"));
+  if (termsFallback) return termsFallback;
+  throw new Error("No compatible named Applio RVC inference endpoint was exposed.");
 }
 
 function valueFor(parameter) {
@@ -94,6 +96,64 @@ function findAudioUrl(value) {
   return null;
 }
 
+function readAscii(bytes, start, length) {
+  return String.fromCharCode(...bytes.subarray(start, start + length));
+}
+
+function validateWav(bytes) {
+  if (bytes.byteLength < 44 || readAscii(bytes, 0, 4) !== "RIFF" || readAscii(bytes, 8, 4) !== "WAVE") {
+    throw new Error("Applio output is not a valid RIFF/WAVE file.");
+  }
+  let offset = 12;
+  let audioFormat = null;
+  let channels = null;
+  let bitsPerSample = null;
+  let dataStart = null;
+  let dataLength = null;
+  while (offset + 8 <= bytes.byteLength) {
+    const id = readAscii(bytes, offset, 4);
+    const size = new DataView(bytes.buffer, bytes.byteOffset + offset + 4, 4).getUint32(0, true);
+    const chunkStart = offset + 8;
+    if (chunkStart + size > bytes.byteLength) throw new Error("Applio WAV contains a truncated chunk.");
+    if (id === "fmt " && size >= 16) {
+      const view = new DataView(bytes.buffer, bytes.byteOffset + chunkStart, size);
+      audioFormat = view.getUint16(0, true);
+      channels = view.getUint16(2, true);
+      bitsPerSample = view.getUint16(14, true);
+    } else if (id === "data") {
+      dataStart = chunkStart;
+      dataLength = size;
+      break;
+    }
+    offset = chunkStart + size + (size % 2);
+  }
+  if (audioFormat !== 1 || !channels || !bitsPerSample || dataStart === null || dataLength === null) {
+    throw new Error("Applio WAV is missing supported PCM audio metadata.");
+  }
+  if (![8, 16, 24, 32].includes(bitsPerSample)) {
+    throw new Error(`Applio WAV uses unsupported PCM depth: ${bitsPerSample} bits.`);
+  }
+  let peak = 0;
+  const end = Math.min(dataStart + dataLength, bytes.byteLength);
+  if (bitsPerSample === 8) {
+    for (let i = dataStart; i < end; i++) peak = Math.max(peak, Math.abs(bytes[i] - 128));
+  } else if (bitsPerSample === 16) {
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    for (let i = dataStart; i + 1 < end; i += 2) peak = Math.max(peak, Math.abs(view.getInt16(i, true)));
+  } else if (bitsPerSample === 24) {
+    for (let i = dataStart; i + 2 < end; i += 3) {
+      let sample = bytes[i] | (bytes[i + 1] << 8) | (bytes[i + 2] << 16);
+      if (sample & 0x800000) sample |= 0xff000000;
+      peak = Math.max(peak, Math.abs(sample));
+    }
+  } else {
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    for (let i = dataStart; i + 3 < end; i += 4) peak = Math.max(peak, Math.abs(view.getInt32(i, true)));
+  }
+  if (peak === 0) throw new Error("Applio produced a silent WAV; real voice conversion did not occur.");
+  return { channels, bitsPerSample, dataBytes: dataLength, peak };
+}
+
 const app = await Client.connect(SPACE);
 const api = await app.view_api();
 const [endpointName, endpoint] = findEndpoint(api);
@@ -101,19 +161,9 @@ const args = (endpoint.parameters ?? []).map(valueFor);
 console.log(`Using live Applio endpoint: ${endpointName}`);
 console.log("Submitting real source audio + RedsVoiceSwap model…");
 
-const job = app.submit(endpointName, args);
-for await (const message of job) {
-  if (message?.type === "status" && message.stage === "error") {
-    throw new Error(
-      `Applio RVC job failed at ${message.endpoint ?? endpointName}: ${
-        message.original_msg || message.title || JSON.stringify(message)
-      }`,
-    );
-  }
-}
-const result = await job.result();
+const result = await app.predict(endpointName, args);
 const audioUrl = findAudioUrl(result);
-if (!audioUrl) throw new Error("Applio returned no playable audio URL.");
+if (!audioUrl) throw new Error(`Applio completed without returning a playable audio URL: ${JSON.stringify(result).slice(0, 1000)}`);
 
 const response = await fetch(audioUrl);
 if (!response.ok) throw new Error(`Applio output download failed: HTTP ${response.status}`);
@@ -123,6 +173,7 @@ if (!contentType.startsWith("audio/"))
   throw new Error(`Applio output was not audio: ${contentType || "missing content-type"}`);
 if (bytes.byteLength < MIN_AUDIO_BYTES)
   throw new Error(`Applio output was too small: ${bytes.byteLength} bytes`);
+const wav = validateWav(bytes);
 
 console.log(
   JSON.stringify({
@@ -133,5 +184,6 @@ console.log(
     model: "RedsVoiceSwap_53e_424s.pth",
     outputBytes: bytes.byteLength,
     contentType,
+    wav,
   }),
 );
