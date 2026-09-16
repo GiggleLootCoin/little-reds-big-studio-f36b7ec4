@@ -22,7 +22,9 @@ function hasInferenceInputs(endpoint) {
 }
 
 function findEndpoint(api) {
-  const entries = Object.entries(api.named_endpoints ?? {});
+  const named = Object.entries(api.named_endpoints ?? {});
+  const unnamed = Object.entries(api.unnamed_endpoints ?? {});
+  const entries = [...named, ...unnamed];
   const nonTerms = entries.filter(([name]) => !name.toLowerCase().includes("terms"));
   const preferred = nonTerms.find(([name, endpoint]) =>
     /rvc|infer|convert|voice/.test(name.toLowerCase()) && hasInferenceInputs(endpoint),
@@ -37,7 +39,7 @@ function findEndpoint(api) {
   const diagnostic = entries
     .map(([name, endpoint]) => ({ name, labels: (endpoint.parameters ?? []).map(labelFor) }))
     .filter(({ labels }) => labels.some((label) => label.includes("voice model")));
-  throw new Error(`No compatible named Applio RVC inference endpoint was exposed. Candidate endpoints: ${JSON.stringify(diagnostic).slice(0, 3000)}`);
+  throw new Error(`No compatible named or unnamed Applio RVC inference endpoint was exposed. Candidates: ${JSON.stringify(diagnostic).slice(0, 3000)}`);
 }
 
 function valueFor(parameter) {
@@ -162,7 +164,7 @@ function validateWav(bytes) {
 }
 
 const app = await Client.connect(SPACE, { events: ["data", "status"] });
-const api = await app.view_api();
+const api = await app.view_api({ all_endpoints: true });
 const [endpointName, endpoint] = findEndpoint(api);
 const args = (endpoint.parameters ?? []).map(valueFor);
 console.log(`Using live Applio endpoint: ${endpointName}`);
