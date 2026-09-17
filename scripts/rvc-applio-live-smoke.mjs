@@ -51,7 +51,7 @@ function findEndpoint(api) {
 function valueFor(parameter) {
   const label = labelFor(parameter);
   if (label.includes("voice model")) return handle_file(new File([modelBytes], "RedsVoiceSwap_53e_424s.pth", { type: "application/octet-stream" }));
-  if (label.includes("index file")) return null;
+  if (label.includes("index file")) return "";
   if (
     label.includes("select audio") ||
     label.includes("input audio") ||
