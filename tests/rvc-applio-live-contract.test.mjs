@@ -25,7 +25,7 @@ test(
   { timeout: 120_000 },
   async () => {
     const app = await Client.connect("IAHispano/ApplioX");
-    const api = await app.view_api({ all_endpoints: true });
+    const api = await app.view_api();
     const endpoints = [
       ...Object.entries(api?.named_endpoints ?? {}),
       ...Object.entries(api?.unnamed_endpoints ?? {}),
