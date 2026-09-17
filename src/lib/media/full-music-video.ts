@@ -14,7 +14,7 @@ async function outputBlob(value: unknown): Promise<Blob> { if (typeof Blob !== "
 function scenePrompt(options: FullMusicVideoOptions, chunk: MusicVideoChunk): string { const base = options.direction?.trim() || options.storyboard?.trim() || "cinematic music video with strong visual storytelling and polished professional cinematography"; const title = options.title?.trim() ? ` for the song "${options.title.trim()}"` : ""; return [`Create scene ${chunk.index + 1}${title}.`, base, `This scene covers ${chunk.startSeconds.toFixed(1)}s to ${chunk.endSeconds.toFixed(1)}s of the song.`, "Maintain the same subject identity, wardrobe, environment, color language, camera language and visual story across the complete music video.", "Use purposeful camera motion, natural motion, cinematic lighting and a visually interesting composition.", "Do not add captions, logos, watermarks, UI, fake song titles or readable text."].join(" "); }
 async function generateMiniMaxChunk(chunk: MusicVideoChunk, prompt: string, imageBlob: Blob | null): Promise<Blob> {
   const client = await Client.connect(PRIMARY_VIDEO_SPACE);
-  const api = await client.view_api({ all_endpoints: true });
+  const api = await client.view_api();
   const endpoints = [
     ...Object.entries(api.named_endpoints ?? {}),
     ...Object.entries(api.unnamed_endpoints ?? {}),
