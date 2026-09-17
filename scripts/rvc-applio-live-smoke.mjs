@@ -9,6 +9,7 @@ const SOURCE_URL =
   "https://raw.githubusercontent.com/GiggleLootCoin/little-reds-big-studio-f36b7ec4/feat/studio-production-completion/13.7s%20Recording%20%28Jul%202%20%40%205_53%20PM%29.mp3";
 const MIN_AUDIO_BYTES = 256;
 let modelPath = "";
+let modelBytes = null;
 
 const labelFor = (parameter) =>
   `${parameter.label ?? ""} ${parameter.parameter_name ?? ""}`.toLowerCase();
@@ -48,7 +49,7 @@ function findEndpoint(api) {
 
 function valueFor(parameter) {
   const label = labelFor(parameter);
-  if (label.includes("voice model")) return handle_file(modelPath);
+  if (label.includes("voice model")) return handle_file(new File([modelBytes], "RedsVoiceSwap_53e_424s.pth", { type: "application/octet-stream" }));
   if (label.includes("index file")) return null;
   if (
     label.includes("select audio") ||
@@ -181,7 +182,9 @@ try {
   execFileSync("python", ["-m", "pip", "install", "-q", "gdown"], { stdio: "inherit", timeout: 120_000 });
   execFileSync("python", ["-m", "gdown", MODEL_URL, "-O", modelPath], { stdio: "inherit", timeout: 180_000 });
 }
-const modelSize = Number((await import("node:fs/promises")).stat(modelPath)).size;
+const fs = await import("node:fs/promises");
+const modelSize = Number((await fs.stat(modelPath)).size);
+modelBytes = await fs.readFile(modelPath);
 console.log(JSON.stringify({ modelPath, modelSize }));
 if (modelSize < 50_000_000) throw new Error(`The Red RVC model download is incomplete: ${modelSize} bytes.`);
 console.log("Submitting real source audio + RedsVoiceSwap model…");
