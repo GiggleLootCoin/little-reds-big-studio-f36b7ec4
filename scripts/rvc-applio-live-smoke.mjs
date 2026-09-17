@@ -25,6 +25,10 @@ function findEndpoint(api) {
   const named = Object.entries(api.named_endpoints ?? {});
   const unnamed = Object.entries(api.unnamed_endpoints ?? {});
   const entries = [...named, ...unnamed];
+  const directInference = entries.find(([name, endpoint]) =>
+    name.toLowerCase().includes("enforce_terms") && hasInferenceInputs(endpoint),
+  );
+  if (directInference) return directInference;
   const nonTerms = entries.filter(([name]) => !name.toLowerCase().includes("terms"));
   const preferred = nonTerms.find(([name, endpoint]) =>
     /rvc|infer|convert|voice/.test(name.toLowerCase()) && hasInferenceInputs(endpoint),
