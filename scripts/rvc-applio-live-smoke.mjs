@@ -169,6 +169,13 @@ const api = await app.view_api();
 const [endpointName, endpoint] = findEndpoint(api);
 const args = (endpoint.parameters ?? []).map(valueFor);
 console.log(`Using live Applio endpoint: ${endpointName}`);
+const modelProbe = await fetch(MODEL_URL, { redirect: "follow" });
+const modelProbeType = (modelProbe.headers.get("content-type") || "").toLowerCase();
+const modelProbeLength = Number(modelProbe.headers.get("content-length") || 0);
+console.log(JSON.stringify({ modelProbeStatus: modelProbe.status, modelProbeType, modelProbeLength, modelProbeUrl: modelProbe.url }));
+if (!modelProbe.ok || modelProbeType.includes("text/html")) {
+  throw new Error(`The Red RVC model URL did not resolve to a downloadable model (HTTP ${modelProbe.status}, ${modelProbeType || "unknown content type"}).`);
+}
 console.log("Submitting real source audio + RedsVoiceSwap model…");
 
 let result;
