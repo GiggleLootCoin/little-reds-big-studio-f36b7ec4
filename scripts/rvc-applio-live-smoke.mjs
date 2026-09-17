@@ -189,13 +189,25 @@ console.log(JSON.stringify({ modelPath, modelSize }));
 if (modelSize < 50_000_000) throw new Error(`The Red RVC model download is incomplete: ${modelSize} bytes.`);
 console.log("Submitting real source audio + RedsVoiceSwap model…");
 
-let result;
+let result = null;
 try {
-  result = await app.predict(endpointName, args);
+  const job = app.submit(endpointName, args);
+  for await (const message of job) {
+    if (message.type === "status") {
+      console.log("Applio status:", JSON.stringify(message));
+      if (message.stage === "error") {
+        job.cancel?.();
+        throw new Error(message.message || message.code || "Applio reported a server-side inference error.");
+      }
+    } else if (message.type === "data") {
+      result = message;
+    }
+  }
 } catch (error) {
   const detail = error instanceof Error ? error.stack || error.message : String(error);
   throw new Error(`Applio RVC prediction failed at ${endpointName}: ${detail}`);
 }
+if (!result) throw new Error(`Applio returned no prediction data from ${endpointName}.`);
 
 const audioUrl = findAudioUrl(result);
 if (!audioUrl) throw new Error(`Applio completed without returning a playable audio URL: ${JSON.stringify(result).slice(0, 1500)}`);
