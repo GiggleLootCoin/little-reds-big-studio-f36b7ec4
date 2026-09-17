@@ -2,7 +2,6 @@ import { Client, handle_file } from "@gradio/client";
 import { buildMusicVideoPlan, MUSIC_VIDEO_ENGINE_SPACES, validateRenderedMusicVideoArtifact, type MusicVideoChunk } from "./music-video-pipeline";
 import { renderLocalCinematicVideo } from "./local-video-renderer";
 const [PRIMARY_VIDEO_SPACE, FALLBACK_VIDEO_SPACE] = MUSIC_VIDEO_ENGINE_SPACES;
-const VIDEO_ENDPOINT = "/predict_fn_generate_video";
 const VIDEO_CANVAS = "960x544 · 16:9 fast";
 const VIDEO_STEPS = 6;
 type Progress = (update: { phase: "planning" | "generating" | "rendering" | "complete"; completed: number; total: number; message: string }) => void;
