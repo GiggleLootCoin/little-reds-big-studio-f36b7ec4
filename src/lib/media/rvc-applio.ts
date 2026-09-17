@@ -112,6 +112,7 @@ function valueForApplioParameter(parameter: ApplioParameter, request: ApplioConv
   if (label.includes("export format")) return "WAV";
   if (label.includes("speaker id")) return 0;
   if (label.includes("pitch extraction")) return request.f0Method ?? DEFAULT_F0_METHOD;
+  if (label.includes("volume envelope")) return 1;
   if (label.includes("search feature ratio")) return request.indexRate ?? DEFAULT_INDEX_RATE;
   if (label.includes("protect voiceless")) return request.protect ?? DEFAULT_PROTECT;
   if (label === "pitch" || label.endsWith(" pitch")) return request.pitch ?? DEFAULT_PITCH;
