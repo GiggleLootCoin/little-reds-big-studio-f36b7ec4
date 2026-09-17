@@ -1,4 +1,7 @@
 import { Client, handle_file } from "@gradio/client";
+import { execFileSync } from "node:child_process";
+import os from "node:os";
+import path from "node:path";
 
 const SPACE = "IAHispano/ApplioX";
 const MODEL_URL = "https://drive.google.com/uc?id=19yLeLybGU8csalpLFuK6ORSS3aqaDkrW";
@@ -44,7 +47,7 @@ function findEndpoint(api) {
 
 function valueFor(parameter) {
   const label = labelFor(parameter);
-  if (label.includes("voice model")) return handle_file(MODEL_URL);
+  if (label.includes("voice model")) return handle_file(modelPath);
   if (label.includes("index file")) return null;
   if (
     label.includes("select audio") ||
@@ -169,13 +172,17 @@ const api = await app.view_api();
 const [endpointName, endpoint] = findEndpoint(api);
 const args = (endpoint.parameters ?? []).map(valueFor);
 console.log(`Using live Applio endpoint: ${endpointName}`);
-const modelProbe = await fetch(MODEL_URL, { redirect: "follow" });
-const modelProbeType = (modelProbe.headers.get("content-type") || "").toLowerCase();
-const modelProbeLength = Number(modelProbe.headers.get("content-length") || 0);
-console.log(JSON.stringify({ modelProbeStatus: modelProbe.status, modelProbeType, modelProbeLength, modelProbeUrl: modelProbe.url }));
-if (!modelProbe.ok || modelProbeType.includes("text/html")) {
-  throw new Error(`The Red RVC model URL did not resolve to a downloadable model (HTTP ${modelProbe.status}, ${modelProbeType || "unknown content type"}).`);
+const modelPath = path.join(os.tmpdir(), "RedsVoiceSwap_53e_424s.pth");
+console.log("Downloading the real Red RVC model with gdown…");
+try {
+  execFileSync("python", ["-m", "gdown", MODEL_URL, "-O", modelPath], { stdio: "inherit", timeout: 180_000 });
+} catch {
+  execFileSync("python", ["-m", "pip", "install", "-q", "gdown"], { stdio: "inherit", timeout: 120_000 });
+  execFileSync("python", ["-m", "gdown", MODEL_URL, "-O", modelPath], { stdio: "inherit", timeout: 180_000 });
 }
+const modelSize = Number((await import("node:fs/promises")).stat(modelPath)).size;
+console.log(JSON.stringify({ modelPath, modelSize }));
+if (modelSize < 50_000_000) throw new Error(`The Red RVC model download is incomplete: ${modelSize} bytes.`);
 console.log("Submitting real source audio + RedsVoiceSwap model…");
 
 let result;
