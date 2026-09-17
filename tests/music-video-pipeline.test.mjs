@@ -13,7 +13,7 @@ test("browser-rendered music video validation rejects empty, non-video, or misti
 test("MiniMax-H3 integration resolves the live workflow endpoint instead of a stale hard-coded function name", async () => {
   const source = await (await import("node:fs/promises")).readFile("src/lib/media/full-music-video.ts", "utf8");
   assert.doesNotMatch(source, /predict_fn_generate_video/);
-  assert.match(source, /view_api\(\{ all_endpoints: true \}\)/);
+  assert.match(source, /view_api\(\)/);
   assert.match(source, /has\("prompt"\)/);
   assert.match(source, /has\("duration"\)/);
   assert.match(source, /has\("canvas"\)/);
