@@ -54,6 +54,7 @@ function valueFor(parameter) {
   if (label.includes("export format")) return "WAV";
   if (label.includes("speaker id")) return 0;
   if (label.includes("pitch extraction")) return "rmvpe";
+  if (label.includes("volume envelope")) return 1;
   if (label.includes("search feature ratio")) return 0.75;
   if (label.includes("protect voiceless")) return 0.5;
   if (label === "pitch" || label.endsWith(" pitch")) return 0;
