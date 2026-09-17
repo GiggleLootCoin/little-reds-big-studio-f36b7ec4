@@ -10,6 +10,7 @@ const SOURCE_URL =
 const MIN_AUDIO_BYTES = 256;
 let modelPath = "";
 let modelBytes = null;
+let sourceBytes = null;
 
 const labelFor = (parameter) =>
   `${parameter.label ?? ""} ${parameter.parameter_name ?? ""}`.toLowerCase();
@@ -56,7 +57,7 @@ function valueFor(parameter) {
     label.includes("input audio") ||
     label.includes("audio input")
   ) {
-    return handle_file(SOURCE_URL);
+    return handle_file(new File([sourceBytes], "source-vocals.mp3", { type: "audio/mpeg" }));
   }
   if (label.includes("agree to the terms")) return true;
   if (label.includes("output path")) return "assets/audios/ci-red-rvc-output.wav";
@@ -64,7 +65,7 @@ function valueFor(parameter) {
   if (label.includes("speaker id")) return 0;
   if (label.includes("pitch extraction")) return "rmvpe";
   if (label.includes("volume envelope")) return 1;
-  if (label.includes("search feature ratio")) return 0.75;
+  if (label.includes("search feature ratio")) return 0;
   if (label.includes("protect voiceless")) return 0.5;
   if (label === "pitch" || label.endsWith(" pitch")) return 0;
   if (label.includes("autotune")) return false;
@@ -185,6 +186,8 @@ try {
 const fs = await import("node:fs/promises");
 const modelSize = Number((await fs.stat(modelPath)).size);
 modelBytes = await fs.readFile(modelPath);
+sourceBytes = await (await fetch(SOURCE_URL)).arrayBuffer();
+if (!sourceBytes.byteLength) throw new Error("The source vocal download was empty.");
 console.log(JSON.stringify({ modelPath, modelSize }));
 if (modelSize < 50_000_000) throw new Error(`The Red RVC model download is incomplete: ${modelSize} bytes.`);
 console.log("Submitting real source audio + RedsVoiceSwap model…");
