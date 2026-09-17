@@ -12,7 +12,51 @@ function progress(onProgress: Progress | undefined, update: Parameters<Progress>
 function resultUrl(value: unknown): string | null { if (typeof value === "string" && /^(?:https?:|blob:|data:)/i.test(value)) return value; if (value && typeof value === "object") for (const key of ["url", "video", "output", "result", "path"]) { const found = resultUrl((value as Record<string, unknown>)[key]); if (found) return found; } return null; }
 async function outputBlob(value: unknown): Promise<Blob> { if (typeof Blob !== "undefined" && value instanceof Blob) { if (!value.size || !value.type.startsWith("video/")) throw new Error("The video engine returned an invalid video artifact."); return value; } const url = resultUrl(value); if (!url) throw new Error("The video engine returned no playable video artifact."); const response = await fetch(url); if (!response.ok) throw new Error(`The generated video could not be downloaded (${response.status}).`); const blob = await response.blob(); if (!blob.type.startsWith("video/") || blob.size < 100_000) throw new Error("The video engine returned an invalid or empty video artifact."); return blob; }
 function scenePrompt(options: FullMusicVideoOptions, chunk: MusicVideoChunk): string { const base = options.direction?.trim() || options.storyboard?.trim() || "cinematic music video with strong visual storytelling and polished professional cinematography"; const title = options.title?.trim() ? ` for the song "${options.title.trim()}"` : ""; return [`Create scene ${chunk.index + 1}${title}.`, base, `This scene covers ${chunk.startSeconds.toFixed(1)}s to ${chunk.endSeconds.toFixed(1)}s of the song.`, "Maintain the same subject identity, wardrobe, environment, color language, camera language and visual story across the complete music video.", "Use purposeful camera motion, natural motion, cinematic lighting and a visually interesting composition.", "Do not add captions, logos, watermarks, UI, fake song titles or readable text."].join(" "); }
-async function generateMiniMaxChunk(chunk: MusicVideoChunk, prompt: string, imageBlob: Blob | null): Promise<Blob> { const client = await Client.connect(PRIMARY_VIDEO_SPACE); const response = await client.predict(VIDEO_ENDPOINT, [prompt, imageBlob ? handle_file(imageBlob) : null, null, VIDEO_CANVAS, chunk.durationSeconds, VIDEO_STEPS, 1000 + chunk.index, false, "larry"]); return outputBlob((response.data as unknown[])?.[0]); }
+async function generateMiniMaxChunk(chunk: MusicVideoChunk, prompt: string, imageBlob: Blob | null): Promise<Blob> {
+  const client = await Client.connect(PRIMARY_VIDEO_SPACE);
+  const api = await client.view_api({ all_endpoints: true });
+  const endpoints = [
+    ...Object.entries(api.named_endpoints ?? {}),
+    ...Object.entries(api.unnamed_endpoints ?? {}),
+  ] as Array<[string, { parameters?: Array<{ label?: string; parameter_name?: string; parameter_has_default?: boolean; parameter_default?: unknown }>; returns?: Array<{ component?: string }> }]>;
+  const labelFor = (parameter: { label?: string; parameter_name?: string }) =>
+    `${parameter.label ?? ""} ${parameter.parameter_name ?? ""}`.toLowerCase();
+  const candidate = endpoints.find(([, endpoint]) => {
+    const labels = (endpoint.parameters ?? []).map(labelFor);
+    const has = (needle: string) => labels.some((label) => label.includes(needle));
+    const returnsVideo = (endpoint.returns ?? []).some((output) =>
+      String(output.component ?? "").toLowerCase().includes("video"),
+    );
+    return (
+      has("prompt") &&
+      has("duration") &&
+      has("steps") &&
+      has("seed") &&
+      has("canvas") &&
+      has("upsample") &&
+      has("lora") &&
+      returnsVideo
+    );
+  });
+  if (!candidate) throw new Error("The current MiniMax-H3 Space does not expose a compatible full video generation endpoint.");
+  const [endpointName, endpoint] = candidate;
+  const values = (endpoint.parameters ?? []).map((parameter) => {
+    const label = labelFor(parameter);
+    if (label.includes("prompt")) return prompt;
+    if (label.includes("first frame") || label.includes("first_frame")) return imageBlob ? handle_file(imageBlob) : null;
+    if (label.includes("last frame") || label.includes("last_frame")) return null;
+    if (label.includes("canvas")) return VIDEO_CANVAS;
+    if (label.includes("duration")) return chunk.durationSeconds;
+    if (label.includes("steps")) return VIDEO_STEPS;
+    if (label.includes("seed")) return 1000 + chunk.index;
+    if (label.includes("upsample")) return false;
+    if (label.includes("lora")) return "larry";
+    if (parameter.parameter_has_default) return parameter.parameter_default;
+    return null;
+  });
+  const response = await client.predict(endpointName, values);
+  return outputBlob((response.data as unknown[])?.[0]);
+}
 async function generateFallbackChunk(chunk: MusicVideoChunk, prompt: string, imageBlob: Blob | null): Promise<Blob> { const client = await Client.connect(FALLBACK_VIDEO_SPACE); const api = await client.view_api(); const endpoints = { ...(api.named_endpoints ?? {}), ...(api.unnamed_endpoints ?? {}) } as Record<string, { parameters?: Array<{ parameter_name?: string; label?: string; optional?: boolean; parameter_has_default?: boolean; default?: unknown }> }>; const candidates = Object.entries(endpoints).filter(([, endpoint]) => (endpoint.parameters ?? []).length > 0).sort((a, b) => { const score = (name: string) => { const value = name.toLowerCase(); return (value.includes("generate") ? 10 : 0) + (value.includes("video") ? 10 : 0) + (value.includes("image") ? 4 : 0); }; return score(b[0]) - score(a[0]); }); let lastError = "No compatible video endpoint was found."; for (const [name, endpoint] of candidates) { try { const args = (endpoint.parameters ?? []).map((parameter) => { const key = (parameter.parameter_name ?? parameter.label ?? "").toLowerCase(); if (key.includes("prompt") || key === "text") return prompt; if (key.includes("image") || key.includes("input_image") || key.includes("start_image")) return imageBlob ? handle_file(imageBlob) : null; if (key.includes("duration")) return chunk.durationSeconds; if (key.includes("seed")) return 1000 + chunk.index; if (parameter.default !== undefined) return parameter.default; if (parameter.optional || parameter.parameter_has_default) return undefined; return undefined; }); const response = await client.predict(name, args); return outputBlob((response.data as unknown[])?.[0]); } catch (error) { lastError = error instanceof Error ? error.message : String(error); } } throw new Error(lastError); }
 function chooseMimeType(): string { return ["video/mp4;codecs=avc1.42E01E,mp4a.40.2", "video/mp4", "video/webm;codecs=vp9,opus", "video/webm;codecs=vp8,opus", "video/webm"].find((candidate) => MediaRecorder.isTypeSupported(candidate)) || "video/webm"; }
 function waitForEvent(target: EventTarget, event: string): Promise<void> { return new Promise((resolve, reject) => { const onResolve = () => { target.removeEventListener(event, onResolve); target.removeEventListener("error", onReject); resolve(); }; const onReject = () => { target.removeEventListener(event, onResolve); target.removeEventListener("error", onReject); reject(new Error("The browser could not decode a generated video scene.")); }; target.addEventListener(event, onResolve, { once: true }); target.addEventListener("error", onReject, { once: true }); }); }
