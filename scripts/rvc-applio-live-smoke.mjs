@@ -32,10 +32,6 @@ function findEndpoint(api) {
   if (preferred) return preferred;
   const heuristic = nonTerms.find(([, endpoint]) => hasInferenceInputs(endpoint));
   if (heuristic) return heuristic;
-  const termsFallback = entries.find(([name, endpoint]) =>
-    name.toLowerCase().includes("terms") && hasInferenceInputs(endpoint),
-  );
-  if (termsFallback) return termsFallback;
   const diagnostic = entries
     .map(([name, endpoint]) => ({ name, labels: (endpoint.parameters ?? []).map(labelFor) }))
     .filter(({ labels }) => labels.some((label) => label.includes("voice model")));
@@ -164,7 +160,7 @@ function validateWav(bytes) {
 }
 
 const app = await Client.connect(SPACE, { events: ["data", "status"] });
-const api = await app.view_api({ all_endpoints: true });
+const api = await app.view_api();
 const [endpointName, endpoint] = findEndpoint(api);
 const args = (endpoint.parameters ?? []).map(valueFor);
 console.log(`Using live Applio endpoint: ${endpointName}`);
