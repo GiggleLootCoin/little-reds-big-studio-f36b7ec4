@@ -189,6 +189,18 @@ modelBytes = await fs.readFile(modelPath);
 sourceBytes = await (await fetch(SOURCE_URL)).arrayBuffer();
 if (!sourceBytes.byteLength) throw new Error("The source vocal download was empty.");
 console.log(JSON.stringify({ modelPath, modelSize }));
+try {
+  execFileSync("python", ["-c", "import torch"], { stdio: "ignore", timeout: 30_000 });
+} catch {
+  execFileSync("python", ["-m", "pip", "install", "-q", "torch", "--index-url", "https://download.pytorch.org/whl/cpu"], { stdio: "inherit", timeout: 240_000 });
+}
+const modelMeta = execFileSync(
+  "python",
+  ["-c", "import torch,sys; c=torch.load(sys.argv[1],map_location='cpu',weights_only=True); print({'keys':sorted(c.keys()),'config_len':len(c.get('config',[])),'version':c.get('version'),'f0':c.get('f0'),'sr':c.get('sr'),'speakers_id':c.get('speakers_id'),'vocoder':c.get('vocoder')})", modelPath],
+  { encoding: "utf8", timeout: 120_000 },
+).trim();
+console.log("Red RVC checkpoint metadata:", modelMeta);
+
 if (modelSize < 50_000_000) throw new Error(`The Red RVC model download is incomplete: ${modelSize} bytes.`);
 console.log("Submitting real source audio + RedsVoiceSwap model…");
 
