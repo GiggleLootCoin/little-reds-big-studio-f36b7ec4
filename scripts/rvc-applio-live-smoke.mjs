@@ -8,6 +8,7 @@ const MODEL_URL = "https://drive.google.com/uc?id=19yLeLybGU8csalpLFuK6ORSS3aqaD
 const SOURCE_URL =
   "https://raw.githubusercontent.com/GiggleLootCoin/little-reds-big-studio-f36b7ec4/feat/studio-production-completion/13.7s%20Recording%20%28Jul%202%20%40%205_53%20PM%29.mp3";
 const MIN_AUDIO_BYTES = 256;
+let modelPath = "";
 
 const labelFor = (parameter) =>
   `${parameter.label ?? ""} ${parameter.parameter_name ?? ""}`.toLowerCase();
@@ -172,7 +173,7 @@ const api = await app.view_api();
 const [endpointName, endpoint] = findEndpoint(api);
 const args = (endpoint.parameters ?? []).map(valueFor);
 console.log(`Using live Applio endpoint: ${endpointName}`);
-const modelPath = path.join(os.tmpdir(), "RedsVoiceSwap_53e_424s.pth");
+modelPath = path.join(os.tmpdir(), "RedsVoiceSwap_53e_424s.pth");
 console.log("Downloading the real Red RVC model with gdown…");
 try {
   execFileSync("python", ["-m", "gdown", MODEL_URL, "-O", modelPath], { stdio: "inherit", timeout: 180_000 });
