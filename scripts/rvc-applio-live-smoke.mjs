@@ -170,30 +170,16 @@ const args = (endpoint.parameters ?? []).map(valueFor);
 console.log(`Using live Applio endpoint: ${endpointName}`);
 console.log("Submitting real source audio + RedsVoiceSwap model…");
 
-const job = app.submit(endpointName, args);
-let result = null;
-for await (const message of job) {
-  if (message.type === "status") {
-    if (message.stage === "error") {
-      throw new Error(
-        `Applio RVC job failed at ${endpointName}: ${JSON.stringify({
-          title: message.title,
-          message: message.message,
-          code: message.code,
-          stage: message.stage,
-          success: message.success,
-        })}`,
-      );
-    }
-    console.log(`Applio status: ${message.stage}`);
-  } else if (message.type === "data") {
-    result = message.data;
-  }
+let result;
+try {
+  result = await app.predict(endpointName, args);
+} catch (error) {
+  const detail = error instanceof Error ? error.stack || error.message : String(error);
+  throw new Error(`Applio RVC prediction failed at ${endpointName}: ${detail}`);
 }
-if (!result) throw new Error("Applio completed without emitting a data result.");
 
 const audioUrl = findAudioUrl(result);
-if (!audioUrl) throw new Error(`Applio completed without returning a playable audio URL: ${JSON.stringify(result).slice(0, 1000)}`);
+if (!audioUrl) throw new Error(`Applio completed without returning a playable audio URL: ${JSON.stringify(result).slice(0, 1500)}`);
 
 const response = await fetch(audioUrl);
 if (!response.ok) throw new Error(`Applio output download failed: HTTP ${response.status}`);
