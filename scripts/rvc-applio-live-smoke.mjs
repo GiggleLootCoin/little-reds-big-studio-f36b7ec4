@@ -205,14 +205,31 @@ if (modelSize < 50_000_000) throw new Error(`The Red RVC model download is incom
 const args = (endpoint.parameters ?? []).map(valueFor);
 console.log("Submitting real source audio + RedsVoiceSwap model…");
 let result = null;
+let completed = false;
 try {
   const job = app.submit(endpointName, args);
-  for await (const message of job) {
-    if (message.type === "status") {
-      console.log("RVC status:", JSON.stringify(message));
-      if (message.stage === "complete" && result) break;
+  const timeout = setTimeout(() => {
+    if (typeof job.cancel === "function") job.cancel();
+  }, 240_000);
+  try {
+    for await (const message of job) {
+      if (message.type === "status") {
+        console.log("RVC status:", JSON.stringify(message));
+        if (message.stage === "error") {
+          throw new Error("RVC server reported an error: " + JSON.stringify(message));
+        }
+        if (message.stage === "complete") {
+          completed = true;
+          if (result) break;
+        }
+      }
+      if (message.type === "data") {
+        result = message;
+        if (completed) break;
+      }
     }
-    if (message.type === "data") result = message;
+  } finally {
+    clearTimeout(timeout);
   }
 } catch (error) {
   const detail = error instanceof Error ? error.stack || error.message : String(error);
