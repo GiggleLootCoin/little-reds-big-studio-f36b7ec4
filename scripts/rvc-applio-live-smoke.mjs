@@ -208,7 +208,10 @@ let result = null;
 try {
   const job = app.submit(endpointName, args);
   for await (const message of job) {
-    if (message.type === "status") console.log("RVC status:", JSON.stringify(message));
+    if (message.type === "status") {
+      console.log("RVC status:", JSON.stringify(message));
+      if (message.stage === "complete" && result) break;
+    }
     if (message.type === "data") result = message;
   }
 } catch (error) {
