@@ -222,7 +222,7 @@ const response = await fetch(audioUrl);
 if (!response.ok) throw new Error(`RVC output download failed: HTTP ${response.status}`);
 const contentType = (response.headers.get("content-type") || "").toLowerCase();
 const bytes = new Uint8Array(await response.arrayBuffer());
-if (!contentType.startsWith("audio/")) throw new Error(`RVC output was not audio: ${contentType || "missing content-type"}`);
+if (!contentType.startsWith("audio/") && contentType !== "application/octet-stream") {\n  throw new Error(`RVC output was not audio: ${contentType || "missing content-type"}`);\n}
 if (bytes.byteLength < MIN_AUDIO_BYTES) throw new Error(`RVC output was too small: ${bytes.byteLength} bytes`);
 const wav = validateWav(bytes);
 console.log(
