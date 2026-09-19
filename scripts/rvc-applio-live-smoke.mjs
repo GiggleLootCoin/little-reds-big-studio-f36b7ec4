@@ -64,6 +64,8 @@ function valueFor(parameter) {
   if (label.includes("f0 method")) return "rmvpe";
   if (label.includes("index rate")) return 0;
   if (label.includes("protect")) return 0.33;
+  // This auxiliary Beatrice checkpoint is not required for RVC-v2 conversion.
+  if (label.includes("beatrice model")) return null;
   if (label.includes("target speaker")) return 0;
   if (label.includes("formant shift")) return 0;
   if (parameter.parameter_has_default) return parameter.parameter_default;
