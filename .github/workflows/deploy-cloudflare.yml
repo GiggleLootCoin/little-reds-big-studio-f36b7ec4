@@ -79,10 +79,10 @@ jobs:
         env:
           PRODUCTION_URL: https://little-reds-big-studio-f36b7ec4.gigglelootcoin.workers.dev
         run: node scripts/live-buddy-chat-smoke.mjs
-      - name: Real Applio RVC conversion smoke
-        run: node scripts/rvc-applio-live-smoke.mjs
       - name: Install ffmpeg for production voice smoke
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
+      - name: Real Applio RVC conversion smoke
+        run: node scripts/rvc-applio-live-smoke.mjs
       - name: Install Playwright for production voice smoke
         run: |
           npm install --no-save --no-audit --no-fund --ignore-scripts playwright
