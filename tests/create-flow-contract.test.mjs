@@ -14,6 +14,8 @@ test("track package keeps the generated music as the source artifact", async () 
   const source = await readFile("src/components/studio/FreeCreatePanel.tsx", "utf8");
   assert.match(source, /const music = await runStudioJob\(\s*"music"/);
   assert.match(source, /const artwork = await runStudioJob\(\s*"image"/);
-  assert.match(source, /const video = await runStudioJob\(\s*"video"/);
+  assert.match(source, /generateFullMusicVideo\(/);
+  assert.match(source, /audioDurationSeconds: actualSongDuration/);
+  assert.match(source, /referenceImage:/);
   assert.match(source, /setArtifact\(music\)/);
 });
