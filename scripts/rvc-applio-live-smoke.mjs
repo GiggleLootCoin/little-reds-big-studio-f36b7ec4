@@ -207,20 +207,14 @@ console.log("Submitting real source audio + RedsVoiceSwap model…");
 let result = null;
 let completed = false;
 try {
-  const job = app.submit(endpointName, args);
-  const timeout = setTimeout(() => {
-    if (typeof job.cancel === "function") job.cancel();
-  }, 240_000);
   try {
     result = await Promise.race([
-      job.result(),
+      app["predict"](endpointName, args),
       new Promise((_, reject) =>
         setTimeout(() => reject(new Error("RVC conversion timed out after 240 seconds.")), 240_000),
       ),
     ]);
-    console.log("RVC job result received.");
-  } finally {
-    clearTimeout(timeout);
+    console.log("RVC prediction result received.");
   }
 } catch (error) {
   const detail = error instanceof Error ? error.stack || error.message : String(error);
