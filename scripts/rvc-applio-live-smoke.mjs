@@ -61,7 +61,7 @@ function valueFor(parameter) {
     );
   if (label.includes("index file")) return null;
   if (label.includes("pitch")) return 0;
-  if (label.includes("f0 method")) return "rmvpe";
+  if (label.includes("f0 method")) return "pm";
   if (label.includes("index rate")) return 0;
   if (label.includes("protect")) return 0.33;
   // This auxiliary Beatrice checkpoint is not required for RVC-v2 conversion.
