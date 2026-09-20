@@ -206,13 +206,31 @@ const args = (endpoint.parameters ?? []).map(valueFor);
 console.log("Submitting real source audio + RedsVoiceSwap model…");
 let result = null;
 try {
-    result = await Promise.race([
-      app["predict"](endpointName, args),
-      new Promise((_, reject) =>
-        setTimeout(() => reject(new Error("RVC conversion timed out after 240 seconds.")), 240_000),
-      ),
-    ]);
-    console.log("RVC prediction result received.");
+  const job = app.submit(endpointName, args);
+  const consume = (async () => {
+    let finalData = null;
+    for await (const message of job) {
+      if (message.type === "status") {
+        console.log("RVC status:", JSON.stringify(message).slice(0, 1500));
+        if (message.stage === "error" || message.success === false) {
+          throw new Error(message.message || message.code || "RVC job reported an error.");
+        }
+      } else if (message.type === "data") {
+        finalData = message.data;
+      }
+    }
+    return finalData;
+  })();
+  result = await Promise.race([
+    consume,
+    new Promise((_, reject) =>
+      setTimeout(() => {
+        if (typeof job.cancel === "function") job.cancel();
+        reject(new Error("RVC conversion timed out after 240 seconds."));
+      }, 240_000),
+    ),
+  ]);
+  console.log("RVC job result received.");
 } catch (error) {
   const detail = error instanceof Error ? error.stack || error.message : String(error);
   throw new Error(`RVC prediction failed at ${endpointName}: ${detail}`);
