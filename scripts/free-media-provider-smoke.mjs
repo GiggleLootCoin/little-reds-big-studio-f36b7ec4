@@ -7,6 +7,29 @@ const providers = {
   videoFallback: "KiroKusA/video-gen-ui",
 };
 
+async function submitWithTimeout(client, endpoint, args, timeoutMs, label) {
+  const job = client.submit(endpoint, args);
+  const consume = (async () => {
+    let data = null;
+    for await (const message of job) {
+      if (message.type === "status" && (message.stage === "error" || message.success === false)) {
+        throw new Error(message.message || message.code || `${label} provider reported an error.`);
+      }
+      if (message.type === "data") data = message.data;
+    }
+    return { data: data ?? [] };
+  })();
+  return Promise.race([
+    consume,
+    new Promise((_, reject) =>
+      setTimeout(() => {
+        if (typeof job.cancel === "function") job.cancel();
+        reject(new Error(`${label} timed out after ${timeoutMs / 1000}s.`));
+      }, timeoutMs),
+    ),
+  ]);
+}
+
 async function getFileValue(value, label) {
   if (value instanceof Blob) {
     if (!value.size) throw new Error(`${label} returned an empty Blob.`);
@@ -24,13 +47,13 @@ async function getFileValue(value, label) {
 async function smokeMusic() {
   try {
     const client = await Client.connect(providers.music);
-    const response = await client.predict("/generate_music", [
+    const response = await submitWithTimeout(client, "/generate_music", [
       "A short upbeat instrumental synth-pop test track",
       10,
       7,
       true,
       "",
-    ]);
+    ], 120_000, "MiniMax Music 3");
     const candidates = (response.data ?? []).flat(Infinity);
     const file =
       candidates.find((value) => value && typeof value === "object" && (value.url || value.path)) ??
@@ -73,7 +96,7 @@ async function smokeImage() {
         if (parameter.optional || parameter.parameter_has_default) return undefined;
         return undefined;
       });
-      const response = await client.predict(name, args);
+      const response = await submitWithTimeout(client, name, args, 120_000, "Video fallback");
       const values = (response.data ?? []).flat(Infinity);
       const file =
         values.find((value) => value && typeof value === "object" && (value.url || value.path)) ??
@@ -139,7 +162,7 @@ async function predictVideoFallback(client) {
 async function smokeVideo() {
   try {
     const client = await Client.connect(providers.video);
-    const response = await client.predict("/predict_fn_generate_video", [
+    const response = await submitWithTimeout(client, "/predict_fn_generate_video", [
       "A cinematic red moon rising over a quiet city at night, slow camera movement",
       null,
       null,
@@ -149,7 +172,7 @@ async function smokeVideo() {
       7,
       false,
       "larry",
-    ]);
+    ], 120_000, "MiniMax H3 video");
     const values = (response.data ?? []).flat(Infinity);
     const file =
       values.find((value) => value && typeof value === "object" && (value.url || value.path)) ??
