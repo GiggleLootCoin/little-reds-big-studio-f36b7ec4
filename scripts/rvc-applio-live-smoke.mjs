@@ -212,22 +212,13 @@ try {
     if (typeof job.cancel === "function") job.cancel();
   }, 240_000);
   try {
-    for await (const message of job) {
-      if (message.type === "status") {
-        console.log("RVC status:", JSON.stringify(message));
-        if (message.stage === "error") {
-          throw new Error("RVC server reported an error: " + JSON.stringify(message));
-        }
-        if (message.stage === "complete") {
-          completed = true;
-          if (result) break;
-        }
-      }
-      if (message.type === "data") {
-        result = message;
-        if (completed) break;
-      }
-    }
+    result = await Promise.race([
+      job.result(),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("RVC conversion timed out after 240 seconds.")), 240_000),
+      ),
+    ]);
+    console.log("RVC job result received.");
   } finally {
     clearTimeout(timeout);
   }
