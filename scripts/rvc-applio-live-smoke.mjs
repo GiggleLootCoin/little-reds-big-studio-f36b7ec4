@@ -8,7 +8,7 @@ import path from "node:path";
 // the same real .pth conversion path and returns its server-side status text.
 // This is still genuine RVC inference; the smoke test must never substitute a
 // TTS clone or synthetic placeholder for the Red checkpoint.
-const SPACE = "Aggretsuko2020/rvc-beatrice-voice-conversion";
+const SPACE = "r3gm/rvc_zero";
 const MODEL_URL = "https://drive.google.com/uc?id=19yLeLybGU8csalpLFuK6ORSS3aqaDkrW";
 const SOURCE_URL =
   "https://raw.githubusercontent.com/GiggleLootCoin/little-reds-big-studio-f36b7ec4/feat/studio-production-completion/13.7s%20Recording%20%28Jul%202%20%40%205_53%20PM%29.mp3";
@@ -23,9 +23,81 @@ const labelFor = (parameter) =>
 function hasRvcInputs(endpoint) {
   const labels = (endpoint.parameters ?? []).map(labelFor);
   return (
-    labels.some((label) => label.includes("source audio")) &&
-    labels.some((label) => label.includes("rvc model")) &&
-    labels.some((label) => label.includes("model type"))
+    labels.some((label) => label.includes("audio") && (label.includes("target") || label.includes("upload") || label.includes("source"))) &&
+    labels.some((label) => label.includes("model") && (label.includes("file") || label.includes("weight") || label.includes("upload")))
+  );
+}
+
+function findEndpoint(api) {
+  const entries = [
+    ...Object.entries(api.named_endpoints ?? {}),
+    ...Object.entries(api.unnamed_endpoints ?? {}),
+  ];
+  const preferred = entries.find(([name, endpoint]) =>
+    name.toLowerCase().includes("convert") && hasRvcInputs(endpoint),
+  );
+  if (preferred) return preferred;
+  const fallback = entries.find(([, endpoint]) => hasRvcInputs(endpoint));
+  if (fallback) return fallback;
+  throw new Error(
+    `No compatible live RVC conversion endpoint was exposed. Candidates: ${JSON.stringify(
+      entries.map(([name, endpoint]) => ({
+        name,
+        labels: (endpoint.parameters ?? []).map(labelFor),
+      })),
+    ).slice(0, 5000)}`,
+  );
+}
+
+function valueFor(parameter) {
+  const label = labelFor(parameter);
+  if (label.includes("audio") && (label.includes("target") || label.includes("upload") || label.includes("source"))) {
+    return [handle_file(new File([sourceBytes], "source-vocals.wav", { type: "audio/wav" }))];
+  }
+  if (label.includes("model type")) return "RVC v2";
+  if (label.includes("model") && (label.includes("file") || label.includes("weight") || label.includes("upload")))
+    return handle_file(new File([modelBytes], "RedsVoiceSwap_53e_424s.pth", { type: "application/octet-stream" }));
+  if (label.includes("index file") || label.includes("list of index")) return null;
+  if (label.includes("pitch") && (label.includes("level") || label.includes("shift"))) return 0;
+  if (label.includes("pitch algorithm") || label.includes("pitch algo") || label.includes("f0 method")) return "pm";
+  if (label.includes("index influence") || label.includes("index rate")) return 0;
+  if (label.includes("protect")) return 0.33;
+  if (label.includes("respiration")) return 0;
+  if (label.includes("envelope ratio") || label.includes("envelope")) return 0.25;
+  if (label.includes("consonant")) return 0;
+  if (label.includes("resample")) return 0;
+  if (label.includes("format")) return "wav";
+  if (parameter.parameter_has_default) return parameter.parameter_default;
+  if (parameter.type === "boolean") return false;
+  if (parameter.optional) return null;
+  throw new Error(`Unsupported required RVC input: ${label}`);
+}mport { Client, handle_file } from "@gradio/client";
+import { execFileSync } from "node:child_process";
+import os from "node:os";
+import path from "node:path";
+
+// The original ApplioX Space currently accepts the request but returns only a
+// generic server error during inference. Use a live RVC-v2 Space that exposes
+// the same real .pth conversion path and returns its server-side status text.
+// This is still genuine RVC inference; the smoke test must never substitute a
+// TTS clone or synthetic placeholder for the Red checkpoint.
+const SPACE = "r3gm/rvc_zero";
+const MODEL_URL = "https://drive.google.com/uc?id=19yLeLybGU8csalpLFuK6ORSS3aqaDkrW";
+const SOURCE_URL =
+  "https://raw.githubusercontent.com/GiggleLootCoin/little-reds-big-studio-f36b7ec4/feat/studio-production-completion/13.7s%20Recording%20%28Jul%202%20%40%205_53%20PM%29.mp3";
+const MIN_AUDIO_BYTES = 256;
+let modelPath = "";
+let modelBytes = null;
+let sourceBytes = null;
+
+const labelFor = (parameter) =>
+  `${parameter.label ?? ""} ${parameter.parameter_name ?? ""}`.toLowerCase();
+
+function hasRvcInputs(endpoint) {
+  const labels = (endpoint.parameters ?? []).map(labelFor);
+  return (
+    labels.some((label) => label.includes("audio") && (label.includes("target") || label.includes("upload") || label.includes("source"))) &&
+    labels.some((label) => label.includes("model") && (label.includes("file") || label.includes("weight") || label.includes("upload")))
   );
 }
 
@@ -180,7 +252,7 @@ modelBytes = await fs.readFile(modelPath);
 const sourceDownload = path.join(os.tmpdir(), "red-rvc-source.mp3");
 const sourceClip = path.join(os.tmpdir(), "red-rvc-source-clip.wav");
 await fs.writeFile(sourceDownload, new Uint8Array(await (await fetch(SOURCE_URL)).arrayBuffer()));
-execFileSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", "-i", sourceDownload, "-t", "2", "-ac", "1", "-ar", "40000", sourceClip], { stdio: "inherit", timeout: 60_000 });
+execFileSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", "-i", sourceDownload, "-t", "1", "-ac", "1", "-ar", "40000", sourceClip], { stdio: "inherit", timeout: 60_000 });
 sourceBytes = await fs.readFile(sourceClip);
 if (!sourceBytes.byteLength) throw new Error("The source vocal clip was empty.");
 console.log(JSON.stringify({ modelPath, modelSize, sourceBytes: sourceBytes.byteLength }));
