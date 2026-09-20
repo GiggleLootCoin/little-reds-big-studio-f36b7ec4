@@ -30,6 +30,13 @@ async function submitWithTimeout(client, endpoint, args, timeoutMs, label) {
   ]);
 }
 
+async function connectWithTimeout(space, timeoutMs) {
+  return Promise.race([
+    Client.connect(space),
+    new Promise((_, reject) => setTimeout(() => reject(new Error(`Connection to ${space} timed out after ${timeoutMs / 1000}s.`)), timeoutMs)),
+  ]);
+}
+
 async function getFileValue(value, label) {
   if (value instanceof Blob) {
     if (!value.size) throw new Error(`${label} returned an empty Blob.`);
@@ -46,7 +53,7 @@ async function getFileValue(value, label) {
 
 async function smokeMusic() {
   try {
-    const client = await Client.connect(providers.music);
+    const client = await connectWithTimeout(providers.music, 30_000);
     const response = await submitWithTimeout(client, "/generate_music", [
       "A short upbeat instrumental synth-pop test track",
       10,
@@ -71,7 +78,7 @@ async function smokeMusic() {
 }
 
 async function smokeImage() {
-  const client = await Client.connect(providers.image);
+  const client = await connectWithTimeout(providers.image, 30_000);
   const api = await client.view_api();
   const endpoints = { ...(api.named_endpoints ?? {}), ...(api.unnamed_endpoints ?? {}) };
   const candidates = Object.entries(endpoints).filter(([, endpoint]) =>
@@ -161,7 +168,7 @@ async function predictVideoFallback(client) {
 
 async function smokeVideo() {
   try {
-    const client = await Client.connect(providers.video);
+    const client = await connectWithTimeout(providers.video, 30_000);
     const response = await submitWithTimeout(client, "/predict_fn_generate_video", [
       "A cinematic red moon rising over a quiet city at night, slow camera movement",
       null,
@@ -186,7 +193,7 @@ async function smokeVideo() {
   }
 
   try {
-    return await predictVideoFallback(await Client.connect(providers.videoFallback));
+    return await predictVideoFallback(await connectWithTimeout(providers.videoFallback, 30_000));
   } catch (error) {
     console.log(`VIDEO_FALLBACK_UNAVAILABLE ${error instanceof Error ? error.message : String(error)}`);
     return false;
