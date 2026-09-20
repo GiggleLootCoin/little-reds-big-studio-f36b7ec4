@@ -8,7 +8,7 @@ import path from "node:path";
 // the same real .pth conversion path and returns its server-side status text.
 // This is still genuine RVC inference; the smoke test must never substitute a
 // TTS clone or synthetic placeholder for the Red checkpoint.
-const SPACE = "Luminia/rvc-beatrice-voice-conversion";
+const SPACE = "Aggretsuko2020/rvc-beatrice-voice-conversion";
 const MODEL_URL = "https://drive.google.com/uc?id=19yLeLybGU8csalpLFuK6ORSS3aqaDkrW";
 const SOURCE_URL =
   "https://raw.githubusercontent.com/GiggleLootCoin/little-reds-big-studio-f36b7ec4/feat/studio-production-completion/13.7s%20Recording%20%28Jul%202%20%40%205_53%20PM%29.mp3";
