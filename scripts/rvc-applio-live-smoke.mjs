@@ -180,7 +180,7 @@ modelBytes = await fs.readFile(modelPath);
 const sourceDownload = path.join(os.tmpdir(), "red-rvc-source.mp3");
 const sourceClip = path.join(os.tmpdir(), "red-rvc-source-clip.wav");
 await fs.writeFile(sourceDownload, new Uint8Array(await (await fetch(SOURCE_URL)).arrayBuffer()));
-execFileSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", "-i", sourceDownload, "-t", "4", "-ac", "1", "-ar", "40000", sourceClip], { stdio: "inherit", timeout: 60_000 });
+execFileSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", "-i", sourceDownload, "-t", "2", "-ac", "1", "-ar", "40000", sourceClip], { stdio: "inherit", timeout: 60_000 });
 sourceBytes = await fs.readFile(sourceClip);
 if (!sourceBytes.byteLength) throw new Error("The source vocal clip was empty.");
 console.log(JSON.stringify({ modelPath, modelSize, sourceBytes: sourceBytes.byteLength }));
