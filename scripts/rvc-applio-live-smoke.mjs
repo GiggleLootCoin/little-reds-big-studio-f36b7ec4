@@ -205,9 +205,7 @@ if (modelSize < 50_000_000) throw new Error(`The Red RVC model download is incom
 const args = (endpoint.parameters ?? []).map(valueFor);
 console.log("Submitting real source audio + RedsVoiceSwap model…");
 let result = null;
-let completed = false;
 try {
-  try {
     result = await Promise.race([
       app["predict"](endpointName, args),
       new Promise((_, reject) =>
@@ -215,7 +213,6 @@ try {
       ),
     ]);
     console.log("RVC prediction result received.");
-  }
 } catch (error) {
   const detail = error instanceof Error ? error.stack || error.message : String(error);
   throw new Error(`RVC prediction failed at ${endpointName}: ${detail}`);
