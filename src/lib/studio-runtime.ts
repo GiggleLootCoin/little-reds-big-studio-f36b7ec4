@@ -8,6 +8,7 @@ import { createBestFreeVoiceClone } from "./real-voice-clone-v2";
 import { buildBuddyMemoryContext, rememberUserMessage } from "./buddy-memory.mjs";
 import { isLocalQwenEnabled, runLocalQwen } from "./local-qwen";
 import { getStoredPresetPreview } from "./stored-preset-previews";
+import { convertWithApplioSpace } from "./media/rvc-applio";
 
 export type { StudioArtifact, StudioCapability, StudioJobInput } from "./studio-runtime-impl";
 export { runtimeProviders } from "./studio-runtime-impl";
@@ -16,6 +17,8 @@ const DEFAULT_CLONE_TEXT =
   "Hello. This is your cloned voice sample. Would you like to use this voice for Buddy now, or would you like to record again?";
 const PREVIEW_TEXT =
   "Hello. This is Buddy. This is a real voice preview, so you can listen before choosing this voice.";
+const RED_RVC_MODEL_URL =
+  "https://drive.google.com/uc?id=19yLeLybGU8csalpLFuK6ORSS3aqaDkrW";
 let cachedRedReferenceId = "";
 let cachedRedReferenceBase64 = "";
 
@@ -212,11 +215,63 @@ async function prepareSpeechToText(input: StudioJobInput): Promise<StudioJobInpu
     );
   }
 }
+
+async function runRedRvcConversion(
+  capability: "voice-swap" | "singing-voice-conversion" | "song-voice-swap",
+  input: StudioJobInput,
+  onStatus?: (s: string) => void,
+): Promise<StudioArtifact> {
+  const audio = input.audio ?? input.sourceAudio ?? input.vocalAudio;
+  if (!(audio instanceof Blob) || !audio.size) {
+    throw new Error("A source vocal/audio recording is required for RVC conversion.");
+  }
+  const requestedVoice = String(
+    input.targetVoice ?? input.voice ?? input.speaker ?? input.targetSpeaker ?? "Red",
+  ).trim();
+  if (requestedVoice && requestedVoice !== "Red") {
+    throw new Error("This verified RVC route currently targets the authorized Red voice model only.");
+  }
+  onStatus?.("Loading Red's trained RVC voice model…");
+  const response = await convertWithApplioSpace({
+    audio,
+    model: String(input.model ?? RED_RVC_MODEL_URL),
+    index: typeof input.index === "string" ? input.index : undefined,
+    pitch: typeof input.pitch === "number" ? input.pitch : 0,
+    indexRate: typeof input.indexRate === "number" ? input.indexRate : 0.75,
+    protect: typeof input.protect === "number" ? input.protect : 0.5,
+    f0Method:
+      input.f0Method === "crepe" || input.f0Method === "crepe-tiny" || input.f0Method === "fcpe"
+        ? input.f0Method
+        : "rmvpe",
+    autotune: Boolean(input.autotune ?? false),
+  });
+  const blob = await response.blob();
+  if (!blob.size) throw new Error("Applio RVC returned an empty audio artifact.");
+  const normalized = await normalizeAndVerifyBrowserAudio(blob);
+  if (normalized.stats.duration <= 0 || normalized.stats.peak <= 0 || normalized.stats.rms <= 0) {
+    throw new Error("Applio RVC returned silent or unusable audio.");
+  }
+  onStatus?.("Red RVC conversion verified.");
+  return {
+    capability,
+    value: normalized.blob,
+    url: normalized.url,
+    provider: "ApplioX RVC — RedsVoiceSwap_53e_424s",
+  };
+}
+
 export async function runStudioJob(
   capability: StudioCapability,
   input: StudioJobInput,
   onStatus?: (s: string) => void,
 ): Promise<StudioArtifact> {
+  if (
+    capability === "voice-swap" ||
+    capability === "singing-voice-conversion" ||
+    capability === "song-voice-swap"
+  ) {
+    return runRedRvcConversion(capability, input, onStatus);
+  }
   if (capability === "voice-clone") {
     const sample = input.refAudio ?? input.referenceAudio ?? input.audio;
     if (!(sample instanceof Blob)) {

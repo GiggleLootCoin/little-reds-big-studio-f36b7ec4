@@ -19,9 +19,9 @@ env:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
-      # Production deploy: full voice and chat smoke remain mandatory after every main push.
+      # Production deploy: full voice, chat, and real RVC smoke remain mandatory after every main push.
       # Pull-request runs are enabled so verified fixes can be deployed even when a bot-authored
       # main push does not create a new workflow run.
       - name: Checkout
@@ -81,6 +81,8 @@ jobs:
         run: node scripts/live-buddy-chat-smoke.mjs
       - name: Install ffmpeg for production voice smoke
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
+      - name: Real Applio RVC conversion smoke
+        run: node scripts/rvc-applio-live-smoke.mjs
       - name: Install Playwright for production voice smoke
         run: |
           npm install --no-save --no-audit --no-fund --ignore-scripts playwright
@@ -89,4 +91,5 @@ jobs:
         env:
           PRODUCTION_URL: https://little-reds-big-studio-f36b7ec4.gigglelootcoin.workers.dev
           SAMPLE_URL: https://raw.githubusercontent.com/GiggleLootCoin/little-reds-big-studio-f36b7ec4/${{ github.sha }}/13.7s%20Recording%20%28Jul%202%20%40%205_53%20PM%29.mp3
+          STT_SAMPLE_URL: https://raw.githubusercontent.com/ggerganov/whisper.cpp/master/samples/jfk.wav
         run: node scripts/live-voice-browser-smoke.mjs

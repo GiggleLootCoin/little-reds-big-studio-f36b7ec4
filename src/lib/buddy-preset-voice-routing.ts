@@ -1,3 +1,5 @@
+import "./buddy-audio-unlock";
+
 export type BuddyPresetRoutingProfile = {
   mode: "preset" | "clone";
   speaker: string;
