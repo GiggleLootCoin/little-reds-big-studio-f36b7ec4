@@ -5,6 +5,7 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+# Verification-only workflow; production code is never patched by CI.
 jobs:
   verify:
     runs-on: ubuntu-latest
