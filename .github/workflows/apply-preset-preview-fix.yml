@@ -2,6 +2,7 @@ name: Verify preset preview is playback-only
 on:
   push:
     branches: [main]
+  workflow_dispatch:
 permissions:
   contents: read
 jobs:
@@ -9,17 +10,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Verify preset preview has no TTS generation call
+      - name: Verify preset preview is playback-only
         run: |
           python3 - <<'PY'
           from pathlib import Path
           s = Path('src/components/studio/BuddyVoicePicker.tsx').read_text()
-          start = s.index('const previewPreset = async () =>')
+          start = s.index('const previewPreset = () =>')
           end = s.index('  const test = async () =>', start)
           block = s[start:end]
-          if '/api/ai/tts' in block or 'runStudioJob' in block:
-              raise SystemExit('Preset preview must not call a generation route.')
-          if 'getStoredPresetPreview' not in block:
-              raise SystemExit('Preset preview must use stored audio assets.')
-          print('OK: preset Preview Voice is playback-only and uses stored preview assets.')
+          assert '/api/ai/tts' not in block
+          assert 'runStudioJob' not in block
+          assert 'runLittleRedJob' not in block
+          assert 'getStoredPresetPreview' in block
+          print('OK: preset Preview Voice is stored-audio playback only.')
           PY
