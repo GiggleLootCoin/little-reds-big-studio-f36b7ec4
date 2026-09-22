@@ -1,47 +1,35 @@
-name: Fix preset voice router
+name: Preset voice route verification
 
 on:
   push:
     branches: [main]
+  workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  patch:
-    if: ${{ !contains(github.event.head_commit.message, '[preset-router-fixed]') }}
+  verify:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0
-
-      - name: Route preset TTS through production Aura-2 handler
+          fetch-depth: 1
+      - name: Verify production preset route
         run: |
           python3 - <<'PY'
           from pathlib import Path
-          import re
-
-          p = Path('src/worker.ts')
-          s = p.read_text()
-          old = '''    if (path === "/api/ai/tts" && request.method === "POST")\n      return reliablePresetTTS(request, env);'''
-          new = '''    // The production server handler owns preset TTS. It supports the full\n    // Aura-2 speaker catalogue, including the expanded voice IDs such as\n    // atlas (Gus). Do not intercept this route with the legacy Aura-1 map.\n    if (path === "/api/ai/tts" && request.method === "POST")\n      return studioServer.fetch(request, env, ctx);'''
-          if old not in s:
-              raise SystemExit('Expected legacy /api/ai/tts worker route was not found')
-          p.write_text(s.replace(old, new, 1))
-          print('Preset TTS now routes to src/server.ts Aura-2 production handler.')
+          s=Path("src/worker.ts").read_text()
+          assert 'path === "/api/ai/tts"' in s
+          assert "studioServer.fetch(request, env, ctx)" in s
+          assert 'reliablePresetTTS(request, env)' not in s
+          s=Path("src/server.ts").read_text()
+          assert '@cf/deepgram/aura-2-en' in s
+          assert '@cf/deepgram/aura-2-es' in s
+          print("Preset TTS routes through the production Aura-2 handler.")
           PY
-
-      - name: Verify the stale atlas rejection is no longer the active route
+      - name: Typecheck and build
         run: |
-          grep -n -A4 -B2 'path === "/api/ai/tts"' src/worker.ts
-          grep -n 'aura-2-en' src/server.ts
-
-      - name: Commit patch
-        run: |
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add src/worker.ts
-          git diff --cached --check
-          git commit -m 'fix: route preset TTS through Aura-2 production handler [preset-router-fixed]'
-          git push origin main
+          npm ci
+          npm run typecheck --if-present
+          npm run build --if-present
