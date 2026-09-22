@@ -60,8 +60,21 @@ export function BuddyLiveChat() {
       const history = [{ role: "system", content: systemPrompt }, ...prior, { role: "user", content: content.length === 1 ? clean : content }];
       const r = await runStudioJob("chat", { prompt: clean, text: clean, messages: history, history, language, mood, tone }, setStatus), reply = artifactText(r.value).trim(); if (!reply) throw Error("Buddy did not return a response.");
       setMessages((x) => [...x, { id: crypto.randomUUID(), role: "assistant", content: reply, createdAt: Date.now() }]); setAttachments([]);
-      if (spoken || liveRef.current) { await speak(reply); setStatus("Buddy responded with audio."); } else setStatus("Buddy responded.");
-    } catch (e) { setStatus(e instanceof Error ? e.message : "Buddy could not respond right now."); setMessages((x) => [...x, { id: crypto.randomUUID(), role: "assistant", content: "I couldn't complete that response. Please try again.", createdAt: Date.now() }]); }
+      if (spoken || liveRef.current) {
+        try {
+          await speak(reply);
+          setStatus("Buddy responded with audio.");
+        } catch (voiceError) {
+          // A successful text response must never be replaced by a generic
+          // chat failure just because the selected voice engine failed.
+          const detail = voiceError instanceof Error ? voiceError.message : String(voiceError);
+          setStatus("Buddy answered, but audio could not play. " + detail);
+        }
+      } else setStatus("Buddy responded.");
+    } catch (e) {
+      setStatus(e instanceof Error ? e.message : "Buddy could not respond right now.");
+      setMessages((x) => [...x, { id: crypto.randomUUID(), role: "assistant", content: "I couldn't complete that response. Please try again.", createdAt: Date.now() }]);
+    }
     finally { busyRef.current = false; setBusy(false); if (liveRef.current && !speakingRef.current) setTimeout(() => void beginLive(), 250); }
   }
   async function speak(text: string) {
