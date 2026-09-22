@@ -167,10 +167,12 @@ export function BuddyVoicePicker() {
         setStatus("✓ REAL VOICE CLONE READY — press Play on the audio player below.");
         return;
       }
-      const result = await runLittleRedJob("voice-clone", { speaker: normalizePresetSpeaker(current.speaker), language: current.language || "English", text: CLONE_TEXT, target_text: CLONE_TEXT, refText: REFERENCE_TRANSCRIPT }, { privacy: "personal", onStatus: setStatus });
-      if (!result.url) throw new Error("The voice engine returned no playable audio.");
-      setGeneratedAudio(result.url);
-      setStatus("✓ Voice sample generated — press Play below.");
+      const speaker = normalizePresetSpeaker(current.speaker);
+      const storedPreview = getStoredPresetPreview(speaker);
+      if (!storedPreview) throw new Error("No stored preview is installed for this preset voice. No audio will be generated.");
+      setPreviewVoice(speaker);
+      setGeneratedAudio(storedPreview);
+      setStatus("✓ Stored preset voice loaded — press Play below. No voice generation was used.");
     } catch (error) {
       setStatus(`${FAILURE} ${error instanceof Error ? error.message : "The voice engine failed."}`);
     } finally { setBusy(false); }
