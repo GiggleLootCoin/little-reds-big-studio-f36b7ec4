@@ -28,7 +28,7 @@ export function BuddyLiveChat() {
   function stopNativeSpeech() { const current = nativeSpeech.current; nativeSpeech.current = null; if (!current) return; try { current.stop(); } catch {} }
   function startNativeSpeech() {
     stopNativeSpeech(); nativeTranscript.current = ""; const Constructor = browserSpeechConstructor(); nativeSpeechAvailable.current = Boolean(Constructor); if (!Constructor) return;
-    try { const recognition = new Constructor(); recognition.continuous = true; recognition.interimResults = false; recognition.lang = String(getBuddyVoiceProfile().language || "en-US").replace("English", "en-US"); recognition.onresult = (event) => { const parts: string[] = []; for (let i = 0; i < event.results.length; i += 1) { const result = event.results[i]; if (result?.isFinal && result[0]?.transcript) parts.push(result[0].transcript); } if (parts.length) nativeTranscript.current = parts.join(" ").trim(); }; recognition.onerror = () => undefined; recognition.onend = () => { if (liveRef.current && recording && nativeSpeech.current === recognition) { try { recognition.start(); } catch {} } }; nativeSpeech.current = recognition; recognition.start(); } catch { nativeSpeech.current = null; nativeSpeechAvailable.current = false; }
+    try { const recognition = new Constructor(); recognition.continuous = true; recognition.interimResults = false; recognition.lang = String(getBuddyVoiceProfile().language || "en-US").replace("English", "en-US"); recognition.onresult = (event) => { const parts: string[] = []; for (let i = 0; i < event.results.length; i += 1) { const result = event.results[i]; if (result?.isFinal && result[0]?.transcript) parts.push(result[0].transcript); } if (parts.length) nativeTranscript.current = parts.join(" ").trim(); }; recognition.onerror = () => undefined; recognition.onend = () => { if (liveRef.current && rec.current?.state === "recording" && nativeSpeech.current === recognition) { try { recognition.start(); } catch {} } }; nativeSpeech.current = recognition; recognition.start(); } catch { nativeSpeech.current = null; nativeSpeechAvailable.current = false; }
   }
   useEffect(() => { try { const x = JSON.parse(localStorage.getItem(KEY) || "[]"); if (Array.isArray(x)) setMessages(x.slice(-50)); } catch {} setAwareness(getBuddyAwarenessCapabilities()); void listMicrophones().then(setMics).catch(() => setMics([])); return () => { liveRef.current = false; stopNativeSpeech(); if (silenceTimer.current) clearTimeout(silenceTimer.current); silenceTimer.current = null; if (raf.current) cancelAnimationFrame(raf.current); raf.current = null; try { void ctx.current?.close(); } catch {} ctx.current = null; try { rec.current?.stop(); } catch {} rec.current = null; stopMicrophone(stream.current); stream.current = null; try { audio.current?.pause(); } catch {} }; }, []);
   useEffect(() => { try { localStorage.setItem(KEY, JSON.stringify(messages.slice(-50))); } catch {} }, [messages]);
@@ -60,8 +60,21 @@ export function BuddyLiveChat() {
       const history = [{ role: "system", content: systemPrompt }, ...prior, { role: "user", content: content.length === 1 ? clean : content }];
       const r = await runStudioJob("chat", { prompt: clean, text: clean, messages: history, history, language, mood, tone }, setStatus), reply = artifactText(r.value).trim(); if (!reply) throw Error("Buddy did not return a response.");
       setMessages((x) => [...x, { id: crypto.randomUUID(), role: "assistant", content: reply, createdAt: Date.now() }]); setAttachments([]);
-      if (spoken || liveRef.current) { await speak(reply); setStatus("Buddy responded with audio."); } else setStatus("Buddy responded.");
-    } catch (e) { setStatus(e instanceof Error ? e.message : "Buddy could not respond right now."); setMessages((x) => [...x, { id: crypto.randomUUID(), role: "assistant", content: "I couldn't complete that response. Please try again.", createdAt: Date.now() }]); }
+      if (spoken || liveRef.current) {
+        try {
+          await speak(reply);
+          setStatus("Buddy responded with audio.");
+        } catch (voiceError) {
+          // A successful text response must never be replaced by a generic
+          // chat failure just because the selected voice engine failed.
+          const detail = voiceError instanceof Error ? voiceError.message : String(voiceError);
+          setStatus("Buddy answered, but audio could not play. " + detail);
+        }
+      } else setStatus("Buddy responded.");
+    } catch (e) {
+      setStatus(e instanceof Error ? e.message : "Buddy could not respond right now.");
+      setMessages((x) => [...x, { id: crypto.randomUUID(), role: "assistant", content: "I couldn't complete that response. Please try again.", createdAt: Date.now() }]);
+    }
     finally { busyRef.current = false; setBusy(false); if (liveRef.current && !speakingRef.current) setTimeout(() => void beginLive(), 250); }
   }
   async function speak(text: string) {
