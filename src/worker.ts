@@ -12,6 +12,25 @@ type Env = {
   CHATTERBOX_TOKEN?: string;
 };
 
+function jsonError(message: string, status = 500) {
+  return Response.json(
+    { ok: false, error: message },
+    { status, headers: { "cache-control": "no-store" } },
+  );
+}
+function mediaUrl(result: unknown): string | null {
+  if (typeof result === "string" && /^https?:\/\//i.test(result)) return result;
+  if (!result || typeof result !== "object") return null;
+  const record = result as Record<string, unknown>;
+  for (const key of ["audio", "url", "uri", "result", "output"]) {
+    const value = record[key];
+    if (typeof value === "string" && /^https?:\/\//i.test(value)) return value;
+    const nested = mediaUrl(value);
+    if (nested) return nested;
+  }
+  return null;
+}
+
 async function reliableMusic(request: Request, env: Env): Promise<Response> {
   if (!env.AI) return jsonError("Cloudflare Workers AI binding is not configured.", 503);
   let body: {
