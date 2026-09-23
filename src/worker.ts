@@ -12,132 +12,6 @@ type Env = {
   CHATTERBOX_TOKEN?: string;
 };
 
-const PRESET_SPEAKERS: Record<string, string> = {
-  Ryan: "angus",
-  Aiden: "orion",
-  Vivian: "asteria",
-  Serena: "luna",
-  Uncle_Fu: "zeus",
-  Dylan: "perseus",
-  Eric: "helios",
-  Ono_Anna: "stella",
-  Sohee: "athena",
-};
-
-async function reliablePresetTTS(request: Request, env: Env): Promise<Response> {
-  if (!env.AI) return jsonError("Cloudflare Workers AI binding is not configured.", 503);
-  let body: { text?: string; target_text?: string; prompt?: string; speaker?: string; language?: string };
-  try {
-    body = await request.json();
-  } catch {
-    return jsonError("Invalid voice request.", 400);
-  }
-  const text = String(body.text || body.target_text || body.prompt || "").trim().slice(0, 1200);
-  if (!text) return jsonError("Voice text is empty.", 400);
-  const requested = String(body.speaker || "Ryan").trim();
-  const speaker = PRESET_SPEAKERS[requested];
-  if (!speaker) return jsonError(`Unsupported Buddy preset voice: ${requested}`, 400);
-  const language = normalizeSpeechLanguage(body.language) || "en";
-  try {
-    const result = await env.AI.run(
-      "@cf/deepgram/aura-1",
-      { text, speaker, language },
-      { returnRawResponse: true },
-    );
-    if (!(result instanceof Response)) throw new Error("Aura-1 did not return an audio response.");
-    if (!result.ok) throw new Error(`Aura-1 returned HTTP ${result.status}.`);
-    const headers = new Headers(result.headers);
-    headers.set("content-type", headers.get("content-type") || "audio/mpeg");
-    headers.set("cache-control", "no-store");
-    headers.set("x-buddy-voice", requested);
-    headers.set("x-buddy-voice-engine", "Cloudflare Workers AI Deepgram Aura-1");
-    return new Response(result.body, { status: result.status, headers });
-  } catch (error) {
-    console.error("Buddy preset TTS failed", error);
-    return jsonError(
-      `Buddy preset voice generation failed. ${error instanceof Error ? error.message : String(error)}`,
-      502,
-    );
-  }
-}
-
-async function reliableSpeechToText(request: Request, env: Env): Promise<Response> {
-  if (!env.AI) return jsonError("Cloudflare Workers AI binding is not configured.", 503);
-  let body: { audioBase64?: string; language?: string };
-  try {
-    body = await request.json();
-  } catch {
-    return jsonError("Invalid speech request.", 400);
-  }
-  const audio = String(body.audioBase64 || "").trim();
-  if (!audio) return jsonError("Audio is required for speech recognition.", 400);
-  const language = normalizeSpeechLanguage(body.language);
-  let firstError: unknown;
-  try {
-    const result = await env.AI.run("@cf/openai/whisper-large-v3-turbo", {
-      audio,
-      task: "transcribe",
-      ...(language ? { language } : {}),
-      vad_filter: false,
-    });
-    const text = chatText(result);
-    if (text) return Response.json({ text, transcription: text });
-    firstError = new Error("Whisper Turbo returned no transcription text.");
-  } catch (error) {
-    firstError = error;
-  }
-  try {
-    const result = await env.AI.run("@cf/openai/whisper", audio);
-    const text = chatText(result);
-    if (text) return Response.json({ text, transcription: text });
-    throw new Error("Whisper returned no transcription text.");
-  } catch (secondError) {
-    console.error("Reliable STT failed", firstError, secondError);
-    return jsonError(
-      "Speech recognition could not produce a result. Please try speaking for a little longer.",
-      503,
-    );
-  }
-}
-async function reliableChat(request: Request, env: Env): Promise<Response> {
-  if (!env.AI) return jsonError("Cloudflare Workers AI binding is not configured.", 503);
-  let body: { messages?: unknown[]; prompt?: string; text?: string };
-  try {
-    body = await request.json();
-  } catch {
-    return jsonError("Invalid chat request.", 400);
-  }
-  const messages =
-    Array.isArray(body.messages) && body.messages.length
-      ? body.messages
-      : [{ role: "user", content: String(body.prompt || body.text || "").trim() }];
-  if (!messages.length) return jsonError("A message is required.", 400);
-  try {
-    const result = await env.AI.run("@cf/qwen/qwen3-30b-a3b-fp8", {
-      messages,
-      max_tokens: 1024,
-      temperature: 0.6,
-    });
-    const text = chatText(result);
-    if (text) return Response.json({ response: text, text, result });
-    throw new Error("Qwen3 returned no usable response.");
-  } catch (qwenError) {
-    console.warn("Direct Qwen chat failed; trying GPT-OSS", qwenError);
-    try {
-      const result = await env.AI.run("@cf/openai/gpt-oss-20b", {
-        messages,
-        max_tokens: 1024,
-        temperature: 0.6,
-      });
-      const text = chatText(result);
-      if (text) return Response.json({ response: text, text, result });
-      throw new Error("GPT-OSS returned no usable response.");
-    } catch (fallbackError) {
-      console.error("Reliable Buddy chat failed", qwenError, fallbackError);
-      return jsonError("Buddy could not produce a response right now.", 503);
-    }
-  }
-}
 async function reliableMusic(request: Request, env: Env): Promise<Response> {
   if (!env.AI) return jsonError("Cloudflare Workers AI binding is not configured.", 503);
   let body: {
@@ -198,10 +72,10 @@ export default {
           return handleProductionVoiceClone(request, env);
       } catch {}
     }
-    // Chat, speech-to-text, preset TTS, image/video, and web-search all go
-    // through the production server router. That router owns the complete
-    // free-first fallback chain (OpenRouter/Hugging Face/Workers AI) and
-    // avoids maintaining a second, less-capable copy of those routes here.
+    // Route shared AI capabilities through the production server router.
+    // It owns the complete free-first fallback chain and the current
+    // provider contracts, so the Worker must not shadow them with stale
+    // duplicate implementations.
     if (
       path === "/api/ai/tts" ||
       path === "/api/ai/speech-to-text" ||
