@@ -1,6 +1,5 @@
 import studioServer from "./server";
 import { handleProductionVoiceClone, voiceCloneHealth } from "./lib/production-voice-clone";
-import { normalizeSpeechLanguage } from "./lib/speech-language.mjs";
 
 type WorkersAIResult = Record<string, unknown> | string | unknown[] | Response | null;
 type WorkersAI = {
@@ -12,45 +11,6 @@ type Env = {
   CHATTERBOX_ENDPOINT?: string;
   CHATTERBOX_TOKEN?: string;
 };
-
-type ChatMessage = { role?: string; content?: unknown; [key: string]: unknown };
-
-function jsonError(message: string, status = 500) {
-  return Response.json(
-    { ok: false, error: message },
-    { status, headers: { "cache-control": "no-store" } },
-  );
-}
-function chatText(result: WorkersAIResult): string {
-  if (typeof result === "string") return result.trim();
-  if (!result || typeof result !== "object" || result instanceof Response || Array.isArray(result)) return "";
-  const record = result as Record<string, unknown>;
-  for (const key of ["response", "text", "generated_text", "output", "content"]) {
-    if (typeof record[key] === "string" && record[key].trim()) return record[key].trim();
-  }
-  const choices = record.choices;
-  const message =
-    Array.isArray(choices) && choices[0] && typeof choices[0] === "object"
-      ? (choices[0] as Record<string, unknown>).message
-      : undefined;
-  return message &&
-    typeof message === "object" &&
-    typeof (message as Record<string, unknown>).content === "string"
-    ? String((message as Record<string, unknown>).content).trim()
-    : "";
-}
-function mediaUrl(result: unknown): string | null {
-  if (typeof result === "string" && /^https?:\/\//i.test(result)) return result;
-  if (!result || typeof result !== "object") return null;
-  const record = result as Record<string, unknown>;
-  for (const key of ["audio", "url", "uri", "result", "output"]) {
-    const value = record[key];
-    if (typeof value === "string" && /^https?:\/\//i.test(value)) return value;
-    const nested = mediaUrl(value);
-    if (nested) return nested;
-  }
-  return null;
-}
 
 const PRESET_SPEAKERS: Record<string, string> = {
   Ryan: "angus",
@@ -238,31 +198,17 @@ export default {
           return handleProductionVoiceClone(request, env);
       } catch {}
     }
-    // The production server handler owns preset TTS. It supports the full
-    // Aura-2 speaker catalogue, including the expanded voice IDs such as
-    // atlas (Gus). Do not intercept this route with the legacy Aura-1 map.
-    if (path === "/api/ai/tts" && request.method === "POST")
+    // Chat, speech-to-text, preset TTS, image/video, and web-search all go
+    // through the production server router. That router owns the complete
+    // free-first fallback chain (OpenRouter/Hugging Face/Workers AI) and
+    // avoids maintaining a second, less-capable copy of those routes here.
+    if (
+      path === "/api/ai/tts" ||
+      path === "/api/ai/speech-to-text" ||
+      path === "/api/ai/chat" ||
+      path === "/api/ai/web-search"
+    )
       return studioServer.fetch(request, env, ctx);
-    if (path === "/api/ai/speech-to-text" && request.method === "POST")
-      return reliableSpeechToText(request, env);
-    if (path === "/api/ai/chat" && request.method === "POST") {
-      try {
-        const body = (await request.clone().json()) as { messages?: unknown[] };
-        const messages = Array.isArray(body.messages) ? body.messages : [];
-        const hasImage = messages.some((message: unknown) => {
-          const item = message as ChatMessage;
-          const content = item?.content;
-          return (
-            Array.isArray(content) &&
-            content.some((part: unknown) => {
-              if (!part || typeof part !== "object") return false;
-              return (part as Record<string, unknown>).type === "image_url";
-            })
-          );
-        });
-        if (!hasImage) return reliableChat(request, env);
-      } catch {}
-    }
     if (path === "/api/ai/music" && request.method === "POST") return reliableMusic(request, env);
     return studioServer.fetch(request, env, ctx);
   },
