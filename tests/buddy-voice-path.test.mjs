@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-const [runtime, engine, gateway, picker, chat, voice, server, previews, routing, twa] = await Promise.all([
+const [runtime, engine, gateway, picker, chat, voice, server, previews, routing, twa, wrapper] = await Promise.all([
   readFile("src/lib/studio-runtime.ts", "utf8"),
   readFile("src/lib/little-red-engine.ts", "utf8"),
   readFile("src/lib/voice-clone-gateway.ts", "utf8"),
@@ -128,6 +128,6 @@ test("Android TWA does not intentionally pin stale cached Studio assets", () => 
 });
 
 test("production Worker routes Buddy chat through the validated server fallback handler", () => {
-  assert.match(wrapper, /if\(path === \\"\/api\/ai\/chat\\" && request\.method === \\"POST\\"\)return studioServer\.fetch\(request,env,ctx\);/);
-  assert.doesNotMatch(wrapper, /env\.AI\.run\(\\"@cf\/qwen\/qwen3\.8-27b\\"/);
+  assert.ok(wrapper.includes('if(path === "/api/ai/chat" && request.method === "POST")return studioServer.fetch(request,env,ctx);'));
+  assert.doesNotMatch(wrapper, /env\\.AI\\.run\\("@cf\\/qwen\\/qwen3\\.8-27b"/);
 });
