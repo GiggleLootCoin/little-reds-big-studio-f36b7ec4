@@ -25,12 +25,65 @@ function hasImageContent(messages: unknown[]) { return messages.some((message) =
 function chatText(result: unknown): string { if (typeof result === "string") return result.trim(); if (result && typeof result === "object") { for (const key of ["response", "text", "generated_text", "output", "content"]) { const value = (result as Record<string, unknown>)[key]; if (typeof value === "string" && value.trim()) return value.trim(); } const choices = (result as Record<string, unknown>).choices; if (Array.isArray(choices)) { const content = (choices[0] as Record<string, unknown> | undefined)?.message; if (content && typeof content === "object" && typeof (content as Record<string, unknown>).content === "string") return String((content as Record<string, unknown>).content).trim(); } } return ""; }
 function speechText(result: unknown): string { if (typeof result === "string") return result.trim(); if (result && typeof result === "object") { const direct = chatText(result); if (direct) return direct; const info = (result as Record<string, unknown>).transcription_info; if (info && typeof info === "object") { const text = (info as Record<string, unknown>).text; if (typeof text === "string" && text.trim()) return text.trim(); } const segments = (result as Record<string, unknown>).segments; if (Array.isArray(segments)) { const text = segments.map((segment) => segment && typeof segment === "object" ? String((segment as Record<string, unknown>).text || "") : "").join(" ").trim(); if (text) return text; } } return ""; }
 async function hfChat(env: ServerEnv, messages: unknown[]): Promise<unknown | null> { const token = env.HF_TOKEN?.trim(); if (!token) return null; const response = await fetch("https://router.huggingface.co/v1/chat/completions", { method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify({ model: "Qwen/Qwen3-32B:fastest", messages, max_tokens: 256, temperature: 0.55, stream: false }) }); const payload: unknown = await response.json().catch(() => null); if (response.ok) return payload; console.warn("Hugging Face chat fallback failed", response.status, payload); return null; }
+async function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return await Promise.race([
+    promise,
+    new Promise<T>((_, reject) => setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms)),
+  ]);
+}
+async function requestJson(url: string, init: RequestInit, timeoutMs: number): Promise<unknown | null> {
+  try {
+    const response = await withTimeout(fetch(url, init), timeoutMs, url);
+    const payload: unknown = await withTimeout(response.json().catch(() => null), timeoutMs, `${url} response`);
+    return response.ok ? payload : null;
+  } catch {
+    return null;
+  }
+}
 async function openRouterChat(env: ServerEnv, messages: unknown[]): Promise<unknown> {
+  // Fast path: Workers AI is edge-local and avoids waiting on external provider
+  // cold starts. External free providers remain fallbacks, but each is bounded.
+  if (env.AI) {
+    try {
+      const model = hasImageContent(messages) ? "@cf/qwen/qwen3.8-27b" : "@cf/meta/llama-3.1-8b-instruct-fast";
+      return await withTimeout(
+        env.AI.run(model, { messages, max_tokens: 160, temperature: 0.55, stream: false }),
+        7000,
+        "Cloudflare AI",
+      );
+    } catch (error) {
+      console.warn("Fast Workers AI chat path failed; trying free fallbacks.", error);
+    }
+  }
   const key = env.OPENROUTERAI_API_KEY?.trim();
-  if (key) { const response = await fetch("https://openrouter.ai/api/v1/chat/completions", { method: "POST", headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json", "HTTP-Referer": "https://little-reds-big-studio-f36b7ec4.workers.dev", "X-Title": "Buddy AI" }, body: JSON.stringify({ model: "openrouter/free", messages, max_tokens: 192, temperature: 0.6 }) }); const payload: unknown = await response.json().catch(() => null); if (response.ok) return payload; if (!env.AI) throw new Error(`OpenRouter request failed: HTTP ${response.status}`); }
-  const hf = await hfChat(env, messages); if (hf) return hf;
-  if (env.AI) { try { const model = hasImageContent(messages) ? "@cf/qwen/qwen3.8-27b" : "@cf/meta/llama-3.1-8b-instruct-fast"; return await env.AI.run(model, { messages, max_tokens: 192, temperature: 0.55, stream: false }); } catch (error) { if (key && isCapacityError(error)) { const response = await fetch("https://openrouter.ai/api/v1/chat/completions", { method: "POST", headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" }, body: JSON.stringify({ model: "openrouter/free", messages, max_tokens: 192, temperature: 0.6 }) }); const payload: unknown = await response.json().catch(() => null); if (response.ok) return payload; } throw error; } }
-  throw new Error("Buddy chat engine is not configured");
+  if (key) {
+    const payload = await requestJson(
+      "https://openrouter.ai/api/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${key}`,
+          "Content-Type": "application/json",
+          "HTTP-Referer": "https://little-reds-big-studio-f36b7ec4.workers.dev",
+          "X-Title": "Buddy AI",
+        },
+        body: JSON.stringify({ model: "openrouter/free", messages, max_tokens: 160, temperature: 0.6 }),
+      },
+      7000,
+    );
+    if (payload) return payload;
+  }
+  const hf = await requestJson(
+    "https://router.huggingface.co/v1/chat/completions",
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${env.HF_TOKEN?.trim() || ""}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ model: "Qwen/Qwen3-32B:fastest", messages, max_tokens: 160, temperature: 0.55, stream: false }),
+    },
+    7000,
+  );
+  if (hf) return hf;
+  throw new Error("Buddy chat engines are temporarily unavailable.");
 }
 function ttsLanguage(value: string | undefined): string { const raw = String(value || "en").trim().toLowerCase(); const map: Record<string, string> = { english: "en", en: "en", spanish: "es", es: "es", french: "fr", fr: "fr", german: "de", de: "de", italian: "it", it: "it", portuguese: "pt", pt: "pt", chinese: "zh", mandarin: "zh", zh: "zh", japanese: "ja", ja: "ja", korean: "ko", ko: "ko", hindi: "hi", hi: "hi", arabic: "ar", ar: "ar" }; return map[raw] || raw.split(/[-_]/)[0] || "en"; }
 const AURA_EN_SPEAKERS = new Set(["amalthea", "andromeda", "apollo", "arcas", "aries", "asteria", "athena", "atlas", "aurora", "callista", "cora", "cordelia", "delia", "draco", "electra", "harmonia", "helena", "hera", "hermes", "hyperion", "iris", "janus", "juno", "jupiter", "luna", "mars", "minerva", "neptune", "odysseus", "ophelia", "orion", "orpheus", "pandora", "phoebe", "pluto", "saturn", "thalia", "theia", "vesta", "zeus"]);

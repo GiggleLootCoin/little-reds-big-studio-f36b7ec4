@@ -446,15 +446,21 @@ export async function runStudioJob(
       ? prepared.input._skipProviders.map((value) => String(value))
       : [],
   );
-  const providers = runnersFor(prepared.capability).filter((provider) => {
-    if (skipped.has(provider.id)) return false;
-    if (
-      prepared.capability === "tts" &&
-      ["hf-chatterbox", "hf-chatterbox-v3"].includes(provider.id)
-    )
-      return false;
-    return true;
-  });
+  const providers = runnersFor(prepared.capability)
+    .filter((provider) => {
+      if (skipped.has(provider.id)) return false;
+      if (
+        prepared.capability === "tts" &&
+        ["hf-chatterbox", "hf-chatterbox-v3"].includes(provider.id)
+      )
+        return false;
+      return true;
+    })
+    // Multiple runner IDs can intentionally share one server endpoint. Do not
+    // retry the identical endpoint as though it were an independent provider.
+    .filter((provider, index, all) =>
+      all.findIndex((candidate) => candidate.url === provider.url) === index,
+    );
   const failures: string[] = [];
   const timeoutMs =
     prepared.capability === "music"
@@ -468,8 +474,10 @@ export async function runStudioJob(
             : prepared.capability === "tts"
               ? 25000
               : prepared.capability === "chat"
-                ? 30000
-                : 120000;
+                ? 9000
+                : prepared.capability === "speech-to-text"
+                  ? 9000
+                  : 120000;
   for (const provider of providers) {
     try {
       onStatus?.(`Working with ${provider.name}…`);
