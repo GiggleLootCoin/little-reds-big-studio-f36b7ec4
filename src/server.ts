@@ -46,11 +46,15 @@ async function openRouterChat(env: ServerEnv, messages: unknown[]): Promise<unkn
   if (env.AI) {
     try {
       const model = hasImageContent(messages) ? "@cf/qwen/qwen3.8-27b" : "@cf/meta/llama-3.1-8b-instruct-fast";
-      return await withTimeout(
+      const result = await withTimeout(
         env.AI.run(model, { messages, max_tokens: 160, temperature: 0.55, stream: false }),
         7000,
         "Cloudflare AI",
       );
+      // A successful provider call is not enough: only accept a usable answer.
+      // Otherwise continue to the independent fallback providers below.
+      if (chatText(result)) return result;
+      console.warn("Workers AI chat returned no usable text; trying free fallbacks.");
     } catch (error) {
       console.warn("Fast Workers AI chat path failed; trying free fallbacks.", error);
     }
@@ -71,7 +75,8 @@ async function openRouterChat(env: ServerEnv, messages: unknown[]): Promise<unkn
       },
       7000,
     );
-    if (payload) return payload;
+    if (payload && chatText(payload)) return payload;
+    if (payload) console.warn("OpenRouter chat returned no usable text; trying the next fallback.");
   }
   const hf = await requestJson(
     "https://router.huggingface.co/v1/chat/completions",
@@ -82,8 +87,9 @@ async function openRouterChat(env: ServerEnv, messages: unknown[]): Promise<unkn
     },
     7000,
   );
-  if (hf) return hf;
-  throw new Error("Buddy chat engines are temporarily unavailable.");
+  if (hf && chatText(hf)) return hf;
+  if (hf) console.warn("Hugging Face chat returned no usable text.");
+  throw new Error("Buddy chat engines are temporarily unavailable. Please try again shortly.");
 }
 function ttsLanguage(value: string | undefined): string { const raw = String(value || "en").trim().toLowerCase(); const map: Record<string, string> = { english: "en", en: "en", spanish: "es", es: "es", french: "fr", fr: "fr", german: "de", de: "de", italian: "it", it: "it", portuguese: "pt", pt: "pt", chinese: "zh", mandarin: "zh", zh: "zh", japanese: "ja", ja: "ja", korean: "ko", ko: "ko", hindi: "hi", hi: "hi", arabic: "ar", ar: "ar" }; return map[raw] || raw.split(/[-_]/)[0] || "en"; }
 const AURA_EN_SPEAKERS = new Set(["amalthea", "andromeda", "apollo", "arcas", "aries", "asteria", "athena", "atlas", "aurora", "callista", "cora", "cordelia", "delia", "draco", "electra", "harmonia", "helena", "hera", "hermes", "hyperion", "iris", "janus", "juno", "jupiter", "luna", "mars", "minerva", "neptune", "odysseus", "ophelia", "orion", "orpheus", "pandora", "phoebe", "pluto", "saturn", "thalia", "theia", "vesta", "zeus"]);
