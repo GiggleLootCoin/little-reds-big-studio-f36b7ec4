@@ -76,7 +76,8 @@ test("Red default migration only replaces the stale legacy Ryan default", () => 
 
 test("Buddy chat has a real server-side Qwen route through the deployed Worker wrapper", () => {
   assert.match(wrapper, /path === "\/api\/ai\/chat" && request\.method === "POST"/);
-  assert.match(wrapper, /env\.AI\.run\("@cf\/qwen\/qwen3\.8-27b"/);
+  assert.ok(wrapper.includes('if(path === "/api/ai/chat" && request.method === "POST")return studioServer.fetch(request,env,ctx);'));
+  assert.ok(!wrapper.includes('env.AI.run("@cf/qwen/qwen3.8-27b"'));
   assert.match(wrapper, /max_tokens: 320/);
 });
 
