@@ -475,7 +475,9 @@ export async function runStudioJob(
               ? 25000
               : prepared.capability === "chat"
                 ? 9000
-                : 120000;
+                : prepared.capability === "speech-to-text"
+                  ? 9000
+                  : 120000;
   for (const provider of providers) {
     try {
       onStatus?.(`Working with ${provider.name}…`);
