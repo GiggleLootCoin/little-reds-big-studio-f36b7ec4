@@ -13,6 +13,7 @@ const [runtime, engine, gateway, picker, chat, voice, server, previews, routing,
   readFile("src/lib/stored-preset-previews.ts", "utf8"),
   readFile("src/lib/buddy-preset-voice-routing.ts", "utf8"),
   readFile("twa/twa-manifest.json", "utf8"),
+  readFile("scripts/write-worker-wrapper.mjs", "utf8"),
 ]);
 
 test("production Red clone uses the Worker endpoint and verifies returned audio", () => {
@@ -124,4 +125,9 @@ test("preset TTS canonicalizes both raw Aura names and full Aura-2 IDs", () => {
 
 test("Android TWA does not intentionally pin stale cached Studio assets", () => {
   assert.match(twa, /"enableCache": false/);
+});
+
+test("production Worker routes Buddy chat through the validated server fallback handler", () => {
+  assert.match(wrapper, /if\(path === \\"\/api\/ai\/chat\\" && request\.method === \\"POST\\"\)return studioServer\.fetch\(request,env,ctx\);/);
+  assert.doesNotMatch(wrapper, /env\.AI\.run\(\\"@cf\/qwen\/qwen3\.8-27b\\"/);
 });
