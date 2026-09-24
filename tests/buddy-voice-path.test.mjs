@@ -129,5 +129,5 @@ test("Android TWA does not intentionally pin stale cached Studio assets", () => 
 
 test("production Worker routes Buddy chat through the validated server fallback handler", () => {
   assert.ok(wrapper.includes('if(path === "/api/ai/chat" && request.method === "POST")return studioServer.fetch(request,env,ctx);'));
-  assert.doesNotMatch(wrapper, /env\\.AI\\.run\\("@cf\\/qwen\\/qwen3\\.8-27b"/);
+  assert.ok(!wrapper.includes('env.AI.run("@cf/qwen/qwen3.8-27b"'));
 });
