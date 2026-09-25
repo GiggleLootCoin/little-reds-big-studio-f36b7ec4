@@ -113,7 +113,7 @@ async function cloudflareAI(request: Request, env: ServerEnv): Promise<Response 
   const url = new URL(request.url); if (!url.pathname.startsWith(AI_PREFIX)) return null; if (!env.AI) return jsonError("Cloudflare Workers AI binding is not configured.", 503); if (request.method !== "POST") return jsonError("POST required.", 405);
   let body: { capability?: string; prompt?: string; text?: string; lyrics?: string; language?: string; messages?: unknown[]; speaker?: string; audioBase64?: string; image?: string; duration?: number; aspectRatio?: string; resolution?: string; instrumental?: boolean; lyricsOptimizer?: boolean; searchQuery?: string };
   try { body = await request.json(); } catch { return jsonError("Invalid JSON request.", 400); }
-  const pathCapability = url.pathname.slice(AI_PREFIX.length).split("/")[0].trim(), capability = String(body.capability || pathCapability).trim(), prompt = String(body.prompt ?? body.text ?? body.lyrics ?? "").trim(); if (!prompt && !["speech-to-text", "video"].includes(capability)) return jsonError("Prompt is required.", 400);
+  const pathCapability = url.pathname.slice(AI_PREFIX.length).split("/")[0].trim(), capability = String(body.capability || pathCapability).trim(), prompt = String(body.prompt ?? body.text ?? body.lyrics ?? "").trim(); if (!prompt && !["speech-to-text", "video", "chat"].includes(capability) && !(capability === "chat" && Array.isArray(body.messages) && body.messages.length)) return jsonError("Prompt is required.", 400);
   try {
     if (capability === "speech-to-text") {
       if (!body.audioBase64) return jsonError("Audio is required for speech recognition.", 400);
