@@ -49,6 +49,8 @@ jobs:
         run: node --test tests/buddy-orchestrator.test.mjs
       - name: Buddy experience contract tests
         run: node --test tests/buddy-experience-contract.test.mjs
+      - name: Buddy bounded chat timeout regression tests
+        run: node --test tests/buddy-chat-timeout.test.mjs
       - name: Buddy cognitive core regression tests
         run: node --test tests/buddy-cognitive-core.test.mjs
       - name: Applio RVC adapter contract tests

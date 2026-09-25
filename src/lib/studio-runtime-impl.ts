@@ -447,6 +447,8 @@ export async function runStudioJob(
       : [],
   );
   const providers = runnersFor(prepared.capability)
+    // Chat has a server-side fallback chain; avoid slow, duplicate public demo Spaces.
+    .filter((provider) => prepared.capability !== "chat" || provider.url.startsWith("/api/ai/chat"))
     .filter((provider) => {
       if (skipped.has(provider.id)) return false;
       if (
@@ -474,7 +476,7 @@ export async function runStudioJob(
             : prepared.capability === "tts"
               ? 25000
               : prepared.capability === "chat"
-                ? 9000
+                ? 18000
                 : prepared.capability === "speech-to-text"
                   ? 9000
                   : 120000;

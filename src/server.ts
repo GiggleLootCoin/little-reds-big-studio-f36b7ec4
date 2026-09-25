@@ -26,18 +26,29 @@ function chatText(result: unknown): string { if (typeof result === "string") ret
 function speechText(result: unknown): string { if (typeof result === "string") return result.trim(); if (result && typeof result === "object") { const direct = chatText(result); if (direct) return direct; const info = (result as Record<string, unknown>).transcription_info; if (info && typeof info === "object") { const text = (info as Record<string, unknown>).text; if (typeof text === "string" && text.trim()) return text.trim(); } const segments = (result as Record<string, unknown>).segments; if (Array.isArray(segments)) { const text = segments.map((segment) => segment && typeof segment === "object" ? String((segment as Record<string, unknown>).text || "") : "").join(" ").trim(); if (text) return text; } } return ""; }
 async function hfChat(env: ServerEnv, messages: unknown[]): Promise<unknown | null> { const token = env.HF_TOKEN?.trim(); if (!token) return null; const response = await fetch("https://router.huggingface.co/v1/chat/completions", { method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify({ model: "Qwen/Qwen3-32B:fastest", messages, max_tokens: 256, temperature: 0.55, stream: false }) }); const payload: unknown = await response.json().catch(() => null); if (response.ok) return payload; console.warn("Hugging Face chat fallback failed", response.status, payload); return null; }
 async function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
-  return await Promise.race([
-    promise,
-    new Promise<T>((_, reject) => setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms)),
-  ]);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }
 async function requestJson(url: string, init: RequestInit, timeoutMs: number): Promise<unknown | null> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const response = await withTimeout(fetch(url, init), timeoutMs, url);
-    const payload: unknown = await withTimeout(response.json().catch(() => null), timeoutMs, `${url} response`);
+    const response = await fetch(url, { ...init, signal: controller.signal });
+    const payload: unknown = await response.json().catch(() => null);
     return response.ok ? payload : null;
   } catch {
     return null;
+  } finally {
+    clearTimeout(timer);
   }
 }
 async function openRouterChat(env: ServerEnv, messages: unknown[]): Promise<unknown> {
@@ -48,7 +59,7 @@ async function openRouterChat(env: ServerEnv, messages: unknown[]): Promise<unkn
       const model = hasImageContent(messages) ? "@cf/qwen/qwen3.8-27b" : "@cf/meta/llama-3.1-8b-instruct-fast";
       const result = await withTimeout(
         env.AI.run(model, { messages, max_tokens: 160, temperature: 0.55, stream: false }),
-        7000,
+        5000,
         "Cloudflare AI",
       );
       // A successful provider call is not enough: only accept a usable answer.
@@ -73,22 +84,25 @@ async function openRouterChat(env: ServerEnv, messages: unknown[]): Promise<unkn
         },
         body: JSON.stringify({ model: "openrouter/free", messages, max_tokens: 160, temperature: 0.6 }),
       },
-      7000,
+      5000,
     );
     if (payload && chatText(payload)) return payload;
     if (payload) console.warn("OpenRouter chat returned no usable text; trying the next fallback.");
   }
-  const hf = await requestJson(
-    "https://router.huggingface.co/v1/chat/completions",
-    {
-      method: "POST",
-      headers: { Authorization: `Bearer ${env.HF_TOKEN?.trim() || ""}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ model: "Qwen/Qwen3-32B:fastest", messages, max_tokens: 160, temperature: 0.55, stream: false }),
-    },
-    7000,
-  );
-  if (hf && chatText(hf)) return hf;
-  if (hf) console.warn("Hugging Face chat returned no usable text.");
+  const hfToken = env.HF_TOKEN?.trim();
+  if (hfToken) {
+    const hf = await requestJson(
+      "https://router.huggingface.co/v1/chat/completions",
+      {
+        method: "POST",
+        headers: { Authorization: `Bearer ${hfToken}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ model: "Qwen/Qwen3-32B:fastest", messages, max_tokens: 160, temperature: 0.55, stream: false }),
+      },
+      5000,
+    );
+    if (hf && chatText(hf)) return hf;
+    if (hf) console.warn("Hugging Face chat returned no usable text.");
+  }
   throw new Error("Buddy chat engines are temporarily unavailable. Please try again shortly.");
 }
 function ttsLanguage(value: string | undefined): string { const raw = String(value || "en").trim().toLowerCase(); const map: Record<string, string> = { english: "en", en: "en", spanish: "es", es: "es", french: "fr", fr: "fr", german: "de", de: "de", italian: "it", it: "it", portuguese: "pt", pt: "pt", chinese: "zh", mandarin: "zh", zh: "zh", japanese: "ja", ja: "ja", korean: "ko", ko: "ko", hindi: "hi", hi: "hi", arabic: "ar", ar: "ar" }; return map[raw] || raw.split(/[-_]/)[0] || "en"; }
