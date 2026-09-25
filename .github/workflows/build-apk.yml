@@ -1,9 +1,5 @@
 name: Build Little Red's Big Studio APK
 
-# Final production APK build: validate pull requests and produce a fresh installable artifact on main.
-# Fresh-build trigger: keep the production APK artifact aligned with the current main commit.
-# Final voice-routing rebuild: ensure the APK is rebuilt after the verified Aura preset routing fix.
-# Rebuild marker: force a fresh production APK after the preset-preview patch commit.
 on:
   pull_request:
     branches: [main]
@@ -12,18 +8,17 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build-apk:
     runs-on: ubuntu-latest
     timeout-minutes: 30
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up JDK 17 (required by Bubblewrap)
+      - name: Set up JDK 17
         uses: actions/setup-java@v5
         with:
           distribution: temurin
@@ -35,10 +30,10 @@ jobs:
           node-version: 20
           cache: npm
 
-      - name: Install Bubblewrap CLI + core locally
+      - name: Install Bubblewrap
         run: npm install --no-audit --no-fund --ignore-scripts --prefix ./twa @bubblewrap/cli@1.25.0 @bubblewrap/core@1.25.0
 
-      - name: Prepare signing key + Bubblewrap config + Android SDK
+      - name: Prepare Android SDK and signing
         env:
           TWA_SIGNING_KEY_BASE64: ${{ secrets.TWA_SIGNING_KEY_BASE64 }}
         run: |
@@ -49,9 +44,7 @@ jobs:
           echo '{"jdkPath": "'$JAVA_HOME_17_X64'", "androidSdkPath": "'$SDK_ROOT'"}' > ~/.bubblewrap/config.json
           if [ -n "$TWA_SIGNING_KEY_BASE64" ]; then
             echo "$TWA_SIGNING_KEY_BASE64" | base64 -d > twa/lrbs-release-key.jks
-            echo "Signing key decoded."
           else
-            echo "No release signing secret configured; APK will use debug signing."
             rm -f twa/lrbs-release-key.jks
           fi
           mkdir -p "$SDK_ROOT"
@@ -61,24 +54,13 @@ jobs:
           rm cmdline-tools.zip
           mkdir -p cmdline-tools/latest
           cp -a cmdline-tools/bin cmdline-tools/lib cmdline-tools/latest/
-          mkdir -p "$SDK_ROOT/bin"
-          ln -sf ../cmdline-tools/latest/bin/sdkmanager "$SDK_ROOT/bin/sdkmanager"
-          ln -sf ../cmdline-tools/latest/bin/avdmanager "$SDK_ROOT/bin/avdmanager" 2>/dev/null || true
           SDKMANAGER="$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
-          echo "Accepting Android SDK licenses..."
           for i in $(seq 1 100); do printf 'y\n'; done | "$SDKMANAGER" --licenses --sdk_root="$SDK_ROOT" >/tmp/sdk-licenses.log 2>&1 || true
-          if ! grep -q 'All SDK package licenses accepted' /tmp/sdk-licenses.log; then
-            echo "SDK license acceptance output:"
-            tail -40 /tmp/sdk-licenses.log
-            exit 1
-          fi
-          echo "Installing required Android SDK packages..."
+          grep -q 'All SDK package licenses accepted' /tmp/sdk-licenses.log
           "$SDKMANAGER" --install "platform-tools" "build-tools;35.0.0" "platforms;android-36" --sdk_root="$SDK_ROOT" >/tmp/sdk-install.log 2>&1
-          test -d "$SDK_ROOT/build-tools/35.0.0"
-          test -d "$SDK_ROOT/platforms/android-36"
-          echo "Android SDK installed and licenses accepted."
+          test -x "$SDK_ROOT/build-tools/35.0.0/apksigner"
 
-      - name: Initialize TWA project (non-interactive)
+      - name: Initialize TWA project
         working-directory: twa
         env:
           JAVA_HOME: ${{ env.JAVA_HOME_17_X64 }}
@@ -90,19 +72,13 @@ jobs:
           node - <<'NODE'
           const fs = require('fs');
           const path = require('path');
-
           async function main() {
             const manifestPath = 'twa-manifest.json';
-            const jdkPath = process.env.JAVA_HOME;
-            const targetDir = path.resolve('app');
             const manifestJson = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
             const timestampVersion = Math.floor(Date.now() / 1000);
             manifestJson.appVersionCode = timestampVersion;
             manifestJson.appVersionName = `1.0.${timestampVersion}`;
-            console.log('Package ID:', manifestJson.packageId);
-            console.log('Host:', manifestJson.host);
-            console.log('APK versionCode:', manifestJson.appVersionCode);
-            console.log('APK versionName:', manifestJson.appVersionName);
+            const targetDir = path.resolve('app');
             const corePath = path.join(process.cwd(), 'node_modules/@bubblewrap/core/dist/index.js');
             if (!fs.existsSync(corePath)) throw new Error(`@bubblewrap/core not found at ${corePath}`);
             const core = require(corePath);
@@ -114,32 +90,19 @@ jobs:
             const twaManifest = new TwaManifest(manifestJson);
             const error = twaManifest.validate();
             if (error) throw new Error(`Manifest validation error: ${error}`);
-            if (jdkPath) manifestJson.jdkPath = jdkPath;
+            manifestJson.jdkPath = process.env.JAVA_HOME;
             fs.mkdirSync(targetDir, { recursive: true });
             const generator = new TwaGenerator();
-            const log = { printMessage: (msg) => console.log('  [bubblewrap]', msg), printError: (msg) => console.error('  [bubblewrap:ERROR]', msg) };
+            const log = { printMessage: console.log, printError: console.error };
             await generator.createTwaProject(targetDir, twaManifest, log);
             await twaManifest.saveToFile(path.join(targetDir, 'twa-manifest.json'));
-            console.log('SUCCESS: TWA project generated');
           }
-          main().catch(err => { console.error('FATAL:', err.message || err); process.exit(1); });
+          main().catch(err => { console.error(err); process.exit(1); });
           NODE
 
       - name: Update Bubblewrap project
         working-directory: twa
         run: npx bubblewrap update --skipVersionUpgrade
-
-      - name: Diagnose signing keystore
-        working-directory: twa
-        env:
-          TWA_SIGNING_KEY_STORE_PASSWORD: ${{ secrets.TWA_SIGNING_KEY_STORE_PASSWORD || 'android' }}
-        run: |
-          if [ -f lrbs-release-key.jks ]; then
-            echo "=== Release keystore detected ==="
-            keytool -list -storetype PKCS12 -keystore lrbs-release-key.jks -storepass "$TWA_SIGNING_KEY_STORE_PASSWORD" 2>&1 | head -20 || true
-          else
-            echo "=== No release keystore; debug signing path ==="
-          fi
 
       - name: Build APK
         working-directory: twa
@@ -155,25 +118,15 @@ jobs:
           set -euo pipefail
           npx bubblewrap build --type=apk
 
-      - name: Verify APK output
+      - name: Verify APK
         working-directory: twa
         run: |
           set -euo pipefail
-          echo "=== Bubblewrap APK output ==="
-          find . -maxdepth 2 -type f -name '*.apk' -print -exec ls -lh {} \;
           APK="app-release-signed.apk"
-          if [ ! -s "$APK" ]; then
-            echo "ERROR: Bubblewrap did not produce app-release-signed.apk"
-            exit 1
-          fi
           test -s "$APK"
-          if [ ! -x "$SDK_ROOT/build-tools/35.0.0/apksigner" ]; then
-            echo "ERROR: apksigner is missing"
-            exit 1
-          fi
           "$SDK_ROOT/build-tools/35.0.0/apksigner" verify --verbose "$APK"
-          file "$APK"
-          echo "Verified release APK: $(stat -c '%s bytes' "$APK")"
+          sha256sum "$APK"
+          stat -c '%s bytes' "$APK"
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
@@ -183,3 +136,15 @@ jobs:
           if-no-files-found: error
           retention-days: 30
           compression-level: 9
+
+      - name: Publish persistent GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        working-directory: twa
+        run: |
+          set -euo pipefail
+          TAG="apk-build-${GITHUB_RUN_NUMBER}"
+          gh release create "$TAG" app-release-signed.apk \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Little Red's Big Studio APK ${GITHUB_RUN_NUMBER}" \
+            --notes "Verified APK built from main commit ${GITHUB_SHA}. Download the APK asset directly from this release."
