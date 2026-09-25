@@ -54,6 +54,9 @@ jobs:
           rm cmdline-tools.zip
           mkdir -p cmdline-tools/latest
           cp -a cmdline-tools/bin cmdline-tools/lib cmdline-tools/latest/
+          mkdir -p "$SDK_ROOT/bin"
+          ln -sf ../cmdline-tools/latest/bin/sdkmanager "$SDK_ROOT/bin/sdkmanager"
+          ln -sf ../cmdline-tools/latest/bin/avdmanager "$SDK_ROOT/bin/avdmanager" 2>/dev/null || true
           SDKMANAGER="$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
           for i in $(seq 1 100); do printf 'y\n'; done | "$SDKMANAGER" --licenses --sdk_root="$SDK_ROOT" >/tmp/sdk-licenses.log 2>&1 || true
           grep -q 'All SDK package licenses accepted' /tmp/sdk-licenses.log
