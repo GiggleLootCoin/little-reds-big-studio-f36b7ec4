@@ -10,6 +10,7 @@ import { buildPresetTtsRequest } from "@/lib/buddy-preset-voice-routing";
 import { getBuiltInRedVoiceSample } from "@/lib/red-default-voice";
 import { captureBuddyCameraFrame, captureBuddyScreenFrame, getBuddyAwarenessCapabilities } from "@/lib/buddy-awareness";
 import { playBuddyAudio, unlockBuddyAudio } from "@/lib/buddy-audio-unlock";
+import { speakBuddyLocally } from "@/lib/speech/buddy-voice-engine";
 import buddyReference from "../../../file_0000000070e8824391d24367b5f22d59.png";
 import "./BuddyVisual.css";
 
