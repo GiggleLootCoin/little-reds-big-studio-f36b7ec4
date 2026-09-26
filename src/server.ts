@@ -61,8 +61,15 @@ async function openRouterChat(env: ServerEnv, messages: unknown[]): Promise<unkn
       attempts.push(withTimeout(
         env.AI.run("@cf/meta/llama-3.1-8b-instruct-fast", { messages, max_tokens: 160, temperature: 0.55, stream: false }),
         4500,
-        "Cloudflare AI",
-      ).then((result) => chatText(result) ? result : Promise.reject(new Error("Cloudflare AI returned no usable text."))));
+        "Cloudflare Llama",
+      ).then((result) => chatText(result) ? result : Promise.reject(new Error("Cloudflare Llama returned no usable text."))));
+      // Keep a second current Workers AI model in the same race. This avoids
+      // making Buddy completely dependent on one model allocation/route.
+      attempts.push(withTimeout(
+        env.AI.run("@cf/qwen/qwen3.8-27b", { messages, max_tokens: 160, temperature: 0.55, stream: false }),
+        5000,
+        "Cloudflare Qwen",
+      ).then((result) => chatText(result) ? result : Promise.reject(new Error("Cloudflare Qwen returned no usable text."))));
     }
     const key = env.OPENROUTERAI_API_KEY?.trim();
     if (key) {
@@ -106,9 +113,40 @@ async function openRouterChat(env: ServerEnv, messages: unknown[]): Promise<unkn
       );
       if (chatText(result)) return result;
     } catch (error) { console.warn("Cloudflare vision chat failed.", error); }
+    // If the multimodal model is temporarily unavailable, still give the
+    // user a text response instead of failing the entire Buddy turn.
+    try {
+      const textMessages = messages.map((message) => {
+        if (!message || typeof message !== "object") return message;
+        const record = message as Record<string, unknown>;
+        if (!Array.isArray(record.content)) return message;
+        const text = record.content
+          .filter((part) => part && typeof part === "object" && (part as Record<string, unknown>).type === "text")
+          .map((part) => String((part as Record<string, unknown>).text ?? ""))
+          .join("\n")
+          .trim();
+        return { ...record, content: text || "[image attachment]" };
+      });
+      const result = await withTimeout(
+        env.AI.run("@cf/meta/llama-3.1-8b-instruct-fast", { messages: textMessages, max_tokens: 160, temperature: 0.55, stream: false }),
+        4500,
+        "Cloudflare text fallback",
+      );
+      if (chatText(result)) return result;
+    } catch (error) { console.warn("Cloudflare text fallback failed.", error); }
   }
   // Image chats keep the Workers AI vision path first; text-only chats have
   // already raced all available providers above.
+  if (env.AI) {
+    try {
+      const result = await withTimeout(
+        env.AI.run("@cf/qwen/qwen3.8-27b", { messages, max_tokens: 160, temperature: 0.55, stream: false }),
+        5000,
+        "Cloudflare Qwen final fallback",
+      );
+      if (chatText(result)) return result;
+    } catch (error) { console.warn("Cloudflare Qwen final fallback failed.", error); }
+  }
   const key = env.OPENROUTERAI_API_KEY?.trim();
   if (key) {
     const payload = await requestJson(
