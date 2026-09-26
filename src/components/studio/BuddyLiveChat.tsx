@@ -10,6 +10,7 @@ import { buildPresetTtsRequest } from "@/lib/buddy-preset-voice-routing";
 import { getBuiltInRedVoiceSample } from "@/lib/red-default-voice";
 import { captureBuddyCameraFrame, captureBuddyScreenFrame, getBuddyAwarenessCapabilities } from "@/lib/buddy-awareness";
 import { playBuddyAudio, unlockBuddyAudio } from "@/lib/buddy-audio-unlock";
+import { speakBuddyLocally } from "@/lib/speech/buddy-voice-engine";
 import buddyReference from "../../../file_0000000070e8824391d24367b5f22d59.png";
 import "./BuddyVisual.css";
 
@@ -86,7 +87,18 @@ export function BuddyLiveChat() {
       if (!r.url) throw Error("No usable Buddy voice was returned.");
       if (r.url.startsWith("blob:")) { await playBuddyAudio(r.url); return; }
       await playBuddyAudio(r.url);
-    } catch (error) { setStatus(error instanceof Error ? error.message : "Buddy's selected voice could not be generated."); throw error; }
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      // Keep voice interaction usable when the remote Red clone service is unavailable.
+      // The cloned Red route remains primary; the phone's built-in voice is a local fallback.
+      const fallbackStarted = speakBuddyLocally(text, "browser-en-us");
+      if (fallbackStarted) {
+        setStatus("Buddy's Red voice service is unavailable; using your phone's local voice.");
+        return;
+      }
+      setStatus(detail || "Buddy's selected voice could not be generated.");
+      throw error;
+    }
     finally { speakingRef.current = false; setBuddyStatus("idle"); if (liveRef.current) setTimeout(() => void beginLive(), 250); }
   }
   function stopAll() { liveRef.current = false; stopNativeSpeech(); stopMonitor(); try { rec.current?.stop(); } catch {} rec.current = null; stopMicrophone(stream.current); stream.current = null; try { audio.current?.pause(); } catch {} }
