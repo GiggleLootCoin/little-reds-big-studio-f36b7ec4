@@ -18,6 +18,12 @@ function getFallbackAudio(): HTMLAudioElement | null {
   audio.muted = true;
   audio.setAttribute("playsinline", "true");
   audio.preload = "auto";
+  audio.style.position = "fixed";
+  audio.style.width = "1px";
+  audio.style.height = "1px";
+  audio.style.opacity = "0.01";
+  audio.style.pointerEvents = "none";
+  document.body?.appendChild(audio);
   fallbackAudio = audio;
   return audio;
 }
