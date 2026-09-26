@@ -21,3 +21,21 @@ test("live speech is bounded and does not wait for IndexedDB persistence before 
 test("Buddy sends a bounded recent conversation window to reduce prompt prefill latency", () => {
   assert.match(chat, /messages\.slice\(-12\)\.map/);
 });
+
+
+test("live voice uses on-device final speech transcript before paid/remote transcription", () => {
+  assert.match(chat, /const fastTranscript = isLive \? nativeTranscript\.current\.trim\(\) : ""/);
+  assert.match(chat, /if \(fastTranscript\) \{ setTranscript\(fastTranscript\); void answer\(fastTranscript, true\)/);
+  assert.match(chat, /else if \(b\.size\) void stt\(b\)/);
+});
+
+test("live and tap-to-talk gestures unlock audio before asynchronous microphone work", () => {
+  assert.match(chat, /void unlockBuddyAudio\(\); liveRef\.current = true/);
+  assert.match(chat, /void unlockBuddyAudio\(\); const s = await openMic\(\)/);
+});
+
+test("live capture has a single restart owner after the spoken response", () => {
+  const speakBlock = chat.slice(chat.indexOf("async function speak"), chat.indexOf("function stopAll"));
+  assert.doesNotMatch(speakBlock, /beginLive\(\)/);
+  assert.match(chat, /finally \{ busyRef\.current = false; setBusy\(false\); if \(liveRef\.current && !speakingRef\.current\) setTimeout\(\(\) => void beginLive\(\), 250\); \}/);
+});
