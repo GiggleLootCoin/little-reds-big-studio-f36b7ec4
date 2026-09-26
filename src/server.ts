@@ -52,42 +52,75 @@ async function requestJson(url: string, init: RequestInit, timeoutMs: number): P
   }
 }
 async function openRouterChat(env: ServerEnv, messages: unknown[]): Promise<unknown> {
-  // Fast path: Workers AI is edge-local and avoids waiting on external provider
-  // cold starts. External free providers remain fallbacks, but each is bounded.
-  if (env.AI) {
-    try {
-      const model = hasImageContent(messages) ? "@cf/qwen/qwen3.8-27b" : "@cf/meta/llama-3.1-8b-instruct-fast";
-      const result = await withTimeout(
-        env.AI.run(model, { messages, max_tokens: 160, temperature: 0.55, stream: false }),
-        5000,
+  // For ordinary text chats, start independent providers together. The old
+  // sequential fallback could spend 5s + 5s + 5s before Buddy answered.
+  const image = hasImageContent(messages);
+  if (!image) {
+    const attempts: Promise<unknown>[] = [];
+    if (env.AI) {
+      attempts.push(withTimeout(
+        env.AI.run("@cf/meta/llama-3.1-8b-instruct-fast", { messages, max_tokens: 160, temperature: 0.55, stream: false }),
+        4500,
         "Cloudflare AI",
-      );
-      // A successful provider call is not enough: only accept a usable answer.
-      // Otherwise continue to the independent fallback providers below.
-      if (chatText(result)) return result;
-      console.warn("Workers AI chat returned no usable text; trying free fallbacks.");
-    } catch (error) {
-      console.warn("Fast Workers AI chat path failed; trying free fallbacks.", error);
+      ).then((result) => chatText(result) ? result : Promise.reject(new Error("Cloudflare AI returned no usable text."))));
     }
+    const key = env.OPENROUTERAI_API_KEY?.trim();
+    if (key) {
+      attempts.push(requestJson(
+        "https://openrouter.ai/api/v1/chat/completions",
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${key}`,
+            "Content-Type": "application/json",
+            "HTTP-Referer": "https://little-reds-big-studio-f36b7ec4.workers.dev",
+            "X-Title": "Buddy AI",
+          },
+          body: JSON.stringify({ model: "openrouter/free", messages, max_tokens: 160, temperature: 0.6 }),
+        },
+        4500,
+      ).then((payload) => payload && chatText(payload) ? payload : Promise.reject(new Error("OpenRouter returned no usable text."))));
+    }
+    const hfToken = env.HF_TOKEN?.trim();
+    if (hfToken) {
+      attempts.push(requestJson(
+        "https://router.huggingface.co/v1/chat/completions",
+        {
+          method: "POST",
+          headers: { Authorization: `Bearer ${hfToken}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ model: "Qwen/Qwen3-32B:fastest", messages, max_tokens: 160, temperature: 0.55, stream: false }),
+        },
+        4500,
+      ).then((payload) => payload && chatText(payload) ? payload : Promise.reject(new Error("Hugging Face returned no usable text."))));
+    }
+    if (attempts.length) {
+      try { return await Promise.any(attempts); }
+      catch (error) { console.warn("All parallel Buddy chat providers failed.", error); }
+    }
+  } else if (env.AI) {
+    try {
+      const result = await withTimeout(
+        env.AI.run("@cf/qwen/qwen3.8-27b", { messages, max_tokens: 160, temperature: 0.55, stream: false }),
+        5000,
+        "Cloudflare vision AI",
+      );
+      if (chatText(result)) return result;
+    } catch (error) { console.warn("Cloudflare vision chat failed.", error); }
   }
+  // Image chats keep the Workers AI vision path first; text-only chats have
+  // already raced all available providers above.
   const key = env.OPENROUTERAI_API_KEY?.trim();
   if (key) {
     const payload = await requestJson(
       "https://openrouter.ai/api/v1/chat/completions",
       {
         method: "POST",
-        headers: {
-          Authorization: `Bearer ${key}`,
-          "Content-Type": "application/json",
-          "HTTP-Referer": "https://little-reds-big-studio-f36b7ec4.workers.dev",
-          "X-Title": "Buddy AI",
-        },
+        headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json", "HTTP-Referer": "https://little-reds-big-studio-f36b7ec4.workers.dev", "X-Title": "Buddy AI" },
         body: JSON.stringify({ model: "openrouter/free", messages, max_tokens: 160, temperature: 0.6 }),
       },
-      5000,
+      4500,
     );
     if (payload && chatText(payload)) return payload;
-    if (payload) console.warn("OpenRouter chat returned no usable text; trying the next fallback.");
   }
   const hfToken = env.HF_TOKEN?.trim();
   if (hfToken) {
@@ -98,10 +131,9 @@ async function openRouterChat(env: ServerEnv, messages: unknown[]): Promise<unkn
         headers: { Authorization: `Bearer ${hfToken}`, "Content-Type": "application/json" },
         body: JSON.stringify({ model: "Qwen/Qwen3-32B:fastest", messages, max_tokens: 160, temperature: 0.55, stream: false }),
       },
-      5000,
+      4500,
     );
     if (hf && chatText(hf)) return hf;
-    if (hf) console.warn("Hugging Face chat returned no usable text.");
   }
   throw new Error("Buddy chat engines are temporarily unavailable. Please try again shortly.");
 }
