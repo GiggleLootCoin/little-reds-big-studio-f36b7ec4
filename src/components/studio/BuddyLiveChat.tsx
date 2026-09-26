@@ -79,27 +79,97 @@ export function BuddyLiveChat() {
     finally { busyRef.current = false; setBusy(false); if (liveRef.current && !speakingRef.current) setTimeout(() => void beginLive(), 250); }
   }
   async function speak(text: string) {
-    if (muted || speakingRef.current) return; speakingRef.current = true; setBuddyStatus("working", { message: "Buddy is speaking…" }); const v = getBuddyVoiceProfile();
+    if (muted || speakingRef.current) return;
+    speakingRef.current = true;
+    setBuddyStatus("working", { message: "Buddy is speaking…" });
+    const v = getBuddyVoiceProfile();
     try {
-      let r;
-      if (v.speaker === "Red" || (v.mode === "clone" && !v.speaker)) { let sample: Blob | null = null; if (v.mode === "clone") sample = await getBuddyVoiceSample(); else sample = await getBuiltInRedVoiceSample(); if (!sample) throw Error("The Red voice reference is unavailable right now."); const remoteTts = runStudioJob("tts", { refAudio: sample, referenceAudio: sample, audio: sample, referenceTranscript: v.referenceTranscript || "", refText: v.referenceTranscript || "", target_text: text, text, language: v.language || "English", mood: v.mood || "natural", tone: v.tone || "conversational", use_xvector_only: !v.referenceTranscript, model_size: liveRef.current ? "0.6B" : "1.7B" }, setStatus); r = await Promise.race([remoteTts, new Promise<never>((_, reject) => window.setTimeout(() => reject(new Error("Red voice generation timed out.")), 8000))]); }
-      else { const preset = buildPresetTtsRequest(v, text); setStatus(`Speaking with ${preset.speaker}…`); const response = await fetch("/api/ai/tts", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ capability: "tts", text: preset.text, target_text: preset.text, language: preset.language, speaker: preset.speaker, mood: preset.mood, tone: preset.tone }) }); if (!response.ok) { const detail = (await response.text().catch(() => "")).slice(0, 300); throw Error(`Preset voice generation failed (${response.status}). ${detail}`.trim()); } const blob = await response.blob(); if (!blob.size) throw Error("Preset voice generation returned empty audio."); r = { url: URL.createObjectURL(blob), provider: response.headers.get("x-voice-provider") || `Preset TTS (${preset.speaker})` }; }
+      let r: { url: string; provider?: string };
+      if (v.speaker === "Red" || (v.mode === "clone" && !v.speaker)) {
+        let sample: Blob | null = null;
+        if (v.mode === "clone") sample = await getBuddyVoiceSample();
+        else sample = await getBuiltInRedVoiceSample();
+        if (!sample) throw Error("The Red voice reference is unavailable right now.");
+
+        // Red clone remains the preferred voice, but do not make the user wait
+        // on a congested Qwen queue. Start a real audio fallback after 3.5s.
+        const remoteTts = runStudioJob("tts", {
+          refAudio: sample, referenceAudio: sample, audio: sample,
+          referenceTranscript: v.referenceTranscript || "",
+          refText: v.referenceTranscript || "",
+          target_text: text, text,
+          language: v.language || "English",
+          mood: v.mood || "natural",
+          tone: v.tone || "conversational",
+          use_xvector_only: !v.referenceTranscript,
+          model_size: "0.6B",
+        }, setStatus);
+
+        let fallbackTimer: number | undefined;
+        const auraFallback = new Promise<{ url: string; provider: string }>((resolve, reject) => {
+          fallbackTimer = window.setTimeout(async () => {
+            try {
+              setStatus("Red voice is taking too long; starting the fast audio backup…");
+              const response = await fetch("/api/ai/tts", {
+                method: "POST",
+                headers: { "content-type": "application/json" },
+                body: JSON.stringify({
+                  capability: "tts",
+                  text: text.slice(0, 900),
+                  target_text: text.slice(0, 900),
+                  language: "English",
+                  speaker: "luna",
+                }),
+              });
+              if (!response.ok) throw new Error(`Fast audio backup failed (${response.status}).`);
+              const blob = await response.blob();
+              if (!blob.size) throw new Error("Fast audio backup returned empty audio.");
+              resolve({ url: URL.createObjectURL(blob), provider: "Cloudflare Aura-2 fallback" });
+            } catch (error) {
+              reject(error instanceof Error ? error : new Error("Fast audio backup failed."));
+            }
+          }, 3500);
+        });
+        remoteTts.then(() => { if (fallbackTimer) window.clearTimeout(fallbackTimer); }, () => { /* fallback stays armed */ });
+        r = await Promise.any([
+          withTimeout(remoteTts, 5000, "Red voice generation"),
+          auraFallback,
+        ]);
+      } else {
+        const preset = buildPresetTtsRequest(v, text);
+        setStatus(`Speaking with ${preset.speaker}…`);
+        const response = await fetch("/api/ai/tts", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ capability: "tts", text: preset.text, target_text: preset.text, language: preset.language, speaker: preset.speaker, mood: preset.mood, tone: preset.tone }),
+        });
+        if (!response.ok) {
+          const detail = (await response.text().catch(() => "")).slice(0, 300);
+          throw Error(`Preset voice generation failed (${response.status}). ${detail}`.trim());
+        }
+        const blob = await response.blob();
+        if (!blob.size) throw Error("Preset voice generation returned empty audio.");
+        r = { url: URL.createObjectURL(blob), provider: response.headers.get("x-voice-provider") || `Preset TTS (${preset.speaker})` };
+      }
       if (!r.url) throw Error("No usable Buddy voice was returned.");
-      if (r.url.startsWith("blob:")) { await playBuddyAudio(r.url); return; }
       await playBuddyAudio(r.url);
+      if (r.url.startsWith("blob:")) URL.revokeObjectURL(r.url);
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
-      // Keep voice interaction usable when the remote Red clone service is unavailable.
-      // The cloned Red route remains primary; the phone's built-in voice is a local fallback.
+      // Final fallback only: browser speech is retained for devices where the
+      // network audio path is unavailable, but it is no longer the first fallback.
       const fallbackStarted = speakBuddyLocally(text, "browser-en-us");
       if (fallbackStarted) {
-        setStatus("Buddy's Red voice service is unavailable; using your phone's local voice.");
+        setStatus("Buddy audio service is unavailable; using your phone's local voice.");
         return;
       }
       setStatus(detail || "Buddy's selected voice could not be generated.");
       throw error;
+    } finally {
+      speakingRef.current = false;
+      setBuddyStatus("idle");
+      if (liveRef.current) setTimeout(() => void beginLive(), 250);
     }
-    finally { speakingRef.current = false; setBuddyStatus("idle"); if (liveRef.current) setTimeout(() => void beginLive(), 250); }
   }
   function stopAll() { liveRef.current = false; stopNativeSpeech(); stopMonitor(); try { rec.current?.stop(); } catch {} rec.current = null; stopMicrophone(stream.current); stream.current = null; try { audio.current?.pause(); } catch {} }
 
