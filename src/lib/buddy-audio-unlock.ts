@@ -126,7 +126,7 @@ export async function playBuddyAudio(url: string): Promise<void> {
   if (typeof window === "undefined" || !url) throw new Error("Buddy audio is unavailable.");
 
   const audio = getFallbackAudio();
-  if (audio && unlocked) {
+  if (audio) {
     try {
       await playWithMediaElement(url);
       return;
@@ -161,7 +161,14 @@ export async function playBuddyAudio(url: string): Promise<void> {
     }
   }
 
-  await playWithMediaElement(url);
+  try {
+    await playWithMediaElement(url);
+    return;
+  } catch {
+    // Final retry after re-unlocking the media element.
+    await unlockBuddyAudio();
+    await playWithMediaElement(url);
+  }
 }
 
 if (typeof window !== "undefined") {
