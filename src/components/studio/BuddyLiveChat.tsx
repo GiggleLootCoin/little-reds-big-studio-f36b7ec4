@@ -132,7 +132,10 @@ export function BuddyLiveChat() {
         });
         remoteTts.then(() => { if (fallbackTimer) window.clearTimeout(fallbackTimer); }, () => { /* fallback stays armed */ });
         r = await Promise.any([
-          withTimeout(remoteTts, 5000, "Red voice generation"),
+          Promise.race([
+            remoteTts,
+            new Promise<never>((_, reject) => window.setTimeout(() => reject(new Error("Red voice generation timed out.")), 5000)),
+          ]),
           auraFallback,
         ]);
       } else {
