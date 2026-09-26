@@ -103,7 +103,7 @@ export function BuddyLiveChat() {
           tone: v.tone || "conversational",
           use_xvector_only: !v.referenceTranscript,
           model_size: "0.6B",
-        }, setStatus);
+        }, setStatus) as unknown as Promise<{ url: string; provider?: string }>;
 
         let fallbackTimer: number | undefined;
         const auraFallback = new Promise<{ url: string; provider: string }>((resolve, reject) => {
