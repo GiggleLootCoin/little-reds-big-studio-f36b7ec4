@@ -23,10 +23,11 @@ test("Buddy sends a bounded recent conversation window to reduce prompt prefill 
 });
 
 
-test("live voice uses on-device final speech transcript before paid/remote transcription", () => {
-  assert.match(chat, /const fastTranscript = isLive \? nativeTranscript\.current\.trim\(\) : ""/);
+test("voice capture uses on-device final speech transcript before remote transcription", () => {
+  assert.match(chat, /const fastTranscript = nativeTranscript\.current\.trim\(\)/);
   assert.match(chat, /if \(fastTranscript\) \{ setTranscript\(fastTranscript\); void answer\(fastTranscript, true\)/);
   assert.match(chat, /else if \(b\.size\) void stt\(b\)/);
+  assert.match(chat, /startNativeSpeech\(\); if \(isLive\) monitor\(s\)/);
 });
 
 test("live and tap-to-talk gestures unlock audio before asynchronous microphone work", () => {
