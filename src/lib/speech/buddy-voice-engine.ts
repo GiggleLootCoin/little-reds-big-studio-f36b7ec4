@@ -70,22 +70,71 @@ export function chooseBuddyEngine(preferClone = false): BuddyEngine {
   return BUDDY_ENGINES.find((e) => e.id === "browser")!;
 }
 
-export function speakBuddyLocally(
+export async function speakBuddyLocally(
   text: string,
   voiceId = "browser-en-us",
   preferClone = false,
-): boolean {
+): Promise<boolean> {
   if (typeof window === "undefined" || !("speechSynthesis" in window)) return false;
+  const synth = window.speechSynthesis;
   const selected = BUDDY_VOICES.find((voice) => voice.id === voiceId) ?? BUDDY_VOICES[0];
-  if (selected.kind === "cloned") return false;
-  const utterance = new SpeechSynthesisUtterance(text);
-  utterance.lang = selected.locale;
-  utterance.rate = 1;
-  utterance.pitch = 1;
-  const voice = findSpeechVoice(selected.locale);
-  if (voice) utterance.voice = voice;
-  window.speechSynthesis.cancel();
-  window.speechSynthesis.speak(utterance);
-  void preferClone;
-  return true;
+  if (selected.kind === "cloned" || !text.trim()) return false;
+
+  // Android Chrome/WebView can have an empty voice list until synthesis is
+  // resumed. Give it a brief chance to populate before choosing the voice.
+  let voices = synth.getVoices();
+  if (!voices.length) {
+    await new Promise<void>((resolve) => {
+      let settled = false;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        synth.removeEventListener("voiceschanged", finish);
+        window.clearTimeout(timer);
+        resolve();
+      };
+      const timer = window.setTimeout(finish, 900);
+      synth.addEventListener("voiceschanged", finish, { once: true });
+      voices = synth.getVoices();
+      if (voices.length) finish();
+    });
+    voices = synth.getVoices();
+  }
+
+  return await new Promise<boolean>((resolve) => {
+    let settled = false;
+    let started = false;
+    const finish = (ok: boolean) => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timer);
+      resolve(ok);
+    };
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = selected.locale || "en-US";
+    utterance.rate = 1;
+    utterance.pitch = 1;
+    const voice = findSpeechVoice(selected.locale) ??
+      voices.find((candidate) => candidate.lang.toLowerCase().startsWith(selected.locale.toLowerCase().split("-")[0]));
+    if (voice) utterance.voice = voice;
+    utterance.onstart = () => { started = true; finish(true); };
+    utterance.onerror = () => finish(false);
+    utterance.onend = () => { if (!started) finish(false); };
+    const timer = window.setTimeout(() => {
+      if (!started) {
+        try { synth.cancel(); } catch {}
+        finish(false);
+      }
+    }, 8000);
+    try {
+      synth.cancel();
+      synth.resume();
+      synth.speak(utterance);
+      // Some Android implementations delay starting until the next task.
+      window.setTimeout(() => { if (!started && synth.paused) synth.resume(); }, 250);
+    } catch {
+      finish(false);
+    }
+    void preferClone;
+  });
 }
