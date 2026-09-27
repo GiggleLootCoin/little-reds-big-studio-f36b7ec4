@@ -75,7 +75,12 @@ export async function speakBuddyLocally(
   voiceId = "browser-en-us",
   preferClone = false,
 ): Promise<boolean> {
-  if (typeof window === "undefined" || !("speechSynthesis" in window)) return false;
+  if (typeof window === "undefined") return false;
+  const nativeAndroid = (window as typeof window & { AndroidBuddyVoice?: { isAvailable?: () => boolean; speak?: (text: string) => void } }).AndroidBuddyVoice;
+  if (nativeAndroid?.speak && nativeAndroid?.isAvailable?.()) {
+    try { nativeAndroid.speak(text.trim()); return true; } catch { /* fall through to browser speech */ }
+  }
+  if (!("speechSynthesis" in window)) return false;
   const synth = window.speechSynthesis;
   const selected = BUDDY_VOICES.find((voice) => voice.id === voiceId) ?? BUDDY_VOICES[0];
   if (selected.kind === "cloned" || !text.trim()) return false;
