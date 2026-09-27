@@ -53,13 +53,13 @@ export function BuddyLiveChat() {
     const u: Message = { id: crypto.randomUUID(), role: "user", content: clean, createdAt: Date.now(), attachments: attachments.map((f) => ({ id: crypto.randomUUID(), name: f.name, type: f.type, size: f.size })) };
     setMessages((x) => [...x, u]); setInput("");
     try {
-      const prior = messages.slice(-12).map((m) => ({ role: m.role, content: m.content }));
+      const prior = messages.slice(-6).map((m) => ({ role: m.role, content: m.content }));
       const content: { type: string; text?: string; image_url?: { url: string } }[] = [{ type: "text", text: clean }];
       const attachmentInfo = await attachmentContext(attachments); if (attachmentInfo.textParts.length) content[0].text = `${clean}\n\n${attachmentInfo.textParts.join("\n\n")}`; content.push(...attachmentInfo.imageParts);
       const voiceProfile = getBuddyVoiceProfile(), language = voiceProfile.language || "English", mood = voiceProfile.mood || "natural", tone = voiceProfile.tone || "conversational";
       const systemPrompt = `${IDENTITY} ${buildAgentSystemPrompt()} Respond in ${language}. Your current mood is ${mood}; your conversational tone is ${tone}. Keep replies compact when the user asks something simple, but give enough detail when the task needs it. Do not switch back to English unless the user asks for English.`;
       const history = [{ role: "system", content: systemPrompt }, ...prior, { role: "user", content: content.length === 1 ? clean : content }];
-      const r = await runStudioJob("chat", { prompt: clean, text: clean, messages: history, history, language, mood, tone }, setStatus), reply = artifactText(r.value).trim(); if (!reply) throw Error("Buddy did not return a response.");
+      const r = await runStudioJob("chat", { prompt: clean, text: clean, messages: history, history, language, mood, tone, max_tokens: 250, maxTokens: 250 }, setStatus), reply = artifactText(r.value).trim(); if (!reply) throw Error("Buddy did not return a response.");
       setMessages((x) => [...x, { id: crypto.randomUUID(), role: "assistant", content: reply, createdAt: Date.now() }]); setAttachments([]);
       if (spoken || liveRef.current) {
         try {
@@ -82,7 +82,7 @@ export function BuddyLiveChat() {
     if (muted || speakingRef.current) return;
     speakingRef.current = true;
     setBuddyStatus("working", { message: "Buddy is speaking…" });
-    const v = getBuddyVoiceProfile();
+    let localStarted = false;\n    try {\n      localStarted = await speakBuddyLocally(text, "browser-en-us");\n      if (localStarted) { setStatus("Buddy is speaking…"); return; }\n    } catch {}\n    const v = getBuddyVoiceProfile();
     try {
       let r: { url: string; provider?: string };
       if (v.speaker === "Red" || (v.mode === "clone" && !v.speaker)) {
