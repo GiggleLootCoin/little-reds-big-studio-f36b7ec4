@@ -6,7 +6,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.speech.tts.TextToSpeech;
 import android.webkit.JavascriptInterface;
-import android.webkit.WebChromeClient;
+import android.webkit.WebChromeClient;\nimport android.webkit.PermissionRequest;\nimport android.Manifest;\nimport android.content.pm.PackageManager;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
@@ -18,7 +18,7 @@ import java.util.Queue;
 public class MainActivity extends Activity {
     private static final String START_URL = "https://little-reds-big-studio-f36b7ec4.gigglelootcoin.workers.dev/";
     private WebView webView;
-    private TextToSpeech tts;
+    private TextToSpeech tts;\n    private PermissionRequest pendingPermissionRequest;
     private boolean ttsReady = false;
     private final Queue<String> pendingSpeech = new ArrayDeque<>();
     private final Handler main = new Handler(Looper.getMainLooper());
@@ -33,7 +33,18 @@ public class MainActivity extends Activity {
         settings.setAllowFileAccess(false);
         settings.setAllowContentAccess(false);
         settings.setUserAgentString(settings.getUserAgentString() + " LittleRedsBigStudioAndroid/NativeVoice");
-        webView.setWebChromeClient(new WebChromeClient());
+        webView.setWebChromeClient(new WebChromeClient() {
+            @Override public void onPermissionRequest(final PermissionRequest request) {
+                runOnUiThread(() -> {
+                    boolean wantsAudio = false;
+                    for (String resource : request.getResources()) if (PermissionRequest.RESOURCE_AUDIO_CAPTURE.equals(resource)) wantsAudio = true;
+                    if (wantsAudio && checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+                        requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, 4101);
+                        pendingPermissionRequest = request;
+                    } else request.grant(request.getResources());
+                });
+            }
+        });
         webView.setWebViewClient(new WebViewClient() {
             @Override public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                 return !request.getUrl().toString().startsWith(START_URL);
@@ -69,6 +80,15 @@ public class MainActivity extends Activity {
             main.post(() -> { if (ttsReady) speakNow(text); else { pendingSpeech.clear(); pendingSpeech.add(text); } });
         }
         @JavascriptInterface public void stop() { main.post(() -> { pendingSpeech.clear(); if (tts != null) tts.stop(); }); }
+    }
+
+    @Override public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == 4101 && pendingPermissionRequest != null) {
+            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) pendingPermissionRequest.grant(pendingPermissionRequest.getResources());
+            else pendingPermissionRequest.deny();
+            pendingPermissionRequest = null;
+        }
     }
 
     @Override protected void onResume() { super.onResume(); if (webView != null) webView.onResume(); }
