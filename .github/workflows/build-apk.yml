@@ -24,15 +24,6 @@ jobs:
           distribution: temurin
           java-version: 17
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: npm
-
-      - name: Install Bubblewrap
-        run: npm install --no-audit --no-fund --ignore-scripts --prefix ./twa @bubblewrap/cli@1.25.0 @bubblewrap/core@1.25.0
-
       - name: Prepare Android SDK and signing
         env:
           TWA_SIGNING_KEY_BASE64: ${{ secrets.TWA_SIGNING_KEY_BASE64 }}
@@ -40,92 +31,42 @@ jobs:
           set -euo pipefail
           SDK_ROOT="$HOME/android-sdk"
           echo "SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
-          mkdir -p ~/.bubblewrap
-          echo '{"jdkPath": "'$JAVA_HOME_17_X64'", "androidSdkPath": "'$SDK_ROOT'"}' > ~/.bubblewrap/config.json
-          if [ -n "$TWA_SIGNING_KEY_BASE64" ]; then
-            echo "$TWA_SIGNING_KEY_BASE64" | base64 -d > twa/lrbs-release-key.jks
-          else
-            rm -f twa/lrbs-release-key.jks
-          fi
           mkdir -p "$SDK_ROOT"
-          cd "$SDK_ROOT"
-          curl -fsSLo cmdline-tools.zip "https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip"
-          unzip -q cmdline-tools.zip
-          rm cmdline-tools.zip
-          mkdir -p cmdline-tools/latest
-          cp -a cmdline-tools/bin cmdline-tools/lib cmdline-tools/latest/
-          mkdir -p "$SDK_ROOT/bin"
-          ln -sf ../cmdline-tools/latest/bin/sdkmanager "$SDK_ROOT/bin/sdkmanager"
-          ln -sf ../cmdline-tools/latest/bin/avdmanager "$SDK_ROOT/bin/avdmanager" 2>/dev/null || true
+          curl -fsSLo "$RUNNER_TEMP/cmdline-tools.zip" "https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip"
+          unzip -q "$RUNNER_TEMP/cmdline-tools.zip" -d "$RUNNER_TEMP/android-tools"
+          mkdir -p "$SDK_ROOT/cmdline-tools/latest"
+          cp -a "$RUNNER_TEMP/android-tools/cmdline-tools/bin" "$RUNNER_TEMP/android-tools/cmdline-tools/lib" "$SDK_ROOT/cmdline-tools/latest/"
           SDKMANAGER="$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
           for i in $(seq 1 100); do printf 'y\n'; done | "$SDKMANAGER" --licenses --sdk_root="$SDK_ROOT" >/tmp/sdk-licenses.log 2>&1 || true
-          grep -q 'All SDK package licenses accepted' /tmp/sdk-licenses.log
-          "$SDKMANAGER" --install "platform-tools" "build-tools;35.0.0" "platforms;android-36" --sdk_root="$SDK_ROOT" >/tmp/sdk-install.log 2>&1
-          test -x "$SDK_ROOT/build-tools/35.0.0/apksigner"
+          "$SDKMANAGER" --install "platform-tools" "build-tools;35.0.0" "platforms;android-36" >/tmp/sdk-install.log 2>&1
+          if [ -n "$TWA_SIGNING_KEY_BASE64" ]; then
+            echo "$TWA_SIGNING_KEY_BASE64" | base64 -d > android/app/release-key.jks
+          else
+            keytool -genkeypair -keystore android/app/release-key.jks -storepass android -keypass android -alias key0 -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Little Red's Big Studio"
+          fi
 
-      - name: Initialize TWA project
-        working-directory: twa
-        env:
-          JAVA_HOME: ${{ env.JAVA_HOME_17_X64 }}
-          ANDROID_HOME: ${{ env.SDK_ROOT }}
-          ANDROID_SDK_ROOT: ${{ env.SDK_ROOT }}
-          TWA_SIGNING_KEY_BASE64: ${{ secrets.TWA_SIGNING_KEY_BASE64 }}
+      - name: Install pinned Gradle
         run: |
           set -euo pipefail
-          node - <<'NODE'
-          const fs = require('fs');
-          const path = require('path');
-          async function main() {
-            const manifestPath = 'twa-manifest.json';
-            const manifestJson = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
-            const timestampVersion = Math.floor(Date.now() / 1000);
-            manifestJson.appVersionCode = timestampVersion;
-            manifestJson.appVersionName = `1.0.${timestampVersion}`;
-            const targetDir = path.resolve('app');
-            const corePath = path.join(process.cwd(), 'node_modules/@bubblewrap/core/dist/index.js');
-            if (!fs.existsSync(corePath)) throw new Error(`@bubblewrap/core not found at ${corePath}`);
-            const core = require(corePath);
-            const { TwaManifest, TwaGenerator } = core;
-            if (manifestJson.signingKey?.path && !path.isAbsolute(manifestJson.signingKey.path)) {
-              manifestJson.signingKey.path = path.resolve(path.join(targetDir, '..'), manifestJson.signingKey.path);
-            }
-            if (!process.env.TWA_SIGNING_KEY_BASE64) delete manifestJson.signingKey;
-            const twaManifest = new TwaManifest(manifestJson);
-            const error = twaManifest.validate();
-            if (error) throw new Error(`Manifest validation error: ${error}`);
-            manifestJson.jdkPath = process.env.JAVA_HOME;
-            fs.mkdirSync(targetDir, { recursive: true });
-            const generator = new TwaGenerator();
-            const log = { printMessage: console.log, printError: console.error };
-            await generator.createTwaProject(targetDir, twaManifest, log);
-            await twaManifest.saveToFile(path.join(targetDir, 'twa-manifest.json'));
-          }
-          main().catch(err => { console.error(err); process.exit(1); });
-          NODE
+          curl -fsSLo "$RUNNER_TEMP/gradle.zip" "https://services.gradle.org/distributions/gradle-8.9-bin.zip"
+          unzip -q "$RUNNER_TEMP/gradle.zip" -d "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/gradle-8.9/bin" >> "$GITHUB_PATH"
+          gradle --version
 
-      - name: Update Bubblewrap project
-        working-directory: twa
-        run: npx bubblewrap update --skipVersionUpgrade
-
-      - name: Build APK
-        working-directory: twa
+      - name: Build native Android APK
         env:
-          TWA_SIGNING_KEY_ALIAS: key0
+          ANDROID_HOME: ${{ env.SDK_ROOT }}
+          ANDROID_SDK_ROOT: ${{ env.SDK_ROOT }}
           TWA_SIGNING_KEY_PASSWORD: ${{ secrets.TWA_SIGNING_KEY_PASSWORD || 'android' }}
           TWA_SIGNING_KEY_STORE_PASSWORD: ${{ secrets.TWA_SIGNING_KEY_STORE_PASSWORD || 'android' }}
-          BUBBLEWRAP_KEY_PASSWORD: ${{ secrets.TWA_SIGNING_KEY_PASSWORD || 'android' }}
-          BUBBLEWRAP_KEYSTORE_PASSWORD: ${{ secrets.TWA_SIGNING_KEY_STORE_PASSWORD || 'android' }}
-          ANDROID_HOME: ${{ env.SDK_ROOT }}
-          ANDROID_SDK_ROOT: ${{ env.SDK_ROOT }}
         run: |
           set -euo pipefail
-          npx bubblewrap build --type=apk
+          gradle --no-daemon --stacktrace -p android assembleRelease
 
       - name: Verify APK
-        working-directory: twa
         run: |
           set -euo pipefail
-          APK="app-release-signed.apk"
+          APK="android/app/build/outputs/apk/release/app-release.apk"
           test -s "$APK"
           "$SDK_ROOT/build-tools/35.0.0/apksigner" verify --verbose "$APK"
           sha256sum "$APK"
@@ -134,20 +75,20 @@ jobs:
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: little-reds-big-studio-apk
-          path: twa/app-release-signed.apk
+          name: little-reds-big-studio-apk-native
+          path: android/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
           retention-days: 30
           compression-level: 9
 
       - name: Publish persistent GitHub Release
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ github.token }}
-        working-directory: twa
         run: |
           set -euo pipefail
-          TAG="apk-build-${GITHUB_RUN_NUMBER}"
-          gh release create "$TAG" app-release-signed.apk \
+          TAG="apk-native-$GITHUB_RUN_NUMBER"
+          gh release create "$TAG" android/app/build/outputs/apk/release/app-release.apk \
             --repo "$GITHUB_REPOSITORY" \
-            --title "Little Red's Big Studio APK ${GITHUB_RUN_NUMBER}" \
-            --notes "Verified APK built from main commit ${GITHUB_SHA}. Download the APK asset directly from this release."
+            --title "Little Red's Big Studio Native APK $GITHUB_RUN_NUMBER" \
+            --notes "Native Android WebView build from main commit $GITHUB_SHA; includes Android Text-to-Speech fallback for Buddy voice responses."

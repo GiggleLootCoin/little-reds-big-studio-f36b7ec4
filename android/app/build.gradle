@@ -1,0 +1,31 @@
+plugins { id 'com.android.application' }
+
+android {
+    namespace 'com.littleredbigstudio.app'
+    compileSdk 36
+
+    defaultConfig {
+        applicationId 'com.littleredbigstudio.app'
+        minSdk 23
+        targetSdk 35
+        versionCode Integer.parseInt(System.getenv("GITHUB_RUN_NUMBER") ?: "1")
+        versionName "1.0." + (System.getenv("GITHUB_RUN_NUMBER") ?: "1")
+    }
+
+    signingConfigs {
+        release {
+            storeFile file("release-key.jks")
+            storePassword System.getenv("TWA_SIGNING_KEY_STORE_PASSWORD") ?: "android"
+            keyAlias "key0"
+            keyPassword System.getenv("TWA_SIGNING_KEY_PASSWORD") ?: "android"
+        }
+    }
+
+    buildTypes {
+        release {
+            signingConfig signingConfigs.release
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+}
