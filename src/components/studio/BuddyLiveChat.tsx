@@ -45,7 +45,9 @@ export function BuddyLiveChat() {
   async function captureAwareness(kind: "camera" | "screen") { if (busyRef.current) return; try { setStatus(kind === "camera" ? "Opening the camera…" : "Opening screen sharing…"); const file = kind === "camera" ? await captureBuddyCameraFrame() : await captureBuddyScreenFrame(); setAttachments((current) => [...current, file].slice(-6)); setStatus(kind === "camera" ? "Camera frame captured. Ask Buddy what you want it to inspect." : "Screen frame captured. Ask Buddy what you want it to inspect."); } catch (error) { setStatus(error instanceof Error ? error.message : `${kind} awareness could not be captured.`); } }
   async function dataUrl(file: File) { return new Promise<string>((resolve, reject) => { const r = new FileReader(); r.onload = () => resolve(String(r.result)); r.onerror = () => reject(r.error || new Error("Could not read attachment.")); r.readAsDataURL(file); }); }
   async function videoFrameDataUrl(file: File): Promise<string> { const url = URL.createObjectURL(file); try { const video = document.createElement("video"); video.preload = "metadata"; video.muted = true; video.playsInline = true; video.src = url; await new Promise<void>((resolve, reject) => { video.onloadeddata = () => resolve(); video.onerror = () => reject(new Error("The video attachment could not be decoded.")); }); const width = Math.min(video.videoWidth || 1280, 1280), height = Math.min(video.videoHeight || 720, 720); const canvas = document.createElement("canvas"); canvas.width = width; canvas.height = height; const context = canvas.getContext("2d"); if (!context) throw new Error("The video frame could not be rendered."); video.currentTime = 0; await new Promise<void>((resolve) => { video.onseeked = () => resolve(); }); context.drawImage(video, 0, 0, width, height); return canvas.toDataURL("image/jpeg", 0.84); } finally { URL.revokeObjectURL(url); } }
-  async function attachmentContext(files: File[]) { const textParts: string[] = []; const imageParts: { type: string; image_url: { url: string } }[] = []; for (const file of files) { if (file.type.startsWith("image/")) imageParts.push({ type: "image_url", image_url: { url: await dataUrl(file) } }); else if (file.type.startsWith("audio/")) { try { const r = await runStudioJob("speech-to-text", { audio: file }, setStatus); const t = artifactText(r.value).trim(); if (t) textParts.push(`Audio attachment "${file.name}" transcript:\n${t}`); } catch (error) { textParts.push(`Audio attachment "${file.name}" could not be transcribed: ${error instanceof Error ? error.message : String(error)}`); } } else if (file.type.startsWith("video/")) { try { imageParts.push({ type: "image_url", image_url: { url: await videoFrameDataUrl(file) } }); textParts.push(`Video attachment "${file.name}" is attached; Buddy is shown its first decoded frame.`); } catch (error) { textParts.push(`Video attachment "${file.name}" could not be decoded: ${error instanceof Error ? error.message : String(error)}`); } } else if (file.type === "text/plain" || file.type === "text/markdown" || file.type === "application/json" || file.type === "application/rtf") { const text = (await file.text()).slice(0, 12000); textParts.push(`Text attachment "${file.name}":\n${text}`); } else if (file.type === "application/pdf") textParts.push(`PDF attachment "${file.name}" is attached, but this browser path does not claim to have read PDF contents.`); } return { textParts, imageParts }; }
+  async function attachmentContext(files: File[]) { const textParts: string[] = []; const imageParts: { type: string; image_url: { url: string } }[] = []; for (const file of files) { if (file.type.startsWith("image/")) imageParts.push({ type: "image_url", image_url: { url: await dataUrl(file) } }); else if (file.type.startsWith("audio/")) { try { const r = await runStudioJob("speech-to-text", { audio: file }, setStatus); const t = artifactText(r.value).trim(); if (t) textParts.push(`Audio attachment "${file.name}" transcript:
+${t}`); } catch (error) { textParts.push(`Audio attachment "${file.name}" could not be transcribed: ${error instanceof Error ? error.message : String(error)}`); } } else if (file.type.startsWith("video/")) { try { imageParts.push({ type: "image_url", image_url: { url: await videoFrameDataUrl(file) } }); textParts.push(`Video attachment "${file.name}" is attached; Buddy is shown its first decoded frame.`); } catch (error) { textParts.push(`Video attachment "${file.name}" could not be decoded: ${error instanceof Error ? error.message : String(error)}`); } } else if (file.type === "text/plain" || file.type === "text/markdown" || file.type === "application/json" || file.type === "application/rtf") { const text = (await file.text()).slice(0, 12000); textParts.push(`Text attachment "${file.name}":
+${text}`); } else if (file.type === "application/pdf") textParts.push(`PDF attachment "${file.name}" is attached, but this browser path does not claim to have read PDF contents.`); } return { textParts, imageParts }; }
   async function answer(text: string, spoken = false) {
     const clean = text.trim(); if (!clean || busyRef.current) return;
     void unlockBuddyAudio();
@@ -55,7 +57,11 @@ export function BuddyLiveChat() {
     try {
       const prior = messages.slice(-6).map((m) => ({ role: m.role, content: m.content }));
       const content: { type: string; text?: string; image_url?: { url: string } }[] = [{ type: "text", text: clean }];
-      const attachmentInfo = await attachmentContext(attachments); if (attachmentInfo.textParts.length) content[0].text = `${clean}\n\n${attachmentInfo.textParts.join("\n\n")}`; content.push(...attachmentInfo.imageParts);
+      const attachmentInfo = await attachmentContext(attachments); if (attachmentInfo.textParts.length) content[0].text = `${clean}
+
+${attachmentInfo.textParts.join("
+
+")}`; content.push(...attachmentInfo.imageParts);
       const voiceProfile = getBuddyVoiceProfile(), language = voiceProfile.language || "English", mood = voiceProfile.mood || "natural", tone = voiceProfile.tone || "conversational";
       const systemPrompt = `${IDENTITY} ${buildAgentSystemPrompt()} Respond in ${language}. Your current mood is ${mood}; your conversational tone is ${tone}. Keep replies compact when the user asks something simple, but give enough detail when the task needs it. Do not switch back to English unless the user asks for English.`;
       const history = [{ role: "system", content: systemPrompt }, ...prior, { role: "user", content: content.length === 1 ? clean : content }];
@@ -82,7 +88,12 @@ export function BuddyLiveChat() {
     if (muted || speakingRef.current) return;
     speakingRef.current = true;
     setBuddyStatus("working", { message: "Buddy is speaking…" });
-    let localStarted = false;\n    try {\n      localStarted = await speakBuddyLocally(text, "browser-en-us");\n      if (localStarted) { setStatus("Buddy is speaking…"); return; }\n    } catch {}\n    const v = getBuddyVoiceProfile();
+    let localStarted = false;
+    try {
+      localStarted = await speakBuddyLocally(text, "browser-en-us");
+      if (localStarted) { setStatus("Buddy is speaking…"); return; }
+    } catch {}
+    const v = getBuddyVoiceProfile();
     try {
       let r: { url: string; provider?: string };
       if (v.speaker === "Red" || (v.mode === "clone" && !v.speaker)) {
