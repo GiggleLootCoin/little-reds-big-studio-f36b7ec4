@@ -29,7 +29,7 @@ public class MainActivity extends Activity {
     private WebView webView;
     private TextToSpeech tts;
     private AudioManager audioManager;
-    private boolean ttsReady = false;
+    private volatile boolean ttsReady = false;
     private final CountDownLatch ttsInitLatch = new CountDownLatch(1);
     private final Handler main = new Handler(Looper.getMainLooper());
     private final AudioManager.OnAudioFocusChangeListener focusListener = focusChange -> {};
@@ -101,31 +101,28 @@ public class MainActivity extends Activity {
         }
 
         final String utteranceId = "buddy-" + System.nanoTime();
-        final CountDownLatch started = new CountDownLatch(1);
-        final CountDownLatch finished = new CountDownLatch(1);
-
         tts.setOnUtteranceProgressListener(new UtteranceProgressListener() {
-            @Override public void onStart(String id) { if (utteranceId.equals(id)) started.countDown(); }
-            @Override public void onDone(String id) { if (utteranceId.equals(id)) finished.countDown(); }
-            @Override public void onError(String id) { if (utteranceId.equals(id)) { started.countDown(); finished.countDown(); } }
+            @Override public void onStart(String id) {}
+
+            @Override public void onDone(String id) {
+                if (utteranceId.equals(id)) abandonAudioFocus();
+            }
+
+            @Override public void onError(String id) {
+                if (utteranceId.equals(id)) abandonAudioFocus();
+            }
         });
 
         android.os.Bundle params = new android.os.Bundle();
         params.putInt(TextToSpeech.Engine.KEY_PARAM_STREAM, AudioManager.STREAM_MUSIC);
         params.putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, 1.0f);
         params.putFloat(TextToSpeech.Engine.KEY_PARAM_PAN, 0.0f);
-        int result = tts.speak(text.trim(), TextToSpeech.QUEUE_FLUSH, params, utteranceId);
-        if (result != TextToSpeech.SUCCESS) { abandonAudioFocus(); return false; }
 
-        try {
-            if (!started.await(3000, TimeUnit.MILLISECONDS)) {
-                tts.stop();
-                abandonAudioFocus();
-                return false;
-            }
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            tts.stop();
+        // Do not wait for UtteranceProgressListener here. speakNow() runs on
+        // Android's main thread, and TTS callbacks may also be delivered there.
+        // Waiting here deadlocks the TTS engine before playback can start.
+        final int result = tts.speak(text.trim(), TextToSpeech.QUEUE_FLUSH, params, utteranceId);
+        if (result != TextToSpeech.SUCCESS) {
             abandonAudioFocus();
             return false;
         }
@@ -169,17 +166,11 @@ public class MainActivity extends Activity {
             }
             if (!ttsReady) return false;
 
-            final CountDownLatch latch = new CountDownLatch(1);
-            final boolean[] result = {false};
-            main.post(() -> {
-                try { result[0] = speakNow(text); }
-                finally { latch.countDown(); }
-            });
-            try { latch.await(4000, TimeUnit.MILLISECONDS); } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                return false;
-            }
-            return result[0];
+            // The JavaScript bridge is not the UI thread. Queue the actual TTS
+            // call onto the main thread and return immediately. Never block the
+            // main thread waiting for TTS callbacks.
+            main.post(() -> speakNow(text));
+            return true;
         }
 
         @JavascriptInterface public void stop() {
