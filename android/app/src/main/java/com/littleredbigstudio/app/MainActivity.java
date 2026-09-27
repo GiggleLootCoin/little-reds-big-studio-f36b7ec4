@@ -10,6 +10,7 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.speech.tts.TextToSpeech;
+import android.speech.tts.UtteranceProgressListener;
 import android.webkit.JavascriptInterface;
 import android.webkit.PermissionRequest;
 import android.webkit.WebChromeClient;
@@ -18,6 +19,8 @@ import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import java.util.Locale;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 public class MainActivity extends Activity {
     private static final String START_URL = "https://little-reds-big-studio-f36b7ec4.gigglelootcoin.workers.dev/";
@@ -80,6 +83,11 @@ public class MainActivity extends Activity {
             int result = tts.setLanguage(Locale.US);
             tts.setSpeechRate(1.0f);
             tts.setPitch(1.0f);
+            tts.setOnUtteranceProgressListener(new UtteranceProgressListener() {
+                @Override public void onStart(String utteranceId) {}
+                @Override public void onDone(String utteranceId) { abandonAudioFocus(); }
+                @Override public void onError(String utteranceId) { abandonAudioFocus(); }
+            });
             if (android.os.Build.VERSION.SDK_INT >= 21) {
                 tts.setAudioAttributes(new AudioAttributes.Builder()
                         .setUsage(AudioAttributes.USAGE_ASSISTANCE_ACCESSIBILITY)
@@ -121,16 +129,18 @@ public class MainActivity extends Activity {
         }
 
         @JavascriptInterface public boolean speak(String text) {
-            if (text == null || text.trim().isEmpty()) return false;
+            if (!ttsReady || text == null || text.trim().isEmpty()) return false;
+            final CountDownLatch latch = new CountDownLatch(1);
             final boolean[] result = {false};
-            main.post(() -> result[0] = speakNow(text));
-            // The bridge call itself is synchronous from JavaScript, but Android
-            // dispatches @JavascriptInterface work off the UI thread. Post the
-            // actual TTS call and report availability separately; JS only treats
-            // a ready engine as the native route.
-            return ttsReady;
+            main.post(() -> {
+                try { result[0] = speakNow(text); }
+                finally { latch.countDown(); }
+            });
+            try { latch.await(1500, TimeUnit.MILLISECONDS); } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+            return result[0];
         }
-
         @JavascriptInterface public void stop() {
             main.post(() -> {
                 if (tts != null) tts.stop();
