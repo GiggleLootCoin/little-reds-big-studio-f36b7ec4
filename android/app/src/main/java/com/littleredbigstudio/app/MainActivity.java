@@ -124,23 +124,12 @@ public class MainActivity extends Activity {
 
     private boolean requestAudioFocus() {
         if (audioManager == null) return true;
-        int result;
-        if (android.os.Build.VERSION.SDK_INT >= 26) {
-            result = audioManager.requestAudioFocus(new AudioFocusRequestCompatShim(focusListener));
-        } else {
-            result = audioManager.requestAudioFocus(focusListener, AudioManager.STREAM_MUSIC, AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK);
-        }
+        int result = audioManager.requestAudioFocus(focusListener, AudioManager.STREAM_MUSIC, AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK);
         return result == AudioManager.AUDIOFOCUS_REQUEST_GRANTED;
     }
 
     private void abandonAudioFocus() {
         if (audioManager != null && android.os.Build.VERSION.SDK_INT < 26) audioManager.abandonAudioFocus(focusListener);
-    }
-
-    // Android 8+ has the AudioFocusRequest API; use the simple legacy call on all
-    // supported builds rather than introducing a dependency just for focus.
-    private final class AudioFocusRequestCompatShim {
-        AudioFocusRequestCompatShim(AudioManager.OnAudioFocusChangeListener ignored) {}
     }
 
     public final class BuddyVoiceBridge {
