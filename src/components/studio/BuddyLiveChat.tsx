@@ -82,11 +82,6 @@ export function BuddyLiveChat() {
     if (muted || speakingRef.current) return;
     speakingRef.current = true;
     setBuddyStatus("working", { message: "Buddy is speaking…" });
-    let localStarted = false;
-    try {
-      localStarted = await speakBuddyLocally(text, "browser-en-us");
-      if (localStarted) { setStatus("Buddy is speaking…"); return; }
-    } catch {}
     const v = getBuddyVoiceProfile();
     try {
       let r: { url: string; provider?: string };
