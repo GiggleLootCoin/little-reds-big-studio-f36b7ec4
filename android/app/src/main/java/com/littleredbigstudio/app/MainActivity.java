@@ -6,6 +6,8 @@ import android.content.Context;
 import android.content.pm.PackageManager;
 import android.media.AudioAttributes;
 import android.media.AudioManager;
+import android.media.AudioFocusRequest;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -31,6 +33,7 @@ public class MainActivity extends Activity {
     private final CountDownLatch ttsInitLatch = new CountDownLatch(1);
     private final Handler main = new Handler(Looper.getMainLooper());
     private final AudioManager.OnAudioFocusChangeListener focusListener = focusChange -> {};
+    private AudioFocusRequest audioFocusRequest;
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
@@ -104,7 +107,11 @@ public class MainActivity extends Activity {
             @Override public void onError(String id) { if (utteranceId.equals(id)) { started.countDown(); finished.countDown(); } }
         });
 
-        int result = tts.speak(text.trim(), TextToSpeech.QUEUE_FLUSH, null, utteranceId);
+        android.os.Bundle params = new android.os.Bundle();
+        params.putInt(TextToSpeech.Engine.KEY_PARAM_STREAM, AudioManager.STREAM_MUSIC);
+        params.putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, 1.0f);
+        params.putFloat(TextToSpeech.Engine.KEY_PARAM_PAN, 0.0f);
+        int result = tts.speak(text.trim(), TextToSpeech.QUEUE_FLUSH, params, utteranceId);
         if (result != TextToSpeech.SUCCESS) { abandonAudioFocus(); return false; }
 
         try {
@@ -124,12 +131,29 @@ public class MainActivity extends Activity {
 
     private boolean requestAudioFocus() {
         if (audioManager == null) return true;
-        int result = audioManager.requestAudioFocus(focusListener, AudioManager.STREAM_MUSIC, AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK);
-        return result == AudioManager.AUDIOFOCUS_REQUEST_GRANTED;
+        if (Build.VERSION.SDK_INT >= 26) {
+            AudioAttributes attributes = new AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_MEDIA)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                    .build();
+            audioFocusRequest = new AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
+                    .setAudioAttributes(attributes)
+                    .setOnAudioFocusChangeListener(focusListener)
+                    .setWillPauseWhenDucked(false)
+                    .build();
+            return audioManager.requestAudioFocus(audioFocusRequest) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED;
+        }
+        return audioManager.requestAudioFocus(focusListener, AudioManager.STREAM_MUSIC, AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
+                == AudioManager.AUDIOFOCUS_REQUEST_GRANTED;
     }
 
     private void abandonAudioFocus() {
-        if (audioManager != null && android.os.Build.VERSION.SDK_INT < 26) audioManager.abandonAudioFocus(focusListener);
+        if (audioManager == null) return;
+        if (Build.VERSION.SDK_INT >= 26 && audioFocusRequest != null) {
+            audioManager.abandonAudioFocusRequest(audioFocusRequest);
+        } else {
+            audioManager.abandonAudioFocus(focusListener);
+        }
     }
 
     public final class BuddyVoiceBridge {
