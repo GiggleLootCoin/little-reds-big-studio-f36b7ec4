@@ -161,13 +161,16 @@ export function BuddyLiveChat() {
       const detail = error instanceof Error ? error.message : String(error);
       // Final fallback only: browser speech is retained for devices where the
       // network audio path is unavailable, but it is no longer the first fallback.
-      const fallbackStarted = speakBuddyLocally(text, "browser-en-us");
+      const fallbackStarted = await speakBuddyLocally(text, "browser-en-us");
       if (fallbackStarted) {
-        setStatus("Buddy audio service is unavailable; using your phone's local voice.");
+        setStatus("Buddy is speaking with your phone's voice because the selected voice service is unavailable.");
         return;
       }
-      setStatus(detail || "Buddy's selected voice could not be generated.");
-      throw error;
+      const playbackError = new Error(
+        `Buddy's audio service failed and your phone's speech engine did not start. ${detail || "Check media volume and Android text-to-speech settings."}`,
+      );
+      setStatus(playbackError.message);
+      throw playbackError;
     } finally {
       speakingRef.current = false;
       setBuddyStatus("idle");
