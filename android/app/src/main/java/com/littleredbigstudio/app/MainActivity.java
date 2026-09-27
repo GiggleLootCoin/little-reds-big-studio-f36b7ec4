@@ -79,7 +79,7 @@ public class MainActivity extends Activity {
                 if (status != TextToSpeech.SUCCESS) { ttsReady = false; return; }
                 if (android.os.Build.VERSION.SDK_INT >= 21) {
                     tts.setAudioAttributes(new AudioAttributes.Builder()
-                            .setUsage(AudioAttributes.USAGE_MEDIA)
+                            .setUsage(AudioAttributes.USAGE_ASSISTANCE_NAVIGATION_GUIDANCE)
                             .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
                             .build());
                 }
@@ -96,6 +96,9 @@ public class MainActivity extends Activity {
     private boolean speakNow(String text) {
         if (!ttsReady || tts == null || text == null || text.trim().isEmpty()) return false;
         if (!requestAudioFocus()) return false;
+        if (audioManager != null && audioManager.getStreamVolume(AudioManager.STREAM_MUSIC) == 0) {
+            audioManager.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_UNMUTE, 0);
+        }
 
         final String utteranceId = "buddy-" + System.nanoTime();
         final CountDownLatch started = new CountDownLatch(1);
@@ -133,13 +136,13 @@ public class MainActivity extends Activity {
         if (audioManager == null) return true;
         if (Build.VERSION.SDK_INT >= 26) {
             AudioAttributes attributes = new AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_MEDIA)
+                    .setUsage(AudioAttributes.USAGE_ASSISTANCE_NAVIGATION_GUIDANCE)
                     .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
                     .build();
-            audioFocusRequest = new AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
+            audioFocusRequest = new AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
                     .setAudioAttributes(attributes)
                     .setOnAudioFocusChangeListener(focusListener)
-                    .setWillPauseWhenDucked(false)
+                    .setWillPauseWhenDucked(true)
                     .build();
             return audioManager.requestAudioFocus(audioFocusRequest) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED;
         }
