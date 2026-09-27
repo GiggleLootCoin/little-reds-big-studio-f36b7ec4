@@ -28,6 +28,7 @@ public class MainActivity extends Activity {
     private TextToSpeech tts;
     private AudioManager audioManager;
     private boolean ttsReady = false;
+    private final CountDownLatch ttsInitLatch = new CountDownLatch(1);
     private final Handler main = new Handler(Looper.getMainLooper());
     private final AudioManager.OnAudioFocusChangeListener focusListener = focusChange -> {};
 
@@ -76,26 +77,30 @@ public class MainActivity extends Activity {
 
     private void initTts() {
         tts = new TextToSpeech(getApplicationContext(), status -> {
-            if (status != TextToSpeech.SUCCESS) {
-                ttsReady = false;
-                return;
+            try {
+                if (status != TextToSpeech.SUCCESS) {
+                    ttsReady = false;
+                    return;
+                }
+                if (android.os.Build.VERSION.SDK_INT >= 21) {
+                    tts.setAudioAttributes(new AudioAttributes.Builder()
+                            .setUsage(AudioAttributes.USAGE_MEDIA)
+                            .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                            .build());
+                }
+                int result = tts.setLanguage(Locale.US);
+                tts.setSpeechRate(1.0f);
+                tts.setPitch(1.0f);
+                tts.setOnUtteranceProgressListener(new UtteranceProgressListener() {
+                    @Override public void onStart(String utteranceId) { }
+                    @Override public void onDone(String utteranceId) { abandonAudioFocus(); }
+                    @Override public void onError(String utteranceId) { abandonAudioFocus(); }
+                });
+                ttsReady = result != TextToSpeech.LANG_MISSING_DATA
+                        && result != TextToSpeech.LANG_NOT_SUPPORTED;
+            } finally {
+                ttsInitLatch.countDown();
             }
-            int result = tts.setLanguage(Locale.US);
-            tts.setSpeechRate(1.0f);
-            tts.setPitch(1.0f);
-            tts.setOnUtteranceProgressListener(new UtteranceProgressListener() {
-                @Override public void onStart(String utteranceId) {}
-                @Override public void onDone(String utteranceId) { abandonAudioFocus(); }
-                @Override public void onError(String utteranceId) { abandonAudioFocus(); }
-            });
-            if (android.os.Build.VERSION.SDK_INT >= 21) {
-                tts.setAudioAttributes(new AudioAttributes.Builder()
-                        .setUsage(AudioAttributes.USAGE_ASSISTANCE_ACCESSIBILITY)
-                        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-                        .build());
-            }
-            ttsReady = result != TextToSpeech.LANG_MISSING_DATA
-                    && result != TextToSpeech.LANG_NOT_SUPPORTED;
         });
     }
 
@@ -115,8 +120,30 @@ public class MainActivity extends Activity {
     private boolean speakNow(String text) {
         if (!ttsReady || tts == null || text == null || text.trim().isEmpty()) return false;
         if (!requestAudioFocus()) return false;
-        int result = tts.speak(text.trim(), TextToSpeech.QUEUE_FLUSH, null, "buddy-" + System.nanoTime());
+        final String utteranceId = "buddy-" + System.nanoTime();
+        final CountDownLatch started = new CountDownLatch(1);
+        final CountDownLatch finished = new CountDownLatch(1);
+        tts.setOnUtteranceProgressListener(new UtteranceProgressListener() {
+            @Override public void onStart(String id) { if (utteranceId.equals(id)) started.countDown(); }
+            @Override public void onDone(String id) { if (utteranceId.equals(id)) finished.countDown(); abandonAudioFocus(); }
+            @Override public void onError(String id) { if (utteranceId.equals(id)) { started.countDown(); finished.countDown(); } abandonAudioFocus(); }
+        });
+        int result = tts.speak(text.trim(), TextToSpeech.QUEUE_FLUSH, null, utteranceId);
         if (result != TextToSpeech.SUCCESS) {
+            abandonAudioFocus();
+            return false;
+        }
+        try {
+            // Do not report success merely because Android accepted the utterance.
+            // Wait until the TTS engine actually reports playback has started.
+            if (!started.await(2500, TimeUnit.MILLISECONDS)) {
+                tts.stop();
+                abandonAudioFocus();
+                return false;
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            tts.stop();
             abandonAudioFocus();
             return false;
         }
@@ -129,7 +156,12 @@ public class MainActivity extends Activity {
         }
 
         @JavascriptInterface public boolean speak(String text) {
-            if (!ttsReady || text == null || text.trim().isEmpty()) return false;
+            if (text == null || text.trim().isEmpty()) return false;
+            try { ttsInitLatch.await(3000, TimeUnit.MILLISECONDS); } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return false;
+            }
+            if (!ttsReady) return false;
             final CountDownLatch latch = new CountDownLatch(1);
             final boolean[] result = {false};
             main.post(() -> {
