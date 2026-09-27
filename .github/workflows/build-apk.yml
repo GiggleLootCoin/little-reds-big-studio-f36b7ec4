@@ -45,6 +45,14 @@ jobs:
             keytool -genkeypair -keystore android/app/release-key.jks -storepass android -keypass android -alias key0 -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Little Red's Big Studio"
           fi
 
+      - name: Install pinned Gradle
+        run: |
+          set -euo pipefail
+          curl -fsSLo "$RUNNER_TEMP/gradle.zip" "https://services.gradle.org/distributions/gradle-8.9-bin.zip"
+          unzip -q "$RUNNER_TEMP/gradle.zip" -d "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/gradle-8.9/bin" >> "$GITHUB_PATH"
+          gradle --version
+
       - name: Build native Android APK
         env:
           ANDROID_HOME: ${{ env.SDK_ROOT }}
@@ -53,7 +61,6 @@ jobs:
           TWA_SIGNING_KEY_STORE_PASSWORD: ${{ secrets.TWA_SIGNING_KEY_STORE_PASSWORD || 'android' }}
         run: |
           set -euo pipefail
-          gradle --version
           gradle --no-daemon --stacktrace -p android assembleRelease
 
       - name: Verify APK
