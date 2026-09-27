@@ -18,7 +18,7 @@ const [runtime, engine, gateway, picker, chat, voice, server, previews, routing,
 
 test("tap-to-talk uses native Android speech recognition before the slower Whisper path", () => {
   assert.ok(chat.includes("const fastTranscript = nativeTranscript.current.trim()"));
-  assert.ok(chat.includes("startNativeSpeech(); if (isLive) monitor(s);"));
+  assert.match(chat, /startNativeSpeech\(\);\s*if \(isLive\) monitor\(s\)/);
   assert.ok(chat.includes("else if (b.size) void stt(b)"));
 });
 
