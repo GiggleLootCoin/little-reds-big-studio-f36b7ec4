@@ -49,16 +49,11 @@ public class MainActivity extends Activity {
                 runOnUiThread(() -> {
                     boolean wantsAudio = false;
                     for (String resource : request.getResources()) {
-                        if (PermissionRequest.RESOURCE_AUDIO_CAPTURE.equals(resource)) {
-                            wantsAudio = true;
-                            break;
-                        }
+                        if (PermissionRequest.RESOURCE_AUDIO_CAPTURE.equals(resource)) { wantsAudio = true; break; }
                     }
                     if (wantsAudio && checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
                         requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, 4101);
-                    } else {
-                        request.grant(request.getResources());
-                    }
+                    } else request.grant(request.getResources());
                 });
             }
         });
@@ -78,10 +73,7 @@ public class MainActivity extends Activity {
     private void initTts() {
         tts = new TextToSpeech(getApplicationContext(), status -> {
             try {
-                if (status != TextToSpeech.SUCCESS) {
-                    ttsReady = false;
-                    return;
-                }
+                if (status != TextToSpeech.SUCCESS) { ttsReady = false; return; }
                 if (android.os.Build.VERSION.SDK_INT >= 21) {
                     tts.setAudioAttributes(new AudioAttributes.Builder()
                             .setUsage(AudioAttributes.USAGE_MEDIA)
@@ -91,52 +83,32 @@ public class MainActivity extends Activity {
                 int result = tts.setLanguage(Locale.US);
                 tts.setSpeechRate(1.0f);
                 tts.setPitch(1.0f);
-                tts.setOnUtteranceProgressListener(new UtteranceProgressListener() {
-                    @Override public void onStart(String utteranceId) { }
-                    @Override public void onDone(String utteranceId) { abandonAudioFocus(); }
-                    @Override public void onError(String utteranceId) { abandonAudioFocus(); }
-                });
-                ttsReady = result != TextToSpeech.LANG_MISSING_DATA
-                        && result != TextToSpeech.LANG_NOT_SUPPORTED;
+                ttsReady = result != TextToSpeech.LANG_MISSING_DATA && result != TextToSpeech.LANG_NOT_SUPPORTED;
             } finally {
                 ttsInitLatch.countDown();
             }
         });
     }
 
-    private boolean requestAudioFocus() {
-        if (audioManager == null) return true;
-        int result = audioManager.requestAudioFocus(
-                focusListener,
-                AudioManager.STREAM_MUSIC,
-                AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK);
-        return result == AudioManager.AUDIOFOCUS_REQUEST_GRANTED;
-    }
-
-    private void abandonAudioFocus() {
-        if (audioManager != null) audioManager.abandonAudioFocus(focusListener);
-    }
-
     private boolean speakNow(String text) {
         if (!ttsReady || tts == null || text == null || text.trim().isEmpty()) return false;
         if (!requestAudioFocus()) return false;
+
         final String utteranceId = "buddy-" + System.nanoTime();
         final CountDownLatch started = new CountDownLatch(1);
         final CountDownLatch finished = new CountDownLatch(1);
+
         tts.setOnUtteranceProgressListener(new UtteranceProgressListener() {
             @Override public void onStart(String id) { if (utteranceId.equals(id)) started.countDown(); }
-            @Override public void onDone(String id) { if (utteranceId.equals(id)) finished.countDown(); abandonAudioFocus(); }
-            @Override public void onError(String id) { if (utteranceId.equals(id)) { started.countDown(); finished.countDown(); } abandonAudioFocus(); }
+            @Override public void onDone(String id) { if (utteranceId.equals(id)) finished.countDown(); }
+            @Override public void onError(String id) { if (utteranceId.equals(id)) { started.countDown(); finished.countDown(); } }
         });
+
         int result = tts.speak(text.trim(), TextToSpeech.QUEUE_FLUSH, null, utteranceId);
-        if (result != TextToSpeech.SUCCESS) {
-            abandonAudioFocus();
-            return false;
-        }
+        if (result != TextToSpeech.SUCCESS) { abandonAudioFocus(); return false; }
+
         try {
-            // Do not report success merely because Android accepted the utterance.
-            // Wait until the TTS engine actually reports playback has started.
-            if (!started.await(2500, TimeUnit.MILLISECONDS)) {
+            if (!started.await(3000, TimeUnit.MILLISECONDS)) {
                 tts.stop();
                 abandonAudioFocus();
                 return false;
@@ -150,29 +122,50 @@ public class MainActivity extends Activity {
         return true;
     }
 
-    public final class BuddyVoiceBridge {
-        @JavascriptInterface public boolean isAvailable() {
-            return ttsReady;
+    private boolean requestAudioFocus() {
+        if (audioManager == null) return true;
+        int result;
+        if (android.os.Build.VERSION.SDK_INT >= 26) {
+            result = audioManager.requestAudioFocus(new AudioFocusRequestCompatShim(focusListener));
+        } else {
+            result = audioManager.requestAudioFocus(focusListener, AudioManager.STREAM_MUSIC, AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK);
         }
+        return result == AudioManager.AUDIOFOCUS_REQUEST_GRANTED;
+    }
+
+    private void abandonAudioFocus() {
+        if (audioManager != null && android.os.Build.VERSION.SDK_INT < 26) audioManager.abandonAudioFocus(focusListener);
+    }
+
+    // Android 8+ has the AudioFocusRequest API; use the simple legacy call on all
+    // supported builds rather than introducing a dependency just for focus.
+    private final class AudioFocusRequestCompatShim {
+        AudioFocusRequestCompatShim(AudioManager.OnAudioFocusChangeListener ignored) {}
+    }
+
+    public final class BuddyVoiceBridge {
+        @JavascriptInterface public boolean isAvailable() { return ttsReady; }
 
         @JavascriptInterface public boolean speak(String text) {
             if (text == null || text.trim().isEmpty()) return false;
             try { ttsInitLatch.await(3000, TimeUnit.MILLISECONDS); } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                return false;
+                Thread.currentThread().interrupt(); return false;
             }
             if (!ttsReady) return false;
+
             final CountDownLatch latch = new CountDownLatch(1);
             final boolean[] result = {false};
             main.post(() -> {
                 try { result[0] = speakNow(text); }
                 finally { latch.countDown(); }
             });
-            try { latch.await(1500, TimeUnit.MILLISECONDS); } catch (InterruptedException e) {
+            try { latch.await(4000, TimeUnit.MILLISECONDS); } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
+                return false;
             }
             return result[0];
         }
+
         @JavascriptInterface public void stop() {
             main.post(() -> {
                 if (tts != null) tts.stop();
@@ -181,31 +174,14 @@ public class MainActivity extends Activity {
         }
     }
 
-    @Override protected void onResume() {
-        super.onResume();
-        if (webView != null) webView.onResume();
-    }
-
-    @Override protected void onPause() {
-        if (webView != null) webView.onPause();
-        super.onPause();
-    }
-
-    @Override public void onBackPressed() {
-        if (webView != null && webView.canGoBack()) webView.goBack();
-        else super.onBackPressed();
-    }
+    @Override protected void onResume() { super.onResume(); if (webView != null) webView.onResume(); }
+    @Override protected void onPause() { if (webView != null) webView.onPause(); super.onPause(); }
+    @Override public void onBackPressed() { if (webView != null && webView.canGoBack()) webView.goBack(); else super.onBackPressed(); }
 
     @Override protected void onDestroy() {
-        if (tts != null) {
-            tts.stop();
-            tts.shutdown();
-        }
+        if (tts != null) { tts.stop(); tts.shutdown(); }
         abandonAudioFocus();
-        if (webView != null) {
-            webView.removeJavascriptInterface("AndroidBuddyVoice");
-            webView.destroy();
-        }
+        if (webView != null) { webView.removeJavascriptInterface("AndroidBuddyVoice"); webView.destroy(); }
         super.onDestroy();
     }
 }
