@@ -22,6 +22,7 @@ jobs:
     timeout-minutes: 60
     steps:
       # Production deploy: full voice, chat, and real RVC smoke remain mandatory after every main push.
+      # Final verification cycle: dependency lockfile is kept synchronized before CI.
       # Pull-request runs are enabled so verified fixes can be deployed even when a bot-authored
       # main push does not create a new workflow run.
       - name: Checkout
