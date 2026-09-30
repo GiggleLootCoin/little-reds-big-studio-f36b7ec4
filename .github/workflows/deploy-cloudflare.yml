@@ -59,7 +59,12 @@ jobs:
           test -n "${CLOUDFLARE_API_TOKEN:-}"
           test -n "${CLOUDFLARE_ACCOUNT_ID:-}"
       - name: Deploy to Cloudflare Workers
-        run: npx wrangler deploy --config wrangler.jsonc
+        timeout-minutes: 15
+        uses: cloudflare/wrangler-action@v4
+        with:
+          apiToken: ${{ env.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ env.CLOUDFLARE_ACCOUNT_ID }}
+          command: deploy --config wrangler.jsonc
       - name: Production smoke test
         env:
           PRODUCTION_URL: https://little-reds-big-studio-f36b7ec4.gigglelootcoin.workers.dev
@@ -91,5 +96,5 @@ jobs:
         env:
           PRODUCTION_URL: https://little-reds-big-studio-f36b7ec4.gigglelootcoin.workers.dev
           SAMPLE_URL: https://raw.githubusercontent.com/GiggleLootCoin/little-reds-big-studio-f36b7ec4/${{ github.sha }}/13.7s%20Recording%20%28Jul%202%20%40%205_53%20PM%29.mp3
-          STT_SAMPLE_URL: https://raw.githubusercontent.com/ggerganov/whisper.cpp/master/samples/jfk.wav
+          STT_SAMPLE_URL: https://raw.githubusercontent.com/GiggleLootCoin/little-reds-big-studio-f36b7ec4/${{ github.sha }}/13.7s%20Recording%20%28Jul%202%20%40%205_53%20PM%29.mp3
         run: node scripts/live-voice-browser-smoke.mjs

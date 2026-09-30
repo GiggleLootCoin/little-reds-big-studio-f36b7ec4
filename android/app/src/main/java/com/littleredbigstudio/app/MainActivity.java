@@ -79,7 +79,7 @@ public class MainActivity extends Activity {
                 if (status != TextToSpeech.SUCCESS) { ttsReady = false; return; }
                 if (android.os.Build.VERSION.SDK_INT >= 21) {
                     tts.setAudioAttributes(new AudioAttributes.Builder()
-                            .setUsage(AudioAttributes.USAGE_ASSISTANCE_NAVIGATION_GUIDANCE)
+                            .setUsage(AudioAttributes.USAGE_MEDIA)
                             .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
                             .build());
                 }
@@ -133,7 +133,7 @@ public class MainActivity extends Activity {
         if (audioManager == null) return true;
         if (Build.VERSION.SDK_INT >= 26) {
             AudioAttributes attributes = new AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_ASSISTANCE_NAVIGATION_GUIDANCE)
+                    .setUsage(AudioAttributes.USAGE_MEDIA)
                     .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
                     .build();
             audioFocusRequest = new AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
@@ -161,16 +161,87 @@ public class MainActivity extends Activity {
 
         @JavascriptInterface public boolean speak(String text) {
             if (text == null || text.trim().isEmpty()) return false;
-            try { ttsInitLatch.await(3000, TimeUnit.MILLISECONDS); } catch (InterruptedException e) {
-                Thread.currentThread().interrupt(); return false;
-            }
-            if (!ttsReady) return false;
-
-            // The JavaScript bridge is not the UI thread. Queue the actual TTS
-            // call onto the main thread and return immediately. Never block the
-            // main thread waiting for TTS callbacks.
+            if (!awaitTtsReady()) return false;
             main.post(() -> speakNow(text));
             return true;
+        }
+
+        @JavascriptInterface public void speakAsync(String text, String callbackId) {
+            if (text == null || text.trim().isEmpty()) {
+                notifyTtsResult(callbackId, false);
+                return;
+            }
+            new Thread(() -> {
+                if (!awaitTtsReady()) {
+                    notifyTtsResult(callbackId, false);
+                    return;
+                }
+                main.post(() -> speakNowWithCallback(text, callbackId));
+            }, "buddy-tts-bridge").start();
+        }
+
+        private boolean awaitTtsReady() {
+            try {
+                ttsInitLatch.await(3000, TimeUnit.MILLISECONDS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return false;
+            }
+            return ttsReady && tts != null;
+        }
+
+        private void speakNowWithCallback(String text, String callbackId) {
+            if (!requestAudioFocus()) {
+                notifyTtsResult(callbackId, false);
+                return;
+            }
+            if (audioManager != null && audioManager.getStreamVolume(AudioManager.STREAM_MUSIC) == 0) {
+                audioManager.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_UNMUTE, 0);
+            }
+            final String utteranceId = "buddy-" + System.nanoTime();
+            tts.setOnUtteranceProgressListener(new UtteranceProgressListener() {
+                @Override public void onStart(String id) {
+                    if (utteranceId.equals(id)) notifyTtsResult(callbackId, true);
+                }
+
+                @Override public void onDone(String id) {
+                    if (utteranceId.equals(id)) abandonAudioFocus();
+                }
+
+                @Override public void onError(String id) {
+                    if (utteranceId.equals(id)) {
+                        abandonAudioFocus();
+                        notifyTtsResult(callbackId, false);
+                    }
+                }
+            });
+            Bundle params = new Bundle();
+            params.putInt(TextToSpeech.Engine.KEY_PARAM_STREAM, AudioManager.STREAM_MUSIC);
+            params.putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, 1.0f);
+            params.putFloat(TextToSpeech.Engine.KEY_PARAM_PAN, 0.0f);
+            final int result = tts.speak(text.trim(), TextToSpeech.QUEUE_FLUSH, params, utteranceId);
+            if (result != TextToSpeech.SUCCESS) {
+                abandonAudioFocus();
+                notifyTtsResult(callbackId, false);
+                return;
+            }
+            main.postDelayed(() -> {
+                // A successful tts.speak() call is not proof that audio started.
+                // Give Android a short window to deliver onStart; otherwise let
+                // the JavaScript layer fall back to browser speech.
+                notifyTtsResult(callbackId, false);
+            }, 3500);
+        }
+
+        private void notifyTtsResult(String callbackId, boolean started) {
+            if (callbackId == null || callbackId.isEmpty()) return;
+            main.post(() -> {
+                String safe = callbackId.replace("\\", "\\\\").replace("'", "\\'");
+                webView.evaluateJavascript(
+                        "window.__buddyAndroidTtsResult && window.__buddyAndroidTtsResult('" + safe + "'," + started + ");",
+                        null
+                );
+            });
         }
 
         @JavascriptInterface public void stop() {

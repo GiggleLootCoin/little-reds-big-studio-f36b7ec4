@@ -10,10 +10,31 @@ const sampleUrl = process.env.SAMPLE_URL;
 const sttSampleUrl = process.env.STT_SAMPLE_URL;
 if (!base || !sampleUrl || !sttSampleUrl) throw new Error("PRODUCTION_URL, SAMPLE_URL and STT_SAMPLE_URL are required");
 
+async function fetchWithRetry(url, options = {}, label = "request", attempts = 3, timeoutMs = 45000) {
+  let lastError;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const response = await fetch(url, { ...options, signal: controller.signal });
+      clearTimeout(timer);
+      return response;
+    } catch (error) {
+      clearTimeout(timer);
+      lastError = error;
+      if (attempt < attempts) {
+        console.log(`${label} attempt ${attempt} failed; retrying…`);
+        await new Promise((resolve) => setTimeout(resolve, 1500 * attempt));
+      }
+    }
+  }
+  throw new Error(`${label} failed after ${attempts} attempts: ${lastError instanceof Error ? lastError.message : String(lastError)}`);
+}
+
 async function prepareSample(url, prefix) {
   const sourcePath = `/tmp/${prefix}-source.mp3`;
   const samplePath = `/tmp/${prefix}.wav`;
-  const response = await fetch(url);
+  const response = await fetchWithRetry(url, {}, `${prefix} reference download`, 3, 30000);
   if (!response.ok) throw new Error(`${prefix} reference download failed: ${response.status}`);
   await writeFile(sourcePath, Buffer.from(await response.arrayBuffer()));
   await execFileAsync("ffmpeg", ["-y", "-v", "error", "-i", sourcePath, "-t", "10", "-ac", "1", "-ar", "24000", "-c:a", "pcm_s16le", samplePath]);
@@ -26,7 +47,7 @@ const redAudioBase64 = redSampleBytes.toString("base64");
 const sttAudioBase64 = sttSampleBytes.toString("base64");
 const referenceId = createHash("sha256").update(redSampleBytes).digest("hex");
 
-const sttResponse = await fetch(`${base}/api/ai/speech-to-text?android_smoke=1&ts=${Date.now()}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ audioBase64: sttAudioBase64, language: "en" }) });
+const sttResponse = await fetchWithRetry(`${base}/api/ai/speech-to-text?android_smoke=1&ts=${Date.now()}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ audioBase64: sttAudioBase64, language: "en" }) }, "production STT", 3, 60000);
 let sttText = "";
 let sttAvailability = "verified";
 if (sttResponse.ok) {

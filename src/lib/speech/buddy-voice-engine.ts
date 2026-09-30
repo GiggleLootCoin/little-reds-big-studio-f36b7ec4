@@ -76,8 +76,40 @@ export async function speakBuddyLocally(
   preferClone = false,
 ): Promise<boolean> {
   if (typeof window === "undefined") return false;
-  const nativeAndroid = (window as typeof window & { AndroidBuddyVoice?: { isAvailable?: () => boolean; speak?: (text: string) => boolean } }).AndroidBuddyVoice;
-  if (nativeAndroid?.speak && nativeAndroid?.isAvailable?.()) {
+  const nativeAndroid = (window as typeof window & {
+    AndroidBuddyVoice?: {
+      isAvailable?: () => boolean;
+      speak?: (text: string) => boolean;
+      speakAsync?: (text: string, callbackId: string) => void;
+    };
+  }).AndroidBuddyVoice;
+
+  if (nativeAndroid?.speakAsync) {
+    const callbackId = "tts-" + Date.now() + "-" + Math.random().toString(36).slice(2);
+    try {
+      const started = await new Promise<boolean>((resolve) => {
+        let settled = false;
+        const finish = (ok: boolean) => {
+          if (settled) return;
+          settled = true;
+          delete (window as typeof window & { __buddyAndroidTtsCallbacks?: Record<string, (ok: boolean) => void> }).__buddyAndroidTtsCallbacks?.[callbackId];
+          window.clearTimeout(timer);
+          resolve(ok);
+        };
+        const timer = window.setTimeout(() => finish(false), 4500);
+        const callbacks = ((window as typeof window & { __buddyAndroidTtsCallbacks?: Record<string, (ok: boolean) => void> }).__buddyAndroidTtsCallbacks ??= {});
+        callbacks[callbackId] = finish;
+        (window as typeof window & { __buddyAndroidTtsResult?: (id: string, ok: boolean) => void }).__buddyAndroidTtsResult ??= (id, ok) => {
+          const callback = (window as typeof window & { __buddyAndroidTtsCallbacks?: Record<string, (ok: boolean) => void> }).__buddyAndroidTtsCallbacks?.[id];
+          callback?.(ok);
+        };
+        nativeAndroid.speakAsync?.(text.trim(), callbackId);
+      });
+      if (started) return true;
+    } catch {
+      // Fall through to browser speech.
+    }
+  } else if (nativeAndroid?.speak && nativeAndroid?.isAvailable?.()) {
     try { if (nativeAndroid.speak(text.trim()) === true) return true; } catch { /* fall through to browser speech */ }
   }
   if (!("speechSynthesis" in window)) return false;

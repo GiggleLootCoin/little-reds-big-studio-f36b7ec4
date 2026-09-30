@@ -92,7 +92,7 @@ if (modelSize < 50_000_000) throw new Error(`The Red RVC model download is incom
 try {
   execFileSync("python", ["-c", "import infer_rvc_python"], { stdio: "ignore", timeout: 30_000 });
 } catch {
-  execFileSync("python", ["-m", "pip", "install", "-q", "infer_rvc_python==1.3.1"], { stdio: "inherit", timeout: 300_000 });
+  execFileSync("python", ["-m", "pip", "install", "--disable-pip-version-check", "--retries", "5", "--timeout", "120", "-q", "infer_rvc_python==1.3.1"], { stdio: "inherit", timeout: 900_000 });
 }
 
 const pythonSmoke = `
