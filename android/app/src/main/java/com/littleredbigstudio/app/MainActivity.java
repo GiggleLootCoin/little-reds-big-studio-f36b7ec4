@@ -192,11 +192,10 @@ public class MainActivity extends Activity {
 
             if (Build.VERSION.SDK_INT >= 21) {
                 Voice selected = chooseEnglishVoice(engine.getVoices());
-                if (selected != null) {
-                    int voiceResult = engine.setVoice(selected);
-                    if (voiceResult != TextToSpeech.SUCCESS) return false;
-                    activeVoice = selected.getName();
-                }
+                if (selected == null) return false;
+                int voiceResult = engine.setVoice(selected);
+                if (voiceResult != TextToSpeech.SUCCESS) return false;
+                activeVoice = selected.getName();
             }
 
             return true;
