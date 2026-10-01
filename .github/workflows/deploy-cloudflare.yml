@@ -62,7 +62,7 @@ jobs:
       - name: Ensure permanent APK storage exists
         run: |
           set -euo pipefail
-          npx wrangler r2 bucket create little-reds-big-studio-apks --remote || true
+          npx wrangler r2 bucket create little-reds-big-studio-apks || true
 
       - name: Deploy to Cloudflare Workers
         timeout-minutes: 15
