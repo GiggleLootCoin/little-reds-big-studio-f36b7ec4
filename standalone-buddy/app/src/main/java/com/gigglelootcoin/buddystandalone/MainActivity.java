@@ -2,6 +2,8 @@ package com.gigglelootcoin.buddystandalone;
 
 import android.app.Activity;
 import android.os.Bundle;
+import android.Manifest;
+import android.content.pm.PackageManager;
 import android.graphics.*;
 import android.graphics.drawable.GradientDrawable;
 import android.content.Intent;
@@ -9,6 +11,7 @@ import android.speech.RecognizerIntent;
 import android.speech.SpeechRecognizer;
 import android.speech.RecognitionListener;
 import android.speech.tts.TextToSpeech;
+import android.speech.tts.UtteranceProgressListener;
 import android.view.Gravity;
 import android.view.View;
 import android.widget.*;
@@ -21,6 +24,7 @@ import java.util.*;
 
 public class MainActivity extends Activity {
     private static final String AI_URL = "https://buddy-free-20s07x.v2.appdeploy.ai/api/chat";
+    private static final int REQ_AUDIO = 4101;
     private LinearLayout messages;
     private EditText input;
     private TextView status;
@@ -32,7 +36,16 @@ public class MainActivity extends Activity {
         getWindow().setStatusBarColor(Color.rgb(18,10,32));
         getWindow().setNavigationBarColor(Color.rgb(10,7,18));
         buildUi();
-        tts = new TextToSpeech(this, r -> { if (r == TextToSpeech.SUCCESS) tts.setLanguage(Locale.US); });
+        tts = new TextToSpeech(this, r -> {
+            if (r == TextToSpeech.SUCCESS) {
+                tts.setLanguage(Locale.US);
+                tts.setOnUtteranceProgressListener(new UtteranceProgressListener() {
+                    @Override public void onStart(String id) { runOnUiThread(() -> status.setText("Buddy is speaking…")); }
+                    @Override public void onDone(String id) { runOnUiThread(() -> status.setText("Buddy is ready")); }
+                    @Override public void onError(String id) { runOnUiThread(() -> status.setText("Voice playback failed")); }
+                });
+            }
+        });
         if (SpeechRecognizer.isRecognitionAvailable(this)) recognizer = SpeechRecognizer.createSpeechRecognizer(this);
     }
 
@@ -183,7 +196,6 @@ public class MainActivity extends Activity {
                     addBubble("Buddy", "I couldn't reach my AI service. Please try again.", false);
                     return;
                 }
-                status.setText("Buddy is speaking…");
                 addBubble("Buddy", reply, false);
                 speak(reply);
             });
@@ -224,11 +236,20 @@ public class MainActivity extends Activity {
     }
 
     private void speak(String text) {
-        if (tts != null) tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, "buddy");
-        status.postDelayed(() -> status.setText("Buddy is ready"), Math.min(7000, Math.max(2500, text.length()*45)));
+        if (tts == null) {
+            status.setText("Voice unavailable");
+            return;
+        }
+        int result = tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, "buddy");
+        if (result == TextToSpeech.ERROR) status.setText("Voice playback failed");
     }
 
     private void listen() {
+        if (android.os.Build.VERSION.SDK_INT >= 23 && checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, REQ_AUDIO);
+            status.setText("Microphone permission needed");
+            return;
+        }
         if (recognizer == null) {
             Toast.makeText(this, "Speech recognition isn't available on this phone.", Toast.LENGTH_LONG).show();
             return;
@@ -253,6 +274,19 @@ public class MainActivity extends Activity {
             public void onEvent(int a, Bundle b) {}
         });
         recognizer.startListening(i);
+    }
+
+
+    @Override public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == REQ_AUDIO) {
+            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                status.setText("Microphone ready — tap mic again");
+            } else {
+                status.setText("Microphone permission denied");
+                Toast.makeText(this, "Microphone permission is required for voice input.", Toast.LENGTH_LONG).show();
+            }
+        }
     }
 
     @Override protected void onDestroy() {
