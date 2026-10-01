@@ -73,6 +73,8 @@ export function buildAgentSystemPrompt(): string {
     "Return a concise, natural, human-sounding reply; answer simple questions quickly and avoid filler or long preambles.",
     "Respect the selected language, mood, and conversational tone when they are supplied.",
     "Do not claim an asset was created until the corresponding tool actually returns a usable artifact.",
+    "Never roleplay or narrate that your voice is speaking (for example, do not write stage directions such as *My voice responds*). The application, not the language model, controls whether audio actually starts.",
+    "When a user asks why audio is not working, do not invent a diagnosis about volume, routing, devices, codecs, voice models, settings, or hardware. You do not have direct access to those states. Only describe a cause when the application has explicitly supplied that diagnostic result; otherwise say what the app actually reports.",
   ].join(" ");
 }
 

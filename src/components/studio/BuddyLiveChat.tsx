@@ -61,8 +61,7 @@ export function BuddyLiveChat() {
       const history = [{ role: "system", content: systemPrompt }, ...prior, { role: "user", content: content.length === 1 ? clean : content }];
       const r = await runStudioJob("chat", { prompt: clean, text: clean, messages: history, history, language, mood, tone, max_tokens: 250, maxTokens: 250 }, setStatus), reply = artifactText(r.value).trim(); if (!reply) throw Error("Buddy did not return a response.");
       setMessages((x) => [...x, { id: crypto.randomUUID(), role: "assistant", content: reply, createdAt: Date.now() }]); setAttachments([]);
-      if (spoken || liveRef.current) {
-        try {
+      // Buddy voice is the normal response mode. Typed messages must use the same voice path as spoken/live messages; otherwise a user can explicitly test voice and receive text only without any playback attempt.\n      if (!muted) {\n        try {
           await speak(reply);
           setStatus("Buddy responded with audio.");
         } catch (voiceError) {
