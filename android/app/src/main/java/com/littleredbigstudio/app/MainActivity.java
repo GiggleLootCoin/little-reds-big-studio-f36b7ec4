@@ -9,8 +9,6 @@ import android.media.AudioFocusRequest;
 import android.media.AudioManager;
 import android.os.Build;
 import android.os.Bundle;
-import android.os.Handler;
-import android.os.Looper;
 import android.speech.tts.TextToSpeech;
 import android.speech.tts.UtteranceProgressListener;
 import android.speech.tts.Voice;
@@ -99,26 +97,9 @@ public class MainActivity extends Activity {
         webView.loadUrl(START_URL);
     }
 
-    /**
-     * Build a real, validated native TTS path.
-     *
-     * Preference:
-     *   1. Google Speech Services
-     *   2. Samsung TTS
-     *   3. Any other installed engine
-     *
-     * Every engine is rejected unless it can provide a usable English voice.
-     */
     private void initTts() {
         final List<String> candidates = new ArrayList<>();
         final Set<String> seen = new HashSet<>();
-
-        try {
-            List<TextToSpeech.EngineInfo> engines =
-                    new TextToSpeech(this, status -> {}).getEngines();
-        } catch (Throwable ignored) {
-            // The temporary probe below is intentionally avoided if engine discovery fails.
-        }
 
         try {
             TextToSpeech probe = new TextToSpeech(this, status -> {});
@@ -136,8 +117,8 @@ public class MainActivity extends Activity {
                 if (seen.add(info.name)) candidates.add(info.name);
             }
         } catch (Throwable ignored) {
-            // Fall back to Android's configured default engine.
-            candidates.add(null);
+            // If engine enumeration fails, Android's configured default remains
+            // the final fallback.
         }
 
         if (candidates.isEmpty()) candidates.add(null);
@@ -151,45 +132,38 @@ public class MainActivity extends Activity {
             return;
         }
 
-        final String engine = candidates.get(index);
+        final String engineName = candidates.get(index);
         try {
-            TextToSpeech candidate = (engine == null)
-                    ? new TextToSpeech(this, status ->
-                            finishTtsInitialization(candidates, index, status, candidateHolder()))
-                    : new TextToSpeech(this, status ->
-                            finishTtsInitialization(candidates, index, status, candidateHolder()),
-                            engine);
+            final TextToSpeech[] holder = new TextToSpeech[1];
+            TextToSpeech.OnInitListener listener = status -> {
+                TextToSpeech candidate = holder[0];
+                if (status == TextToSpeech.SUCCESS &&
+                        candidate != null &&
+                        configureAndValidateTts(candidate)) {
+                    tts = candidate;
+                    activeEngine = engineName == null ? candidate.getDefaultEngine() : engineName;
+                    ttsReady = true;
+                    ttsInitLatch.countDown();
+                    return;
+                }
+
+                if (candidate != null) {
+                    try { candidate.stop(); } catch (Throwable ignored) {}
+                    try { candidate.shutdown(); } catch (Throwable ignored) {}
+                }
+                tts = null;
+                ttsReady = false;
+                initTtsEngine(candidates, index + 1);
+            };
+
+            TextToSpeech candidate = engineName == null
+                    ? new TextToSpeech(this, listener)
+                    : new TextToSpeech(this, listener, engineName);
+            holder[0] = candidate;
             tts = candidate;
         } catch (Throwable error) {
             initTtsEngine(candidates, index + 1);
         }
-    }
-
-    /*
-     * TextToSpeech's constructor callback can run while the candidate reference
-     * is being assigned. This holder lets the callback retrieve the active
-     * instance without relying on a local variable that Java requires to be final.
-     */
-    private TextToSpeech candidateHolder() {
-        return tts;
-    }
-
-    private void finishTtsInitialization(
-            List<String> candidates, int index, int status, TextToSpeech candidate) {
-        if (status == TextToSpeech.SUCCESS && candidate != null && configureAndValidateTts(candidate)) {
-            tts = candidate;
-            ttsReady = true;
-            ttsInitLatch.countDown();
-            return;
-        }
-
-        if (candidate != null) {
-            try { candidate.stop(); } catch (Throwable ignored) {}
-            try { candidate.shutdown(); } catch (Throwable ignored) {}
-        }
-        tts = null;
-        ttsReady = false;
-        initTtsEngine(candidates, index + 1);
     }
 
     private boolean configureAndValidateTts(TextToSpeech engine) {
@@ -223,8 +197,6 @@ public class MainActivity extends Activity {
                 }
             }
 
-            String selectedEngine = engine.getDefaultEngine();
-            activeEngine = selectedEngine == null ? "configured-default" : selectedEngine;
             return true;
         } catch (Throwable error) {
             return false;
@@ -246,7 +218,7 @@ public class MainActivity extends Activity {
             else if ("GB".equalsIgnoreCase(locale.getCountry())) score += 90;
             else score += 50;
 
-            if (Build.VERSION.SDK_INT >= 21 && !voice.isNetworkConnectionRequired()) score += 20;
+            if (!voice.isNetworkConnectionRequired()) score += 20;
             if (voice.getQuality() == Voice.QUALITY_NORMAL) score += 5;
             if (voice.getQuality() == Voice.QUALITY_HIGH) score += 10;
 
@@ -263,19 +235,18 @@ public class MainActivity extends Activity {
         if (!requestAudioFocus()) return false;
 
         if (audioManager != null &&
-                audioManager.getStreamVolume(AudioManager.STREAM_MUSIC) == 0) {
-            if (Build.VERSION.SDK_INT >= 23) {
-                audioManager.adjustStreamVolume(
-                        AudioManager.STREAM_MUSIC, AudioManager.ADJUST_UNMUTE, 0);
-            }
+                audioManager.getStreamVolume(AudioManager.STREAM_MUSIC) == 0 &&
+                Build.VERSION.SDK_INT >= 23) {
+            audioManager.adjustStreamVolume(
+                    AudioManager.STREAM_MUSIC, AudioManager.ADJUST_UNMUTE, 0);
         }
 
         final String utteranceId = "buddy-" + System.nanoTime();
-        final AtomicBoolean settled = new AtomicBoolean(false);
+        final AtomicBoolean started = new AtomicBoolean(false);
 
         tts.setOnUtteranceProgressListener(new UtteranceProgressListener() {
             @Override public void onStart(String id) {
-                if (utteranceId.equals(id)) settled.set(true);
+                if (utteranceId.equals(id)) started.set(true);
             }
 
             @Override public void onDone(String id) {
@@ -301,7 +272,7 @@ public class MainActivity extends Activity {
         }
 
         main.postDelayed(() -> {
-            if (!settled.get()) abandonAudioFocus();
+            if (!started.get()) abandonAudioFocus();
         }, TTS_START_TIMEOUT_MS);
 
         return true;
@@ -357,9 +328,7 @@ public class MainActivity extends Activity {
         @JavascriptInterface public boolean speak(String text) {
             if (text == null || text.trim().isEmpty()) return false;
             if (!awaitTtsReady()) return false;
-
-            final boolean[] result = new boolean[]{false};
-            main.post(() -> result[0] = speakNow(text));
+            main.post(() -> speakNow(text));
             return true;
         }
 
@@ -406,7 +375,8 @@ public class MainActivity extends Activity {
 
             tts.setOnUtteranceProgressListener(new UtteranceProgressListener() {
                 @Override public void onStart(String id) {
-                    if (utteranceId.equals(id) && callbackSettled.compareAndSet(false, true)) {
+                    if (utteranceId.equals(id) &&
+                            callbackSettled.compareAndSet(false, true)) {
                         notifyTtsResult(callbackId, true);
                     }
                 }
@@ -414,10 +384,6 @@ public class MainActivity extends Activity {
                 @Override public void onDone(String id) {
                     if (utteranceId.equals(id)) {
                         abandonAudioFocus();
-                        // Do not send false after a successful onStart.
-                        // The previous implementation did exactly that after
-                        // 3.5 seconds, making the UI report a working voice path
-                        // as failed while audio was actually playing.
                         if (callbackSettled.compareAndSet(false, true)) {
                             notifyTtsResult(callbackId, true);
                         }
@@ -439,7 +405,7 @@ public class MainActivity extends Activity {
             params.putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, 1.0f);
             params.putFloat(TextToSpeech.Engine.KEY_PARAM_PAN, 0.0f);
 
-            final int result = tts.speak(
+            int result = tts.speak(
                     text.trim(), TextToSpeech.QUEUE_FLUSH, params, utteranceId);
 
             if (result != TextToSpeech.SUCCESS) {
