@@ -1,4 +1,7 @@
 name: Build Standalone Buddy APK
+permissions:
+  contents: write
+
 on:
   push:
     branches: [standalone-buddy-native]
@@ -19,3 +22,10 @@ jobs:
           name: buddy-standalone-apk
           path: standalone-buddy/app/build/outputs/apk/release/app-release.apk
           retention-days: 30
+      - name: Publish persistent APK release
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="buddy-standalone-${GITHUB_RUN_NUMBER}"
+          gh release create "$TAG" standalone-buddy/app/build/outputs/apk/release/app-release.apk --repo "$GITHUB_REPOSITORY" --title "Buddy Standalone APK $GITHUB_RUN_NUMBER" --notes "Standalone native Little Red's Big Studio Buddy app. Commit $GITHUB_SHA."
