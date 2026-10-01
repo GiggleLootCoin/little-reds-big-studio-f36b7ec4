@@ -4,6 +4,8 @@ on:
   workflow_dispatch:
   push:
     branches: [ android-native-rebuild ]
+  pull_request:
+    branches: [ main ]
 
 permissions:
   contents: write
@@ -27,6 +29,7 @@ jobs:
           unzip -q /tmp/gradle.zip -d /tmp
           /tmp/gradle-8.9/bin/gradle --no-daemon assembleDebug
       - name: Publish APK release
+        if: github.event_name != 'pull_request'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
