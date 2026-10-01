@@ -16,11 +16,11 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       - name: Build APK
         working-directory: standalone-buddy
-        run: gradle :app:assembleRelease --no-daemon
+        run: gradle :app:assembleDebug --no-daemon
       - uses: actions/upload-artifact@v4
         with:
           name: buddy-standalone-apk
-          path: standalone-buddy/app/build/outputs/apk/release/*.apk
+          path: standalone-buddy/app/build/outputs/apk/debug/*.apk
           retention-days: 30
           if-no-files-found: error
       - name: Publish persistent APK release
@@ -29,4 +29,4 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           TAG="buddy-standalone-${GITHUB_RUN_NUMBER}"
-          gh release create "$TAG" standalone-buddy/app/build/outputs/apk/release/*.apk --repo "$GITHUB_REPOSITORY" --title "Buddy Standalone APK $GITHUB_RUN_NUMBER" --notes "Standalone native Little Red's Big Studio Buddy app. Commit $GITHUB_SHA."
+          gh release create "$TAG" standalone-buddy/app/build/outputs/apk/debug/*.apk --repo "$GITHUB_REPOSITORY" --title "Buddy Standalone APK $GITHUB_RUN_NUMBER" --notes "Standalone native Little Red's Big Studio Buddy app. Commit $GITHUB_SHA."
