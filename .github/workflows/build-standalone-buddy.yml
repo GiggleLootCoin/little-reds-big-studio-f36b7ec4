@@ -91,6 +91,8 @@ jobs:
           echo "url=$URL" >> "$GITHUB_OUTPUT"
           echo "### Gofile phone download" >> "$GITHUB_STEP_SUMMARY"
           echo "$URL" >> "$GITHUB_STEP_SUMMARY"
+          echo "### Stable Supabase APK endpoint" >> "$GITHUB_STEP_SUMMARY"
+          echo "https://awkjmzrjfdjvlmdbtnzy.supabase.co/functions/v1/buddy-apk" >> "$GITHUB_STEP_SUMMARY"
           curl --fail --location --retry 4 --retry-delay 2 -sS -o /dev/null -w 'Gofile page: HTTP %{http_code}, %{content_type}, %{size_download} bytes\n' "$URL" | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Publish GitHub release with both working download routes
@@ -99,12 +101,16 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GOFILE_URL: ${{ steps.gofile.outputs.url }}
           RAW_URL: ${{ steps.rawmirror.outputs.url }}
+          SUPABASE_URL: https://awkjmzrjfdjvlmdbtnzy.supabase.co/functions/v1/buddy-apk
         run: |
           TAG="buddy-standalone-${GITHUB_RUN_NUMBER}"
           cat > release-notes.md <<EOF
           Standalone native Little Red's Big Studio Buddy app.
 
-          PHONE DOWNLOAD (Gofile):
+          PHONE DOWNLOAD (stable Supabase endpoint):
+          ${SUPABASE_URL}
+
+          SECONDARY PHONE DOWNLOAD (Gofile):
           ${GOFILE_URL}
 
           PERMANENT FALLBACK (raw GitHub file):
