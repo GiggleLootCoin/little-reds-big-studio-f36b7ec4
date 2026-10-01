@@ -11,12 +11,6 @@
   "ai": {
     "binding": "AI",
   },
-  "r2_buckets": [
-    {
-      "binding": "APK_BUCKET",
-      "bucket_name": "little-reds-big-studio-apks",
-    },
-  ],
   "observability": {
     "enabled": true,
   },
