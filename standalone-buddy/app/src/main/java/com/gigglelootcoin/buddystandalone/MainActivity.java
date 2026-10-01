@@ -2,8 +2,7 @@ package com.gigglelootcoin.buddystandalone;
 
 import android.app.Activity;
 import android.os.Bundle;
-import android.graphics.Color;
-import android.graphics.Typeface;
+import android.graphics.*;
 import android.graphics.drawable.GradientDrawable;
 import android.content.Intent;
 import android.speech.RecognizerIntent;
@@ -12,8 +11,6 @@ import android.speech.RecognitionListener;
 import android.speech.tts.TextToSpeech;
 import android.view.Gravity;
 import android.view.View;
-import android.view.inputmethod.InputMethodManager;
-import android.content.Context;
 import android.widget.*;
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -59,28 +56,29 @@ public class MainActivity extends Activity {
 
         LinearLayout main = new LinearLayout(this);
         main.setOrientation(LinearLayout.VERTICAL);
-        main.setPadding(dp(16), dp(12), dp(16), dp(10));
+        main.setPadding(dp(12), dp(10), dp(12), dp(10));
 
-        TextView title = label("Little Red's Big Studio", 23, Color.WHITE, true);
-        main.addView(title, new LinearLayout.LayoutParams(-1, dp(34)));
+        LogoView logo = new LogoView();
+        main.addView(logo, new LinearLayout.LayoutParams(-1, dp(92)));
 
         TextView sub = label("BUDDY  •  YOUR CREATIVE STUDIO COMPANION", 11, Color.rgb(194,168,230), true);
-        main.addView(sub, new LinearLayout.LayoutParams(-1, dp(24)));
+        sub.setGravity(Gravity.CENTER);
+        main.addView(sub, new LinearLayout.LayoutParams(-1, dp(25)));
 
         LinearLayout stage = new LinearLayout(this);
         stage.setGravity(Gravity.CENTER);
         stage.setOrientation(LinearLayout.VERTICAL);
         stage.setBackground(bg(Color.rgb(30,18,48), 28));
-        stage.setPadding(dp(10), dp(16), dp(10), dp(14));
+        stage.setPadding(dp(10), dp(12), dp(10), dp(12));
 
         TextView buddy = label("BUDDY", 34, Color.rgb(235,218,255), true);
         buddy.setGravity(Gravity.CENTER);
-        stage.addView(buddy, new LinearLayout.LayoutParams(-1, dp(70)));
+        stage.addView(buddy, new LinearLayout.LayoutParams(-1, dp(64)));
 
         status = label("Buddy is ready", 14, Color.rgb(210,190,235), false);
         status.setGravity(Gravity.CENTER);
         stage.addView(status, new LinearLayout.LayoutParams(-1, dp(28)));
-        main.addView(stage, new LinearLayout.LayoutParams(-1, dp(130)));
+        main.addView(stage, new LinearLayout.LayoutParams(-1, dp(122)));
 
         ScrollView scroll = new ScrollView(this);
         messages = new LinearLayout(this);
@@ -127,6 +125,38 @@ public class MainActivity extends Activity {
         setContentView(root);
 
         addBubble("Buddy", "I'm ready. Talk to me.", false);
+    }
+
+    private class LogoView extends View {
+        private final Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
+        LogoView() { super(MainActivity.this); setLayerType(View.LAYER_TYPE_SOFTWARE, null); }
+        @Override protected void onDraw(Canvas c) {
+            super.onDraw(c);
+            float w=getWidth(), h=getHeight(), d=getResources().getDisplayMetrics().density;
+            float r=18*d;
+            p.setStyle(Paint.Style.FILL); p.setColor(Color.rgb(11,5,6));
+            c.drawRoundRect(0,0,w,h,r,r,p);
+            float cy=h/2f, cx=52*d;
+            p.setColor(Color.rgb(18,9,11)); c.drawCircle(cx,cy,31*d,p);
+            p.setStyle(Paint.Style.STROKE); p.setStrokeWidth(2*d); p.setColor(Color.rgb(143,19,40));
+            c.drawCircle(cx,cy,31*d,p);
+            p.setStyle(Paint.Style.FILL);
+            p.setColor(Color.rgb(215,25,50));
+            Path hood=new Path();
+            hood.moveTo(cx-19*d,cy-9*d); hood.quadTo(cx-3*d,cy-22*d,cx+17*d,cy-8*d);
+            hood.lineTo(cx+11*d,cy+19*d); hood.quadTo(cx,cy+27*d,cx-10*d,cy+19*d); hood.close();
+            c.drawPath(hood,p);
+            p.setColor(Color.WHITE);
+            c.drawCircle(cx-7*d,cy+2*d,2.5f*d,p); c.drawCircle(cx+7*d,cy+2*d,2.5f*d,p);
+            p.setStyle(Paint.Style.STROKE); p.setStrokeWidth(2*d); p.setStrokeCap(Paint.Cap.ROUND);
+            Path smile=new Path(); smile.moveTo(cx-7*d,cy+11*d); smile.quadTo(cx,cy+16*d,cx+7*d,cy+11*d); c.drawPath(smile,p);
+            p.setStrokeCap(Paint.Cap.BUTT); p.setStyle(Paint.Style.FILL);
+            p.setTypeface(Typeface.create(Typeface.DEFAULT,Typeface.BOLD));
+            p.setTextSize(23*d); p.setColor(Color.WHITE);
+            c.drawText("LITTLE RED'S", 100*d, cy-5*d, p);
+            p.setTextSize(15*d); p.setColor(Color.rgb(255,77,97));
+            c.drawText("BIG STUDIO", 101*d, cy+23*d, p);
+        }
     }
 
     private void addBubble(String who, String text, boolean mine) {
@@ -194,9 +224,7 @@ public class MainActivity extends Activity {
     }
 
     private void speak(String text) {
-        if (tts != null) {
-            tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, "buddy");
-        }
+        if (tts != null) tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, "buddy");
         status.postDelayed(() -> status.setText("Buddy is ready"), Math.min(7000, Math.max(2500, text.length()*45)));
     }
 
