@@ -24,8 +24,8 @@ export const BUDDY_VOICE_KEY = "lrbgs-buddy-voice-v2";
 export const BUDDY_VOICE_PRESETS: readonly BuddyVoicePreset[] = [
   {
     id: "Red",
-    label: "Red — My Voice",
-    note: "Your real verified personal voice clone",
+    label: "Red",
+    note: "Official preset voice for Buddy",
     nativeLanguage: "English",
     languages: ["English"],
     character: "Little Red’s own voice — the required Buddy voice.",
