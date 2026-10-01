@@ -73,6 +73,24 @@ jobs:
           sha256sum "$APK"
           stat -c '%s bytes' "$APK"
 
+      - name: Ensure permanent APK storage exists
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CLOUDFLARE_TOKEN || secrets.CF_API_TOKEN || secrets.CLOUDFLARE_API_KEY }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || secrets.CF_ACCOUNT_ID || secrets.CLOUDFLARE_ACCOUNT || secrets.CLOUDFLARE_ID }}
+        run: |
+          set -euo pipefail
+          test -n "${CLOUDFLARE_API_TOKEN:-}"
+          test -n "${CLOUDFLARE_ACCOUNT_ID:-}"
+          npx wrangler r2 bucket create little-reds-big-studio-apks --remote || true
+
+      - name: Publish APK to permanent Cloudflare storage
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CLOUDFLARE_TOKEN || secrets.CF_API_TOKEN || secrets.CLOUDFLARE_API_KEY }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || secrets.CF_ACCOUNT_ID || secrets.CLOUDFLARE_ACCOUNT || secrets.CLOUDFLARE_ID }}
+        run: |
+          set -euo pipefail
+          npx wrangler r2 object put little-reds-big-studio-apks/buddy.apk --file android/app/build/outputs/apk/release/app-release.apk --remote --content-type application/vnd.android.package-archive
+
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
