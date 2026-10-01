@@ -53,7 +53,7 @@ export function BuddyLiveChat() {
     const u: Message = { id: crypto.randomUUID(), role: "user", content: clean, createdAt: Date.now(), attachments: attachments.map((f) => ({ id: crypto.randomUUID(), name: f.name, type: f.type, size: f.size })) };
     setMessages((x) => [...x, u]); setInput("");
     try {
-      const prior = messages.slice(-6).map((m) => ({ role: m.role, content: m.content }));
+      const prior = messages.slice(-12).map((m) => ({ role: m.role, content: m.content }));
       const content: { type: string; text?: string; image_url?: { url: string } }[] = [{ type: "text", text: clean }];
       const attachmentInfo = await attachmentContext(attachments); if (attachmentInfo.textParts.length) content[0].text = `${clean}\n\n${attachmentInfo.textParts.join("\n\n")}`; content.push(...attachmentInfo.imageParts);
       const voiceProfile = getBuddyVoiceProfile(), language = voiceProfile.language || "English", mood = voiceProfile.mood || "natural", tone = voiceProfile.tone || "conversational";
