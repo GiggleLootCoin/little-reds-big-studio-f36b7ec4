@@ -14,21 +14,59 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
-        with: {distribution: temurin, java-version: '17'}
+        with:
+          distribution: temurin
+          java-version: '17'
       - uses: gradle/actions/setup-gradle@v4
-      - name: Build APK
+      - name: Build installable debug APK
         working-directory: standalone-buddy
         run: gradle :app:assembleDebug --no-daemon
+      - name: Verify APK structure and signature
+        shell: bash
+        run: |
+          APK="$(find standalone-buddy/app/build/outputs/apk/debug -maxdepth 1 -name '*.apk' -print -quit)"
+          test -n "$APK"
+          test -s "$APK"
+          unzip -t "$APK" >/dev/null
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -n 1)"
+          test -x "$APKSIGNER"
+          "$APKSIGNER" verify --verbose "$APK"
+          echo "APK=$APK" >> "$GITHUB_ENV"
       - uses: actions/upload-artifact@v4
         with:
           name: buddy-standalone-apk
-          path: standalone-buddy/app/build/outputs/apk/debug/*.apk
+          path: ${{ env.APK }}
           retention-days: 30
           if-no-files-found: error
-      - name: Publish persistent APK release
+      - name: Upload APK to independent direct-download host
+        id: catbox
+        shell: bash
+        run: |
+          set -euo pipefail
+          URL="$(curl --fail --retry 4 --retry-delay 2 -sS -F 'reqtype=fileupload' -F 'fileToUpload=@'"$APK"';filename=Buddy-Little-Reds-Big-Studio.apk' https://catbox.moe/user/api.php)"
+          case "$URL" in
+            https://files.catbox.moe/*) ;;
+            *) echo "Unexpected upload response: $URL"; exit 1 ;;
+          esac
+          echo "url=$URL" >> "$GITHUB_OUTPUT"
+          echo "### Direct APK download" >> "$GITHUB_STEP_SUMMARY"
+          echo "$URL" >> "$GITHUB_STEP_SUMMARY"
+          echo "### SHA-256" >> "$GITHUB_STEP_SUMMARY"
+          sha256sum "$APK" | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "### Download verification" >> "$GITHUB_STEP_SUMMARY"
+          curl --fail --retry 4 --retry-delay 2 -sS -o /dev/null -w 'HTTP %{http_code}, %{content_type}, %{size_download} bytes\n' "$URL" | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Publish GitHub release with independent fallback link
         if: github.event_name == 'push' || github.event_name == 'pull_request'
         env:
           GH_TOKEN: ${{ github.token }}
+          CATBOX_URL: ${{ steps.catbox.outputs.url }}
         run: |
           TAG="buddy-standalone-${GITHUB_RUN_NUMBER}"
-          gh release create "$TAG" standalone-buddy/app/build/outputs/apk/debug/*.apk --repo "$GITHUB_REPOSITORY" --title "Buddy Standalone APK $GITHUB_RUN_NUMBER" --notes "Standalone native Little Red's Big Studio Buddy app. Commit $GITHUB_SHA."
+          printf '%s\n' \
+            'Standalone native Little Red'"'"'s Big Studio Buddy app.' \
+            '' \
+            'Independent direct APK download:' \
+            "$CATBOX_URL" \
+            '' \
+            "Commit: ${GITHUB_SHA}" > release-notes.md
+          gh release create "$TAG" "$APK" --repo "$GITHUB_REPOSITORY" --title "Buddy Standalone APK ${GITHUB_RUN_NUMBER}" --notes-file release-notes.md --target "${GITHUB_SHA}"
