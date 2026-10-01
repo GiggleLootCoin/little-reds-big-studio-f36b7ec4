@@ -96,7 +96,7 @@ export async function speakBuddyLocally(
           window.clearTimeout(timer);
           resolve(ok);
         };
-        const timer = window.setTimeout(() => finish(false), 4500);
+        const timer = window.setTimeout(() => finish(false), 9000);
         const callbacks = ((window as typeof window & { __buddyAndroidTtsCallbacks?: Record<string, (ok: boolean) => void> }).__buddyAndroidTtsCallbacks ??= {});
         callbacks[callbackId] = finish;
         (window as typeof window & { __buddyAndroidTtsResult?: (id: string, ok: boolean) => void }).__buddyAndroidTtsResult ??= (id, ok) => {
@@ -105,12 +105,16 @@ export async function speakBuddyLocally(
         };
         nativeAndroid.speakAsync?.(text.trim(), callbackId);
       });
-      if (started) return true;
+      // On Android, native TTS is the authoritative playback path. Do not
+      // silently switch back to WebView/browser speech when native playback
+      // fails; that was masking the real engine failure and producing false
+      // "speaking" states.
+      return started;
     } catch {
-      // Fall through to browser speech.
+      return false;
     }
   } else if (nativeAndroid?.speak && nativeAndroid?.isAvailable?.()) {
-    try { if (nativeAndroid.speak(text.trim()) === true) return true; } catch { /* fall through to browser speech */ }
+    try { return nativeAndroid.speak(text.trim()) === true; } catch { return false; }
   }
   if (!("speechSynthesis" in window)) return false;
   const synth = window.speechSynthesis;
