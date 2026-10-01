@@ -129,7 +129,7 @@ export function BuddyLiveChat() {
             } catch (error) {
               reject(error instanceof Error ? error : new Error("Fast audio backup failed."));
             }
-          }, 1500);
+          }, 3500);
         });
         remoteTts.then(() => { if (fallbackTimer) window.clearTimeout(fallbackTimer); }, () => { /* fallback stays armed */ });
         r = await Promise.any([
@@ -160,15 +160,16 @@ export function BuddyLiveChat() {
       if (r.url.startsWith("blob:")) URL.revokeObjectURL(r.url);
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
-      // Final fallback only: browser speech is retained for devices where the
-      // network audio path is unavailable, but it is no longer the first fallback.
-      const fallbackStarted = await speakBuddyLocally(text, "browser-en-us");
-      if (fallbackStarted) {
-        setStatus("Buddy is speaking with your phone's voice because the selected voice service is unavailable.");
-        return;
+      // Native Android is the final local recovery path. Do not let Web Speech hide a production audio failure.
+      if (window.AndroidBuddyVoice?.speakAsync || window.AndroidBuddyVoice?.speak) {
+        const fallbackStarted = await speakBuddyLocally(text, "browser-en-us");
+        if (fallbackStarted) {
+          setStatus("Buddy is speaking with the phone's validated native voice.");
+          return;
+        }
       }
       const playbackError = new Error(
-        `Buddy's audio service failed and your phone's speech engine did not start. ${detail || "Check media volume and Android text-to-speech settings."}`,
+        `Buddy audio failed. ${detail || "No usable audio playback path is available."}`,
       );
       setStatus(playbackError.message);
       throw playbackError;
