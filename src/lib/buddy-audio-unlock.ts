@@ -76,10 +76,12 @@ async function playWithMediaElement(url: string): Promise<void> {
   audio.currentTime = 0;
   await new Promise<void>((resolve, reject) => {
     let settled = false;
+    let timer = 0;
     const cleanup = () => {
       audio.onplaying = null;
       audio.onended = null;
       audio.onerror = null;
+      if (timer) window.clearTimeout(timer);
     };
     const fail = (error: Error) => {
       if (settled) return;
@@ -101,22 +103,17 @@ async function playWithMediaElement(url: string): Promise<void> {
       resolve();
     };
     audio.onerror = () => fail(new Error("Audio playback failed."));
-    const timer = window.setTimeout(() => fail(new Error("Buddy audio playback timed out.")), 15000);
-    const originalCleanup = cleanup;
-    const cleanupWithTimer = () => {
-      window.clearTimeout(timer);
-      originalCleanup();
-    };
+    timer = window.setTimeout(() => fail(new Error("Buddy audio playback timed out.")), 15000);
     audio.onplaying = () => {
       if (settled) return;
       settled = true;
-      cleanupWithTimer();
+      cleanup();
       resolve();
     };
     audio.onended = () => {
       if (settled) return;
       settled = true;
-      cleanupWithTimer();
+      cleanup();
       resolve();
     };
     void audio.play().catch((error) => fail(error instanceof Error ? error : new Error("Audio playback failed.")));
