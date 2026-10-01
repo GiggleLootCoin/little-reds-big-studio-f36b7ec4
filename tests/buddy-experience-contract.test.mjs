@@ -89,7 +89,7 @@ test("Buddy production Red voice uses the hardened Cloudflare clone route", () =
 
 test("Buddy audio response is not reported as complete until playback succeeds", () => {
   assert.match(chat, /import \{ playBuddyAudio, unlockBuddyAudio \} from "@\/lib\/buddy-audio-unlock"/);
-  assert.match(chat, /void unlockBuddyAudio\(\)/);
+  assert.match(chat, /await unlockBuddyAudio\(\)/);
   assert.match(chat, /await playBuddyAudio\(r\.url\)/);
   assert.match(chat, /setStatus\("Buddy responded with audio\."\)/);
   assert.ok(chat.indexOf("await speak(reply)") < chat.indexOf("Buddy responded with audio."));
