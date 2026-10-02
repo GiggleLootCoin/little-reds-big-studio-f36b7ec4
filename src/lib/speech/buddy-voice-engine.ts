@@ -96,7 +96,7 @@ export async function speakBuddyLocally(
           window.clearTimeout(timer);
           resolve(ok);
         };
-        const timer = window.setTimeout(() => finish(false), 9000);
+        const timer = window.setTimeout(() => finish(false), 20000);
         const callbacks = ((window as typeof window & { __buddyAndroidTtsCallbacks?: Record<string, (ok: boolean) => void> }).__buddyAndroidTtsCallbacks ??= {});
         callbacks[callbackId] = finish;
         (window as typeof window & { __buddyAndroidTtsResult?: (id: string, ok: boolean) => void }).__buddyAndroidTtsResult ??= (id, ok) => {
