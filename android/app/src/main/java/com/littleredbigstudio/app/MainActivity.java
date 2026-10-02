@@ -326,6 +326,7 @@ public class MainActivity extends Activity {
 
             MediaPlayer player = new MediaPlayer();
             buddyPlayer = player;
+            AtomicBoolean callbackSent = new AtomicBoolean(false);
             player.setAudioAttributes(new AudioAttributes.Builder()
                     .setUsage(AudioAttributes.USAGE_MEDIA)
                     .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
@@ -334,6 +335,9 @@ public class MainActivity extends Activity {
             player.setOnPreparedListener(mp -> {
                 try {
                     mp.start();
+                    if (callbackId != null && callbackSent.compareAndSet(false, true)) {
+                        notifyTtsResult(callbackId, true);
+                    }
                 } catch (Throwable error) {
                     failTtsPlayback(callbackId, settled, output);
                 }
@@ -347,28 +351,11 @@ public class MainActivity extends Activity {
                     abandonAudioFocus();
                     try { mp.release(); } catch (Throwable ignored) {}
                     if (buddyPlayer == mp) buddyPlayer = null;
-                    // The file is no longer needed once playback completes.
                     //noinspection ResultOfMethodCallIgnored
                     output.delete();
-                    if (callbackId != null) notifyTtsResult(callbackId, true);
                 }
             });
             player.prepareAsync();
-
-            // MediaPlayer's onPrepared callback is not enough to prove the
-            // speaker actually accepted playback; onInfo MEDIA_INFO_AUDIO_NOT_PLAYING
-            // is not reliable across OEMs. onStart is therefore reported from the
-            // explicit start call above via a short polling check below.
-            main.postDelayed(() -> {
-                if (!settled.get() && player.isPlaying()) {
-                    if (callbackId != null && settled.compareAndSet(false, true)) {
-                        // Keep the player alive until completion. Re-open the
-                        // completion guard after notifying JS.
-                        settled.set(false);
-                        notifyTtsResult(callbackId, true);
-                    }
-                }
-            }, 100L);
         } catch (IOException | IllegalStateException error) {
             failTtsPlayback(callbackId, settled, output);
         }
