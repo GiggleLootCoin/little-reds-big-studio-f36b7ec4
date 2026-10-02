@@ -40,7 +40,7 @@ public class MainActivity extends Activity {
 
     private static final String GOOGLE_TTS = "com.google.android.tts";
     private static final String SAMSUNG_TTS = "com.samsung.SMT";
-    private static final long TTS_START_TIMEOUT_MS = 8000L;
+    private static final long TTS_START_TIMEOUT_MS = 20000L;
 
     private WebView webView;
     private TextToSpeech tts;
@@ -407,6 +407,19 @@ public class MainActivity extends Activity {
         } else {
             audioManager.abandonAudioFocus(focusListener);
         }
+    }
+
+    private void notifyTtsResult(String callbackId, boolean started) {
+        if (callbackId == null || callbackId.isEmpty()) return;
+        main.post(() -> {
+            String safe = callbackId
+                    .replace("\\", "\\\\")
+                    .replace("'", "\\'");
+            webView.evaluateJavascript(
+                    "window.__buddyAndroidTtsResult && " +
+                    "window.__buddyAndroidTtsResult('" + safe + "'," + started + ");",
+                    null);
+        });
     }
 
     public final class BuddyVoiceBridge {
