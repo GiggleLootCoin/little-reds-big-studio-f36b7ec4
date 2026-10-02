@@ -85,6 +85,20 @@ export function BuddyLiveChat() {
     setBuddyStatus("working", { message: "Buddy is speaking…" });
     const v = getBuddyVoiceProfile();
     try {
+      // On the standalone Android build, use the native audio path first.
+      // WebView media playback can be blocked after an asynchronous network
+      // response even when the page was unlocked by a prior tap.
+      if (typeof window !== "undefined" && (window as typeof window & {
+        AndroidBuddyVoice?: { isAvailable?: () => boolean };
+      }).AndroidBuddyVoice?.isAvailable?.()) {
+        const nativeStarted = await speakBuddyLocally(text, "browser-en-us");
+        if (nativeStarted) {
+          setStatus("Buddy is speaking through the phone speaker.");
+          return;
+        }
+        throw new Error("The Android speech engine could not start playback.");
+      }
+
       let r: { url: string; provider?: string };
       if (v.speaker === "Red" || (v.mode === "clone" && !v.speaker)) {
         let sample: Blob | null = null;
