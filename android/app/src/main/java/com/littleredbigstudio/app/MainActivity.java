@@ -7,6 +7,7 @@ import android.content.pm.PackageManager;
 import android.media.AudioAttributes;
 import android.media.AudioFocusRequest;
 import android.media.AudioManager;
+import android.media.MediaPlayer;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
@@ -22,6 +23,8 @@ import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 
+import java.io.File;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -41,6 +44,7 @@ public class MainActivity extends Activity {
 
     private WebView webView;
     private TextToSpeech tts;
+    private MediaPlayer buddyPlayer;
     private AudioManager audioManager;
     private AudioFocusRequest audioFocusRequest;
     private volatile boolean ttsReady = false;
@@ -233,7 +237,20 @@ public class MainActivity extends Activity {
 
     private boolean speakNow(String text) {
         if (!ttsReady || tts == null || text == null || text.trim().isEmpty()) return false;
-        if (!requestAudioFocus()) return false;
+        main.post(() -> synthesizeAndPlay(text, null));
+        return true;
+    }
+
+    private void synthesizeAndPlay(String text, String callbackId) {
+        if (!ttsReady || tts == null || text == null || text.trim().isEmpty()) {
+            notifyTtsResult(callbackId, false);
+            return;
+        }
+
+        if (!requestAudioFocus()) {
+            notifyTtsResult(callbackId, false);
+            return;
+        }
 
         if (audioManager != null &&
                 audioManager.getStreamVolume(AudioManager.STREAM_MUSIC) == 0 &&
@@ -242,41 +259,133 @@ public class MainActivity extends Activity {
                     AudioManager.STREAM_MUSIC, AudioManager.ADJUST_UNMUTE, 0);
         }
 
-        final String utteranceId = "buddy-" + System.nanoTime();
-        final AtomicBoolean started = new AtomicBoolean(false);
+        final String utteranceId = "buddy-file-" + System.nanoTime();
+        final AtomicBoolean settled = new AtomicBoolean(false);
+        final File output = new File(getCacheDir(), utteranceId + ".wav");
 
-        tts.setOnUtteranceProgressListener(new UtteranceProgressListener() {
-            @Override public void onStart(String id) {
-                if (utteranceId.equals(id)) started.set(true);
+        try {
+            tts.setOnUtteranceProgressListener(new UtteranceProgressListener() {
+                @Override public void onStart(String id) {
+                    // Synthesis has started; this is deliberately NOT reported as
+                    // successful playback. The MediaPlayer callback below is the
+                    // authoritative audible-start signal.
+                }
+
+                @Override public void onDone(String id) {
+                    if (!utteranceId.equals(id)) return;
+                    main.post(() -> {
+                        if (settled.get()) return;
+                        try {
+                            playSynthesizedFile(output, callbackId, settled);
+                        } catch (Throwable error) {
+                            failTtsPlayback(callbackId, settled, output);
+                        }
+                    });
+                }
+
+                @Override public void onError(String id) {
+                    if (utteranceId.equals(id)) {
+                        main.post(() -> failTtsPlayback(callbackId, settled, output));
+                    }
+                }
+            });
+
+            Bundle params = new Bundle();
+            params.putInt(TextToSpeech.Engine.KEY_PARAM_STREAM, AudioManager.STREAM_MUSIC);
+            params.putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, 1.0f);
+            params.putFloat(TextToSpeech.Engine.KEY_PARAM_PAN, 0.0f);
+
+            int result = tts.synthesizeToFile(
+                    text.trim(), params, output, utteranceId);
+
+            if (result != TextToSpeech.SUCCESS) {
+                failTtsPlayback(callbackId, settled, output);
+                return;
             }
 
-            @Override public void onDone(String id) {
-                if (utteranceId.equals(id)) abandonAudioFocus();
-            }
+            main.postDelayed(() -> {
+                if (!settled.get()) failTtsPlayback(callbackId, settled, output);
+            }, 20000L);
+        } catch (Throwable error) {
+            failTtsPlayback(callbackId, settled, output);
+        }
+    }
 
-            @Override public void onError(String id) {
-                if (utteranceId.equals(id)) abandonAudioFocus();
-            }
-        });
-
-        Bundle params = new Bundle();
-        params.putInt(TextToSpeech.Engine.KEY_PARAM_STREAM, AudioManager.STREAM_MUSIC);
-        params.putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, 1.0f);
-        params.putFloat(TextToSpeech.Engine.KEY_PARAM_PAN, 0.0f);
-
-        int result = tts.speak(
-                text.trim(), TextToSpeech.QUEUE_FLUSH, params, utteranceId);
-
-        if (result != TextToSpeech.SUCCESS) {
-            abandonAudioFocus();
-            return false;
+    private void playSynthesizedFile(
+            File output, String callbackId, AtomicBoolean settled) {
+        if (!output.exists() || output.length() == 0) {
+            failTtsPlayback(callbackId, settled, output);
+            return;
         }
 
-        main.postDelayed(() -> {
-            if (!started.get()) abandonAudioFocus();
-        }, TTS_START_TIMEOUT_MS);
+        try {
+            if (buddyPlayer != null) {
+                try { buddyPlayer.stop(); } catch (Throwable ignored) {}
+                try { buddyPlayer.release(); } catch (Throwable ignored) {}
+            }
 
-        return true;
+            MediaPlayer player = new MediaPlayer();
+            buddyPlayer = player;
+            player.setAudioAttributes(new AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_MEDIA)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                    .build());
+            player.setDataSource(output.getAbsolutePath());
+            player.setOnPreparedListener(mp -> {
+                try {
+                    mp.start();
+                } catch (Throwable error) {
+                    failTtsPlayback(callbackId, settled, output);
+                }
+            });
+            player.setOnErrorListener((mp, what, extra) -> {
+                failTtsPlayback(callbackId, settled, output);
+                return true;
+            });
+            player.setOnCompletionListener(mp -> {
+                if (settled.compareAndSet(false, true)) {
+                    abandonAudioFocus();
+                    try { mp.release(); } catch (Throwable ignored) {}
+                    if (buddyPlayer == mp) buddyPlayer = null;
+                    // The file is no longer needed once playback completes.
+                    //noinspection ResultOfMethodCallIgnored
+                    output.delete();
+                    if (callbackId != null) notifyTtsResult(callbackId, true);
+                }
+            });
+            player.prepareAsync();
+
+            // MediaPlayer's onPrepared callback is not enough to prove the
+            // speaker actually accepted playback; onInfo MEDIA_INFO_AUDIO_NOT_PLAYING
+            // is not reliable across OEMs. onStart is therefore reported from the
+            // explicit start call above via a short polling check below.
+            main.postDelayed(() -> {
+                if (!settled.get() && player.isPlaying()) {
+                    if (callbackId != null && settled.compareAndSet(false, true)) {
+                        // Keep the player alive until completion. Re-open the
+                        // completion guard after notifying JS.
+                        settled.set(false);
+                        notifyTtsResult(callbackId, true);
+                    }
+                }
+            }, 100L);
+        } catch (IOException | IllegalStateException error) {
+            failTtsPlayback(callbackId, settled, output);
+        }
+    }
+
+    private void failTtsPlayback(
+            String callbackId, AtomicBoolean settled, File output) {
+        if (!settled.compareAndSet(false, true)) return;
+        abandonAudioFocus();
+        if (buddyPlayer != null) {
+            try { buddyPlayer.reset(); } catch (Throwable ignored) {}
+            try { buddyPlayer.release(); } catch (Throwable ignored) {}
+            buddyPlayer = null;
+        }
+        //noinspection ResultOfMethodCallIgnored
+        output.delete();
+        if (callbackId != null) notifyTtsResult(callbackId, false);
     }
 
     private boolean requestAudioFocus() {
@@ -344,7 +453,7 @@ public class MainActivity extends Activity {
                     notifyTtsResult(callbackId, false);
                     return;
                 }
-                main.post(() -> speakNowWithCallback(text, callbackId));
+                main.post(() -> synthesizeAndPlay(text, callbackId));
             }, "buddy-tts-bridge").start();
         }
 
@@ -356,73 +465,6 @@ public class MainActivity extends Activity {
                 return false;
             }
             return ttsReady && tts != null;
-        }
-
-        private void speakNowWithCallback(String text, String callbackId) {
-            if (!requestAudioFocus()) {
-                notifyTtsResult(callbackId, false);
-                return;
-            }
-
-            if (audioManager != null &&
-                    audioManager.getStreamVolume(AudioManager.STREAM_MUSIC) == 0 &&
-                    Build.VERSION.SDK_INT >= 23) {
-                audioManager.adjustStreamVolume(
-                        AudioManager.STREAM_MUSIC, AudioManager.ADJUST_UNMUTE, 0);
-            }
-
-            final String utteranceId = "buddy-" + System.nanoTime();
-            final AtomicBoolean callbackSettled = new AtomicBoolean(false);
-
-            tts.setOnUtteranceProgressListener(new UtteranceProgressListener() {
-                @Override public void onStart(String id) {
-                    if (utteranceId.equals(id) &&
-                            callbackSettled.compareAndSet(false, true)) {
-                        notifyTtsResult(callbackId, true);
-                    }
-                }
-
-                @Override public void onDone(String id) {
-                    if (utteranceId.equals(id)) {
-                        abandonAudioFocus();
-                        if (callbackSettled.compareAndSet(false, true)) {
-                            notifyTtsResult(callbackId, true);
-                        }
-                    }
-                }
-
-                @Override public void onError(String id) {
-                    if (utteranceId.equals(id)) {
-                        abandonAudioFocus();
-                        if (callbackSettled.compareAndSet(false, true)) {
-                            notifyTtsResult(callbackId, false);
-                        }
-                    }
-                }
-            });
-
-            Bundle params = new Bundle();
-            params.putInt(TextToSpeech.Engine.KEY_PARAM_STREAM, AudioManager.STREAM_MUSIC);
-            params.putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, 1.0f);
-            params.putFloat(TextToSpeech.Engine.KEY_PARAM_PAN, 0.0f);
-
-            int result = tts.speak(
-                    text.trim(), TextToSpeech.QUEUE_FLUSH, params, utteranceId);
-
-            if (result != TextToSpeech.SUCCESS) {
-                abandonAudioFocus();
-                if (callbackSettled.compareAndSet(false, true)) {
-                    notifyTtsResult(callbackId, false);
-                }
-                return;
-            }
-
-            main.postDelayed(() -> {
-                if (callbackSettled.compareAndSet(false, true)) {
-                    abandonAudioFocus();
-                    notifyTtsResult(callbackId, false);
-                }
-            }, TTS_START_TIMEOUT_MS);
         }
 
         private void notifyTtsResult(String callbackId, boolean started) {
@@ -441,6 +483,11 @@ public class MainActivity extends Activity {
         @JavascriptInterface public void stop() {
             main.post(() -> {
                 if (tts != null) tts.stop();
+                if (buddyPlayer != null) {
+                    try { buddyPlayer.stop(); } catch (Throwable ignored) {}
+                    try { buddyPlayer.release(); } catch (Throwable ignored) {}
+                    buddyPlayer = null;
+                }
                 abandonAudioFocus();
             });
         }
@@ -465,6 +512,11 @@ public class MainActivity extends Activity {
         if (tts != null) {
             try { tts.stop(); } catch (Throwable ignored) {}
             tts.shutdown();
+        }
+        if (buddyPlayer != null) {
+            try { buddyPlayer.stop(); } catch (Throwable ignored) {}
+            try { buddyPlayer.release(); } catch (Throwable ignored) {}
+            buddyPlayer = null;
         }
         abandonAudioFocus();
         if (webView != null) {
