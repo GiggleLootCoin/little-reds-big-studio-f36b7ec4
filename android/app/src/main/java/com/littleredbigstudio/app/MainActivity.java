@@ -409,6 +409,19 @@ public class MainActivity extends Activity {
         }
     }
 
+    private void notifyTtsResult(String callbackId, boolean started) {
+        if (callbackId == null || callbackId.isEmpty()) return;
+        main.post(() -> {
+            String safe = callbackId
+                    .replace("\\", "\\\\")
+                    .replace("'", "\\'");
+            webView.evaluateJavascript(
+                    "window.__buddyAndroidTtsResult && " +
+                    "window.__buddyAndroidTtsResult('" + safe + "'," + started + ");",
+                    null);
+        });
+    }
+
     public final class BuddyVoiceBridge {
         @JavascriptInterface public boolean isAvailable() {
             return ttsReady && tts != null;
