@@ -22,6 +22,7 @@ import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import androidx.webkit.WebViewAssetLoader;
 
 import java.io.File;
 import java.io.IOException;
@@ -37,14 +38,20 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public class MainActivity extends Activity {
-    private static final String START_URL =
-            "https://little-reds-big-studio-f36b7ec4.gigglelootcoin.workers.dev/?app_build=e5931dcd83263178fc1b52dc1b65384c0539037b";
+    private static final String REMOTE_ORIGIN =
+            "https://little-reds-big-studio-f36b7ec4.gigglelootcoin.workers.dev";
+    private static final String START_URL = REMOTE_ORIGIN + "/";
+    // The APK carries the complete UI bundle. WebViewAssetLoader serves it from
+    // the app while requests outside /assets/ fall through to the remote API.
+    private static final String LOCAL_START_URL =
+            "https://little-reds-big-studio-f36b7ec4.gigglelootcoin.workers.dev/assets/index.html";
 
     private static final String GOOGLE_TTS = "com.google.android.tts";
     private static final String SAMSUNG_TTS = "com.samsung.SMT";
     private static final long TTS_START_TIMEOUT_MS = 20000L;
 
     private WebView webView;
+    private boolean localBundleLoaded = true;
     private TextToSpeech tts;
     private MediaPlayer buddyPlayer;
     private AudioManager audioManager;
@@ -92,17 +99,41 @@ public class MainActivity extends Activity {
             }
         });
 
+        final WebViewAssetLoader assetLoader = new WebViewAssetLoader.Builder()
+                .setDomain("little-reds-big-studio-f36b7ec4.gigglelootcoin.workers.dev")
+                .addPathHandler("/assets/", new WebViewAssetLoader.AssetsPathHandler(this))
+                .build();
+
         webView.setWebViewClient(new WebViewClient() {
+            @Override public WebResourceResponse shouldInterceptRequest(
+                    WebView view, WebResourceRequest request) {
+                WebResourceResponse local = assetLoader.shouldInterceptRequest(request.getUrl());
+                return local;
+            }
+
             @Override public boolean shouldOverrideUrlLoading(
                     WebView view, WebResourceRequest request) {
-                return !request.getUrl().toString().startsWith(START_URL);
+                String url = request.getUrl().toString();
+                return !url.startsWith(REMOTE_ORIGIN);
+            }
+
+            @Override public void onPageStarted(WebView view, String url, android.graphics.Bitmap favicon) {
+                localBundleLoaded = url.contains("/assets/index.html");
+            }
+
+            @Override public void onReceivedError(
+                    WebView view, WebResourceRequest request, android.webkit.WebResourceError error) {
+                if (request.isForMainFrame() && localBundleLoaded) {
+                    localBundleLoaded = false;
+                    view.loadUrl(START_URL);
+                }
             }
         });
 
         webView.addJavascriptInterface(new BuddyVoiceBridge(), "AndroidBuddyVoice");
         setContentView(webView);
         initTts();
-        webView.loadUrl(START_URL);
+        webView.loadUrl(LOCAL_START_URL);
     }
 
     private void initTts() {
