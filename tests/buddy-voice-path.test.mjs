@@ -31,7 +31,7 @@ test("Android never pre-empts the selected Red clone with generic native TTS", (
     speakBlock.indexOf("const isRedClone") < speakBlock.indexOf("let r: { url: string; provider?: string }"),
     "clone routing decision must happen before audio-engine selection",
   );
-  assert.match(speakBlock, /runStudioJob\("tts"/);
+  assert.match(speakBlock, /runStudioJob\(\s*"tts"/);
   assert.match(speakBlock, /getBuddyVoiceSample\(\)/);
 });
 
