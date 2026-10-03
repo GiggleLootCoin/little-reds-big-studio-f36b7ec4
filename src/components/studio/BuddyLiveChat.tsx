@@ -85,7 +85,6 @@ export function BuddyLiveChat() {
     setBuddyStatus("working", { message: "Buddy is speaking…" });
     const v = getBuddyVoiceProfile();
     const isRedClone = v.mode === "clone" || (v.mode === "preset" && v.speaker === "Red");
-    let nativeError = "";
     try {
       // IMPORTANT: a saved Red clone must never be pre-empted by Android's
       // generic system TTS. The previous implementation did exactly that:
@@ -182,7 +181,7 @@ export function BuddyLiveChat() {
         }
       }
       const playbackError = new Error(
-        `Buddy audio failed. ${detail || nativeError || "No usable audio playback path is available."}`,
+        `Buddy audio failed. ${detail || "No usable audio playback path is available."}`,
       );
       setStatus(playbackError.message);
       throw playbackError;
