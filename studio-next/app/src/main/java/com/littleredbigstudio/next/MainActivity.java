@@ -140,9 +140,25 @@ public class MainActivity extends Activity {
   void finishRequest(){requestInFlight.set(false);if(elapsedTicker!=null)mainHandler.removeCallbacks(elapsedTicker);}
   String safeMessage(Exception e){String m=e.getMessage();return m==null?e.getClass().getSimpleName():m;}
 
+  String resolveModel(String chosen,boolean ollama)throws Exception{
+    ArrayList<String> installed=discoverModels(ollama);
+    if(chosen.equals("Auto / installed model")){
+      if(!installed.isEmpty())return installed.get(0);
+      return ollama?"qwen3.5:0.8b":"qwen3.5-0.8b";
+    }
+    String q=chosen.toLowerCase(Locale.US).replace(" q4_k_m","").replace("-","").replace(" ","");
+    for(String x:installed){String n=x.toLowerCase(Locale.US).replace("-","").replace("_","").replace(" ","");if(q.contains("qwen")&&n.contains("qwen")&&q.contains("08b")&&n.contains("08b"))return x;if(q.contains("phi4mini")&&n.contains("phi")&&n.contains("mini"))return x;if(q.contains("mistral7b")&&n.contains("mistral")&&n.contains("7b"))return x;if(q.contains("llama32")&&n.contains("llama")&&n.contains("32"))return x;if(q.contains("llama31")&&n.contains("llama")&&n.contains("31"))return x;if(q.contains("deepseekr115b")&&n.contains("deepseek")&&n.contains("15b"))return x;if(q.contains("deepseekr17b")&&n.contains("deepseek")&&n.contains("7b"))return x;if(q.contains("gemma31b")&&n.contains("gemma")&&n.contains("1b"))return x;if(q.contains("gemma34b")&&n.contains("gemma")&&n.contains("4b"))return x;if(q.contains("smollm21.7b")&&n.contains("smollm")&&n.contains("17b"))return x;if(q.contains("granite4")&&n.contains("granite"))return x;if(q.contains("ministral3b")&&n.contains("ministral")&&n.contains("3b"))return x;if(q.contains("nemotronmini")&&n.contains("nemotron")&&n.contains("mini"))return x;}
+    if(installed.isEmpty())throw new Exception("No installed local model was discovered at "+endpoint);
+    throw new Exception("Selected model is not installed. Available: "+installed);
+  }
+  ArrayList<String> discoverModels(boolean ollama)throws Exception{
+    String target=endpoint;
+    if(ollama)target=endpoint.substring(0,endpoint.indexOf("/api/chat"))+"/api/tags";else if(endpoint.contains("/v1/chat/completions"))target=endpoint.substring(0,endpoint.indexOf("/v1/chat/completions"))+"/v1/models";
+    HttpURLConnection c=(HttpURLConnection)new URL(target).openConnection();c.setConnectTimeout(1200);c.setReadTimeout(2500);c.setRequestMethod("GET");int code=c.getResponseCode();if(code<200||code>=300){c.disconnect();return new ArrayList<>();}String raw=read(c.getInputStream());c.disconnect();ArrayList<String> out=new ArrayList<>();JSONObject j=new JSONObject(raw);JSONArray a=j.optJSONArray(ollama?"models":"data");if(a!=null)for(int i=0;i<a.length();i++){JSONObject o=a.optJSONObject(i);if(o!=null){String n=o.optString(ollama?"name":"id","");if(!n.isEmpty())out.add(n);}}return out;
+  }
   String callModelStreaming(String prompt,String chosen)throws Exception{
-    URL u=new URL(endpoint);HttpURLConnection c=(HttpURLConnection)u.openConnection();c.setConnectTimeout(3500);c.setReadTimeout(30000);c.setRequestMethod("POST");c.setDoOutput(true);c.setRequestProperty("Content-Type","application/json");
-    String m=chosen.equals("Auto / installed model")?"qwen3.5:0.8b":chosen.replace(" Q4_K_M","").replace(" ","-").toLowerCase(Locale.US);boolean ollama=endpoint.contains("/api/chat");
+    URL u=new URL(endpoint);HttpURLConnection c=(HttpURLConnection)u.openConnection();c.setConnectTimeout(3500);c.setReadTimeout(120000);c.setRequestMethod("POST");c.setDoOutput(true);c.setRequestProperty("Content-Type","application/json");
+    boolean ollama=endpoint.contains("/api/chat"); String m=resolveModel(chosen,ollama);
     JSONObject body=new JSONObject();body.put("model",m);body.put("stream",true);JSONArray msgs=new JSONArray();JSONObject usr=new JSONObject();usr.put("role","user");usr.put("content",prompt);msgs.put(usr);body.put("messages",msgs);
     c.setRequestProperty("Accept","text/event-stream");
     OutputStream os=c.getOutputStream();os.write(body.toString().getBytes("UTF-8"));os.close();
