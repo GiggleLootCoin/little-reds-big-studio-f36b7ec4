@@ -3,7 +3,7 @@ name: Build Little Red's Big Studio APK
 
 on:
   pull_request:
-    branches: [main, "fix/android-buddy-voice-and-apk-2026-10-03"]
+    branches: [main, "fix/android-buddy-voice-and-apk-2026-10-03", "fix/final-studio-reliability-20261003"]
   push:
     branches: [main, "fix/android-buddy-voice-and-apk-2026-10-03"]
   workflow_dispatch:
@@ -83,7 +83,7 @@ jobs:
           compression-level: 9
 
       - name: Publish persistent GitHub Release
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/fix/final-studio-reliability-20261003')
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -92,4 +92,4 @@ jobs:
           gh release create "$TAG" android/app/build/outputs/apk/release/app-release.apk \
             --repo "$GITHUB_REPOSITORY" \
             --title "Little Red's Big Studio Native APK $GITHUB_RUN_NUMBER" \
-            --notes "Native Android WebView build from main commit $GITHUB_SHA; includes Android Text-to-Speech fallback for Buddy voice responses."
+            --notes "Native Android WebView build from commit $GITHUB_SHA; includes confirmed native file playback, Red-clone-first routing, and final Android voice recovery."
