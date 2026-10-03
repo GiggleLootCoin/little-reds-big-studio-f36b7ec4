@@ -155,6 +155,13 @@ public class MainActivity extends Activity {
         webView.addJavascriptInterface(new BuddyVoiceBridge(), "AndroidBuddyVoice");
         setContentView(webView);
         initTts();
+        // Establish Android microphone permission before WebView requests getUserMedia.
+        // Samsung Android/WebView can otherwise race the two permission gates and
+        // return NotAllowedError even though RECORD_AUDIO is already allowed later.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M &&
+                checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, 4101);
+        }
         webView.loadUrl(START_URL);
     }
 
