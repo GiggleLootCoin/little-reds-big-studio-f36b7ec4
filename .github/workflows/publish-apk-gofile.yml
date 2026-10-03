@@ -6,6 +6,7 @@ on:
   workflow_dispatch:
 
 permissions:
+  actions: read
   contents: read
 
 jobs:
@@ -13,20 +14,29 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Download the exact new native APK
+      - name: Download the exact native APK artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          curl -fL --retry 3 -o Little-Reds-Big-Studio.apk "https://github.com/GiggleLootCoin/little-reds-big-studio-f36b7ec4/releases/download/apk-native-android-3/app-release.apk"
+          mkdir -p artifact
+          gh api -H "Accept: application/vnd.github+json" \
+            /repos/${{ github.repository }}/actions/artifacts/11284562430/zip \
+            > artifact/native.zip
+          unzip -o artifact/native.zip -d artifact/unpacked
+          APK="$(find artifact/unpacked -type f -name '*.apk' | head -n 1)"
+          test -n "$APK"
+          cp "$APK" Little-Reds-Big-Studio.apk
           test -s Little-Reds-Big-Studio.apk
-          sha256sum Little-Reds-Big-Studio.apk
+          ACTUAL="$(sha256sum Little-Reds-Big-Studio.apk | cut -d' ' -f1)"
+          EXPECTED="4a1ec4962cc087028f92c44691912fc7e3a989f925fc130966861f60b4761c36"
+          test "$ACTUAL" = "$EXPECTED"
+          echo "Verified SHA-256: $ACTUAL"
 
       - name: Upload APK to independent HTTPS storage
         run: |
           set -euo pipefail
-          RESPONSE="$(curl -fsS --retry 3 -F "file=@Little-Reds-Big-Studio.apk;filename=Little-Reds-Big-Studio.apk" https://upload.gofile.io/uploadfile)"
+          RESPONSE="$(curl -fsS --retry 5 -F "file=@Little-Reds-Big-Studio.apk;filename=Little-Reds-Big-Studio.apk" https://upload.gofile.io/uploadfile)"
           echo "$RESPONSE"
           URL="$(python3 -c 'import json,sys; print(json.load(sys.stdin)["data"]["downloadPage"])' <<< "$RESPONSE")"
           test -n "$URL"
