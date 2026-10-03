@@ -82,28 +82,6 @@ public class MainActivity extends Activity {
         settings.setUserAgentString(
                 settings.getUserAgentString() + " LittleRedsBigStudioAndroid/NativeVoice");
 
-        webView.setWebChromeClient(new WebChromeClient() {
-            @Override public void onPermissionRequest(final PermissionRequest request) {
-                runOnUiThread(() -> {
-                    boolean wantsAudio = false;
-                    for (String resource : request.getResources()) {
-                        if (PermissionRequest.RESOURCE_AUDIO_CAPTURE.equals(resource)) {
-                            wantsAudio = true;
-                            break;
-                        }
-                    }
-                    if (wantsAudio &&
-                            checkSelfPermission(Manifest.permission.RECORD_AUDIO)
-                                    != PackageManager.PERMISSION_GRANTED) {
-                        pendingWebPermissionRequest = request;
-                        requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, 4101);
-                    } else {
-                        request.grant(request.getResources());
-                    }
-                });
-            }
-        });
-
         final WebViewAssetLoader assetLoader = new WebViewAssetLoader.Builder()
                 .setDomain("appassets.androidplatform.net")
                 .addPathHandler("/assets/", new WebViewAssetLoader.AssetsPathHandler(this))
@@ -128,9 +106,17 @@ public class MainActivity extends Activity {
 
             @Override public void onReceivedError(
                     WebView view, WebResourceRequest request, android.webkit.WebResourceError error) {
-                if (request.isForMainFrame() && localBundleLoaded) {
-                    localBundleLoaded = false;
-                    view.loadUrl(START_URL);
+                if (request.isForMainFrame()) {
+                    android.util.Log.e("LittleRedsBigStudioWebView",
+                            "Main-frame load error: " + error.getErrorCode() + " " + error.getDescription());
+                }
+            }
+
+            @Override public void onReceivedHttpError(
+                    WebView view, WebResourceRequest request, android.webkit.WebResourceResponse response) {
+                if (request.isForMainFrame()) {
+                    android.util.Log.e("LittleRedsBigStudioWebView",
+                            "Main-frame HTTP error: " + response.getStatusCode() + " " + response.getReasonPhrase());
                 }
             }
         });
@@ -154,6 +140,7 @@ public class MainActivity extends Activity {
                     }
                 });
             }
+
             @Override public boolean onConsoleMessage(android.webkit.ConsoleMessage message) {
                 android.util.Log.e("LittleRedsBigStudioWebView",
                         message.message() + " @" + message.sourceId() + ":" + message.lineNumber());
