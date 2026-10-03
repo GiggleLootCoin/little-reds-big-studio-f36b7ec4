@@ -206,6 +206,70 @@ export async function convertWithApplioSpace(
   return response;
 }
 
+const SIMPLE_RVC_SPACE = "h8fntsqac/speech-vocals-rvc";
+
+function findSimpleRvcEndpoint(api: ApplioApi): [string, ApplioEndpoint] {
+  const entries = [
+    ...Object.entries(api.named_endpoints ?? {}),
+    ...Object.entries(api.unnamed_endpoints ?? {}),
+  ];
+  const candidates = entries
+    .filter(([name]) => !/train|download|delete|refresh|tts/.test(name.toLowerCase()))
+    .filter(([, endpoint]) => {
+      const labels = endpoint.parameters.map(labelFor);
+      return (
+        labels.some((label) => label.includes("audio")) &&
+        labels.some((label) => /model|voice/.test(label))
+      );
+    })
+    .sort(([a], [b]) => Number(/convert|infer|vocals|speech/.test(b.toLowerCase())) - Number(/convert|infer|vocals|speech/.test(a.toLowerCase())));
+  if (candidates[0]) return candidates[0];
+  throw new Error("The fallback RVC Space did not expose a compatible conversion endpoint.");
+}
+
+function valueForSimpleRvcParameter(
+  parameter: ApplioParameter,
+  request: ApplioConversionRequest,
+): unknown {
+  const label = labelFor(parameter);
+  if (label.includes("model") || label.includes("voice")) {
+    if (!request.model) throw new Error("The fallback RVC Space requires the Red model file.");
+    return handle_file(request.model);
+  }
+  if (label.includes("audio")) return handle_file(request.audio);
+  if (label.includes("pitch")) return request.pitch ?? 0;
+  if (label.includes("f0") || label.includes("pitch extraction")) return request.f0Method ?? "rmvpe";
+  if (label.includes("index rate") || label.includes("index ratio")) return request.indexRate ?? DEFAULT_INDEX_RATE;
+  if (label.includes("protect")) return request.protect ?? DEFAULT_PROTECT;
+  if (label.includes("autotune")) return request.autotune ?? false;
+  if (label.includes("use bundled")) return false;
+  if (label.includes("model type")) return "RVC v2";
+  if (label.includes("output format")) return "WAV";
+  if (parameter.parameter_has_default) return parameter.parameter_default;
+  throw new Error(`Fallback RVC endpoint introduced an unsupported required input: ${label}`);
+}
+
+export async function convertWithSimpleRvcSpace(
+  request: ApplioConversionRequest,
+): Promise<Response> {
+  if (!(request.audio instanceof Blob) || request.audio.size < MIN_AUDIO_BYTES)
+    throw new Error("A non-empty source vocal is required for fallback RVC conversion.");
+  if (!request.model) throw new Error("The Red RVC model is required.");
+  const app = await Client.connect(SIMPLE_RVC_SPACE);
+  const api = (await app.view_api()) as unknown as ApplioApi;
+  const [endpointName, endpoint] = findSimpleRvcEndpoint(api);
+  const values = endpoint.parameters.map((parameter) =>
+    valueForSimpleRvcParameter(parameter, request),
+  );
+  const result = await app.predict(endpointName, values);
+  const audioUrl = findAudioUrl(result);
+  if (!audioUrl) throw new Error("Fallback RVC completed without returning playable audio.");
+  const response = await fetch(audioUrl);
+  if (!(await validateApplioResponse(response)))
+    throw new Error("Fallback RVC returned an invalid audio artifact.");
+  return response;
+}
+
 export async function convertWithApplio({
   baseUrl,
   apiToken,
