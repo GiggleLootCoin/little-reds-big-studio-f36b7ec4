@@ -35,7 +35,6 @@ jobs:
         run: npm ci --no-audit --no-fund --legacy-peer-deps
 
       - name: Build the web UI bundle
-        continue-on-error: true
         run: npx vite build
 
       - name: Package the verified client bundle into the APK
@@ -45,11 +44,13 @@ jobs:
           find dist -maxdepth 6 -type f -name '*.html' -print
           CLIENT_DIR="dist/client"
           test -s "$CLIENT_DIR/_shell.html"
+          test -s "$CLIENT_DIR/index.html" || true
           rm -rf android/app/src/main/assets
           mkdir -p android/app/src/main/assets
           cp -a "$CLIENT_DIR"/. android/app/src/main/assets/
           cp "$CLIENT_DIR/_shell.html" android/app/src/main/assets/index.html
           test -s android/app/src/main/assets/index.html
+          echo "Bundled asset count: $(find android/app/src/main/assets -type f | wc -l)"
 
       - name: Prepare Android SDK and signing
         env:
@@ -96,6 +97,7 @@ jobs:
           APK="android/app/build/outputs/apk/release/app-release.apk"
           test -s "$APK"
           "$SDK_ROOT/build-tools/35.0.0/apksigner" verify --verbose "$APK"
+          unzip -l "$APK" | grep -E "assets/index.html|assets/.*\.js" | head -20
           sha256sum "$APK"
           stat -c '%s bytes' "$APK"
 
