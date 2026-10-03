@@ -196,3 +196,5 @@ jobs:
           git add app-release.apk
           git commit -m "Publish Little Red's Big Studio APK"
           git push --force origin HEAD:apk-download
+
+# direct delivery trigger
