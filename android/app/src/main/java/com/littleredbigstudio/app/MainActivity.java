@@ -267,6 +267,7 @@ public class MainActivity extends Activity {
             tts.setOnUtteranceProgressListener(new UtteranceProgressListener() {
                 @Override public void onStart(String id) {
                     if (!utteranceId.equals(id)) return;
+                    fallbackStarted.set(true);
                     if (callbackSent.compareAndSet(false, true)) {
                         notifyTtsResult(callbackId, true);
                     }
