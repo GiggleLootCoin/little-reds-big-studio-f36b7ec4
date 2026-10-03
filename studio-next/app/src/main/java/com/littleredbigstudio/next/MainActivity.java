@@ -26,7 +26,7 @@ public class MainActivity extends Activity {
   SharedPreferences prefs; TextToSpeech tts; SpeechRecognizer recognizer; ExecutorService io=Executors.newSingleThreadExecutor();
   TextView status,response,modelLabel,voiceLabel; EditText input; Switch handsFree; boolean listening=false; AudioManager audioManager;
   final Handler mainHandler=new Handler(Looper.getMainLooper()); AtomicBoolean requestInFlight=new AtomicBoolean(false); long requestStartedAt=0; Runnable elapsedTicker; ArrayList<String> ttsEngines=new ArrayList<>(); int ttsEngineIndex=-1;
-  String endpoint,model,selectedVoiceName=""; Voice activeVoice; boolean usingOfflineVoice=false;
+  String endpoint,model,selectedVoiceName=""; String activeTtsEngineName=""; Voice activeVoice; boolean usingOfflineVoice=false;
   String[] MODELS={"Auto / installed model","Qwen3.5-0.8B Q4_K_M","Qwen3.5-4B","Qwen3.5-8B","Phi-4-mini","Mistral 7B","Llama 3.2 3B","Llama 3.1 8B","DeepSeek-R1 1.5B","DeepSeek-R1 7B","Gemma 3 1B","Gemma 3 4B","SmolLM2 1.7B","Granite 4","Ministral 3B","Nemotron Mini"};
 
   @Override public void onCreate(Bundle b){
@@ -87,10 +87,10 @@ public class MainActivity extends Activity {
       }
       tts.setSpeechRate(0.98f); tts.setPitch(1.0f);
       activeVoice=null; usingOfflineVoice=false;
-      if(!selectedVoiceName.isEmpty()) for(Voice v:tts.getVoices()) if(v.getName().equals(selectedVoiceName)&&v.getLocale()!=null&&v.getLocale().getLanguage().equals("en")&&!v.isNetworkConnectionRequired()){activeVoice=v;break;}
-      if(activeVoice!=null){tts.setVoice(activeVoice);usingOfflineVoice=true;} else {
+      if(!selectedVoiceName.isEmpty()) for(Voice v:safeVoices()) if(v.getName().equals(selectedVoiceName)&&v.getLocale()!=null&&v.getLocale().getLanguage().equals("en")&&!v.isNetworkConnectionRequired()&&!voiceNeedsInstall(v)){activeVoice=v;break;}
+      if(activeVoice!=null&&tts.setVoice(activeVoice)==TextToSpeech.SUCCESS){usingOfflineVoice=true;} else {
         selectedVoiceName=""; prefs.edit().remove("voice").apply();
-        activeVoice=pickBestOfflineVoice(); if(activeVoice!=null){tts.setVoice(activeVoice);usingOfflineVoice=true;}
+        activeVoice=pickBestOfflineVoice(); if(activeVoice!=null&&tts.setVoice(activeVoice)==TextToSpeech.SUCCESS){usingOfflineVoice=true;} else {activeVoice=null; usingOfflineVoice=false;}
       }
       tts.setOnUtteranceProgressListener(new UtteranceProgressListener(){
         public void onStart(String id){runOnUiThread(()->status.setText("●  Speaking"));
@@ -99,7 +99,7 @@ public class MainActivity extends Activity {
         public void onError(String id){runOnUiThread(()->status.setText("●  Voice error — try another engine/voice"));
         }
       });
-      String engineName=tts.getDefaultEngine();
+      String engineName=activeTtsEngineName.isEmpty()?tts.getDefaultEngine():activeTtsEngineName;
       voiceLabel.setText("Voice: "+(engineName==null?"Android TTS":engineName)+" — "+(activeVoice==null?"default":activeVoice.getName())+(usingOfflineVoice?" (offline)":""));
       status.setText("●  Ready");
     }catch(Exception e){fallbackTtsEngine();}
@@ -116,8 +116,8 @@ public class MainActivity extends Activity {
         if(next==null&&!ttsEngines.isEmpty()) next=ttsEngines.get(0);
         tts.shutdown(); tts=null;
         if(next!=null){
-          final String chosen=next;
-          tts=new TextToSpeech(this,code->{if(code==TextToSpeech.SUCCESS)configureTts(chosen);else {voiceLabel.setText("Voice: no compatible TTS engine");status.setText("●  Voice engine failed");}},chosen);
+          final String chosen=next; activeTtsEngineName=chosen;
+          tts=new TextToSpeech(this,code->{if(code==TextToSpeech.SUCCESS){activeTtsEngineName=chosen;configureTts(chosen);}else {voiceLabel.setText("Voice: no compatible TTS engine");status.setText("●  Voice engine failed");}},chosen);
           return;
         }
       }
@@ -152,7 +152,7 @@ public class MainActivity extends Activity {
       return ollama?"qwen3.5:0.8b":"qwen3.5-0.8b";
     }
     String q=chosen.toLowerCase(Locale.US).replace(" q4_k_m","").replaceAll("[^a-z0-9]","");
-    for(String x:installed){String n=x.toLowerCase(Locale.US).replace("-","").replace("_","").replace(" ","");if(q.contains("qwen")&&n.contains("qwen")&&q.contains("08b")&&n.contains("08b"))return x;if(q.contains("phi4mini")&&n.contains("phi")&&n.contains("mini"))return x;if(q.contains("mistral7b")&&n.contains("mistral")&&n.contains("7b"))return x;if(q.contains("llama32")&&n.contains("llama")&&n.contains("32"))return x;if(q.contains("llama31")&&n.contains("llama")&&n.contains("31"))return x;if(q.contains("deepseekr115b")&&n.contains("deepseek")&&n.contains("15b"))return x;if(q.contains("deepseekr17b")&&n.contains("deepseek")&&n.contains("7b"))return x;if(q.contains("gemma31b")&&n.contains("gemma")&&n.contains("1b"))return x;if(q.contains("gemma34b")&&n.contains("gemma")&&n.contains("4b"))return x;if(q.contains("smollm21.7b")&&n.contains("smollm")&&n.contains("17b"))return x;if(q.contains("granite4")&&n.contains("granite"))return x;if(q.contains("ministral3b")&&n.contains("ministral")&&n.contains("3b"))return x;if(q.contains("nemotronmini")&&n.contains("nemotron")&&n.contains("mini"))return x;}
+    for(String x:installed){String n=x.toLowerCase(Locale.US).replace("-","").replace("_","").replace(" ","");if(q.contains("qwen")&&n.contains("qwen")&&q.contains("08b")&&n.contains("08b"))return x;if(q.contains("qwen")&&n.contains("qwen")&&q.contains("4b")&&n.contains("4b"))return x;if(q.contains("qwen")&&n.contains("qwen")&&q.contains("8b")&&n.contains("8b"))return x;if(q.contains("phi4mini")&&n.contains("phi")&&n.contains("mini"))return x;if(q.contains("mistral7b")&&n.contains("mistral")&&n.contains("7b"))return x;if(q.contains("llama32")&&n.contains("llama")&&n.contains("32"))return x;if(q.contains("llama31")&&n.contains("llama")&&n.contains("31"))return x;if(q.contains("deepseekr115b")&&n.contains("deepseek")&&n.contains("15b"))return x;if(q.contains("deepseekr17b")&&n.contains("deepseek")&&n.contains("7b"))return x;if(q.contains("gemma31b")&&n.contains("gemma")&&n.contains("1b"))return x;if(q.contains("gemma34b")&&n.contains("gemma")&&n.contains("4b"))return x;if(q.contains("smollm21.7b")&&n.contains("smollm")&&n.contains("17b"))return x;if(q.contains("granite4")&&n.contains("granite"))return x;if(q.contains("ministral3b")&&n.contains("ministral")&&n.contains("3b"))return x;if(q.contains("nemotronmini")&&n.contains("nemotron")&&n.contains("mini"))return x;}
     if(installed.isEmpty())throw new Exception("No installed local model was discovered at "+endpoint);
     throw new Exception("Selected model is not installed. Available: "+installed);
   }
@@ -193,10 +193,10 @@ public class MainActivity extends Activity {
     else if(result==TextToSpeech.ERROR_OUTPUT||result==TextToSpeech.ERROR_SYNTHESIS)status.setText("●  Voice engine/output error");
   }
   void chooseModel(){int checked=Math.max(0,Arrays.asList(MODELS).indexOf(model));new AlertDialog.Builder(this).setTitle("Choose AI model").setSingleChoiceItems(MODELS,checked,(d,w)->{model=MODELS[w];prefs.edit().putString("model",model).apply();modelLabel.setText("Model: "+model);d.dismiss();}).show();}
-  Voice pickBestOfflineVoice(){if(tts==null)return null;Voice best=null;for(Voice v:tts.getVoices()){if(v.getLocale()==null||!v.getLocale().getLanguage().equals("en")||v.isNetworkConnectionRequired())continue;if(best==null||v.getQuality()>best.getQuality()||(v.getQuality()==best.getQuality()&&v.getLatency()<best.getLatency()))best=v;}return best;}
+  List<Voice> safeVoices(){try{List<Voice> v=tts==null?null:tts.getVoices();return v==null?Collections.emptyList():v;}catch(Exception e){return Collections.emptyList();}} boolean voiceNeedsInstall(Voice v){try{Set<String> f=v.getFeatures();return f!=null&&f.contains(TextToSpeech.Engine.KEY_FEATURE_NOT_INSTALLED);}catch(Exception e){return true;}} Voice pickBestOfflineVoice(){if(tts==null)return null;Voice best=null;for(Voice v:safeVoices()){if(v.getLocale()==null||!v.getLocale().getLanguage().equals("en")||v.isNetworkConnectionRequired()||voiceNeedsInstall(v))continue;if(best==null||v.getQuality()>best.getQuality()||(v.getQuality()==best.getQuality()&&v.getLatency()<best.getLatency()))best=v;}return best;}
   void chooseVoice(){
     if(tts==null)return;
-    ArrayList<Voice> vs=new ArrayList<>();for(Voice v:tts.getVoices())if(v.getLocale()!=null&&v.getLocale().getLanguage().equals("en")&&!v.isNetworkConnectionRequired())vs.add(v);
+    ArrayList<Voice> vs=new ArrayList<>();for(Voice v:safeVoices())if(v.getLocale()!=null&&v.getLocale().getLanguage().equals("en")&&!v.isNetworkConnectionRequired()&&!voiceNeedsInstall(v))vs.add(v);
     Collections.sort(vs,(a,b)->{int q=Integer.compare(b.getQuality(),a.getQuality());return q!=0?q:Integer.compare(a.getLatency(),b.getLatency());});
     String[] names=new String[vs.size()+2];names[0]="Red — use best verified offline Android voice";names[1]="Red clone — reference sample only (not loaded as TTS)";
     for(int i=0;i<vs.size();i++)names[i+2]=vs.get(i).getName()+" | "+vs.get(i).getLocale()+" | offline";
