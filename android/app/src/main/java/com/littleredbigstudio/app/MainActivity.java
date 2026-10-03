@@ -45,7 +45,9 @@ public class MainActivity extends Activity {
     // The APK carries the complete UI bundle. WebViewAssetLoader serves it from
     // the app while requests outside /assets/ fall through to the remote API.
     private static final String LOCAL_START_URL =
-            "https://little-reds-big-studio-f36b7ec4.gigglelootcoin.workers.dev/assets/index.html";
+            "https://appassets.androidplatform.net/assets/index.html";
+    private static final String LOCAL_ASSET_ORIGIN =
+            "https://appassets.androidplatform.net";
 
     private static final String GOOGLE_TTS = "com.google.android.tts";
     private static final String SAMSUNG_TTS = "com.samsung.SMT";
@@ -103,7 +105,7 @@ public class MainActivity extends Activity {
         });
 
         final WebViewAssetLoader assetLoader = new WebViewAssetLoader.Builder()
-                .setDomain("little-reds-big-studio-f36b7ec4.gigglelootcoin.workers.dev")
+                .setDomain("appassets.androidplatform.net")
                 .addPathHandler("/assets/", new WebViewAssetLoader.AssetsPathHandler(this))
                 .build();
 
@@ -117,7 +119,7 @@ public class MainActivity extends Activity {
             @Override public boolean shouldOverrideUrlLoading(
                     WebView view, WebResourceRequest request) {
                 String url = request.getUrl().toString();
-                return !url.startsWith(REMOTE_ORIGIN);
+                return !(url.startsWith(REMOTE_ORIGIN) || url.startsWith(LOCAL_ASSET_ORIGIN));
             }
 
             @Override public void onPageStarted(WebView view, String url, android.graphics.Bitmap favicon) {
@@ -130,6 +132,32 @@ public class MainActivity extends Activity {
                     localBundleLoaded = false;
                     view.loadUrl(START_URL);
                 }
+            }
+        });
+
+        webView.setWebChromeClient(new WebChromeClient() {
+            @Override public void onPermissionRequest(final PermissionRequest request) {
+                runOnUiThread(() -> {
+                    boolean wantsAudio = false;
+                    for (String resource : request.getResources()) {
+                        if (PermissionRequest.RESOURCE_AUDIO_CAPTURE.equals(resource)) {
+                            wantsAudio = true;
+                            break;
+                        }
+                    }
+                    if (wantsAudio && checkSelfPermission(Manifest.permission.RECORD_AUDIO)
+                            != PackageManager.PERMISSION_GRANTED) {
+                        pendingWebPermissionRequest = request;
+                        requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, 4101);
+                    } else {
+                        request.grant(request.getResources());
+                    }
+                });
+            }
+            @Override public boolean onConsoleMessage(android.webkit.ConsoleMessage message) {
+                android.util.Log.e("LittleRedsBigStudioWebView",
+                        message.message() + " @" + message.sourceId() + ":" + message.lineNumber());
+                return true;
             }
         });
 
