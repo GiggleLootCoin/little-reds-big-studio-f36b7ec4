@@ -1,35 +1,35 @@
 name: Publish Little Red's Big Studio APK to independent storage
+
 on:
   push:
     branches: ["fix/real-studio-apk-hardening-2026-10-03"]
   workflow_dispatch:
+
 permissions:
-  contents: write
+  contents: read
+
 jobs:
   publish:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
-      - name: Download verified native APK
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download the exact new native APK
         run: |
           set -euo pipefail
-          curl -fL --retry 3 -o Little-Reds-Big-Studio.apk "https://github.com/GiggleLootCoin/little-reds-big-studio-f36b7ec4/releases/download/apk-native-hardening-637/app-release.apk"
+          curl -fL --retry 3 -o Little-Reds-Big-Studio.apk "https://github.com/GiggleLootCoin/little-reds-big-studio-f36b7ec4/releases/download/apk-native-android-1/app-release.apk"
           test -s Little-Reds-Big-Studio.apk
           sha256sum Little-Reds-Big-Studio.apk
+
       - name: Upload APK to independent HTTPS storage
         run: |
           set -euo pipefail
           RESPONSE="$(curl -fsS --retry 3 -F "file=@Little-Reds-Big-Studio.apk;filename=Little-Reds-Big-Studio.apk" https://upload.gofile.io/uploadfile)"
           echo "$RESPONSE"
-          python3 -c 'import json,sys; d=json.load(sys.stdin); print(d["data"]["downloadPage"])' <<< "$RESPONSE" > DOWNLOAD_URL.txt
-          test -s DOWNLOAD_URL.txt
-          cat DOWNLOAD_URL.txt
-      - name: Publish URL
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add DOWNLOAD_URL.txt
-          git commit -m "Publish independent APK download URL" || true
-          git push origin HEAD:${GITHUB_REF_NAME}
+          URL="$(python3 -c 'import json,sys; print(json.load(sys.stdin)["data"]["downloadPage"])' <<< "$RESPONSE")"
+          test -n "$URL"
+          echo "PUBLIC_DOWNLOAD_URL=$URL"
+          echo "### Independent APK download" >> "$GITHUB_STEP_SUMMARY"
+          echo "$URL" >> "$GITHUB_STEP_SUMMARY"
