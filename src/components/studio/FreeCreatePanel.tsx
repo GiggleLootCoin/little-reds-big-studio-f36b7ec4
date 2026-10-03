@@ -272,7 +272,7 @@ export function FreeCreatePanel() {
     setArtifact(null);
     try {
       const finished = await buildRedCover(sourceAudio, setStatus);
-      await saveLocalArtifact(finished, `${brief.trim() || sourceAudio.name.replace(/\\.[^.]+$/, "") || "red-cover"}-Red-cover.wav`);
+      await saveLocalArtifact(finished, `${brief.trim() || sourceAudio.name.replace(/\.[^.]+$/, "") || "red-cover"}-Red-cover.wav`);
       const url = URL.createObjectURL(finished);
       setArtifact({
         capability: "song-voice-swap",
