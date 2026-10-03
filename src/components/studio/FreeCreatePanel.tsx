@@ -136,7 +136,20 @@ function audioBufferToWav(buffer: AudioBuffer): Blob {
 
 async function buildRedCover(source: Blob, onStatus: (status: string) => void): Promise<Blob> {
   onStatus("1/4 — Separating vocals, drums, bass and other instruments…");
-  const separated = await runStudioJob("vocal-separation", { audio: source }, onStatus);
+  const separated = await runStudioJob(
+    "vocal-separation",
+    {
+      audio: source,
+      model_name: "htdemucs_ft",
+      vocals: true,
+      drums: true,
+      bass: true,
+      other: true,
+      mp3: false,
+      mp3_bitrate: 192,
+    },
+    onStatus,
+  );
   const urls = mediaUrlsFromValue(separated.value);
   if (separated.url && !urls.includes(separated.url)) urls.unshift(separated.url);
   if (urls.length < 5) {
