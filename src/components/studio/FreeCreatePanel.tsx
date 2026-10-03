@@ -73,24 +73,37 @@ async function audioDurationSeconds(blob: Blob): Promise<number> {
   }
 }
 
-function mediaUrlsFromValue(value: unknown): string[] {
-  const urls: string[] = [];
-  const add = (value: unknown) => {
-    if (typeof value === "string" && /^(https?:|blob:|data:|\/)/i.test(value)) urls.push(value);
-    if (!value || typeof value !== "object") return;
-    if (value instanceof Blob) return;
-    if (Array.isArray(value)) {
-      value.forEach(add);
+function collectMediaCandidates(value: unknown, hint = ""): { url: string; hint: string }[] {
+  const candidates: { url: string; hint: string }[] = [];
+  const add = (next: unknown, nextHint: string) => {
+    if (typeof next === "string" && /^(https?:|blob:|data:|\\/)/i.test(next)) {
+      candidates.push({ url: next, hint: nextHint.toLowerCase() });
       return;
     }
-    const record = value as Record<string, unknown>;
-    for (const key of ["url", "uri", "src", "path"]) add(record[key]);
-    for (const [key, nested] of Object.entries(record)) {
-      if (!["url", "uri", "src", "path"].includes(key)) add(nested);
+    if (!next || typeof next !== "object" || next instanceof Blob) return;
+    if (Array.isArray(next)) {
+      next.forEach((item, index) => add(item, nextHint || String(index)));
+      return;
     }
+    const record = next as Record<string, unknown>;
+    const localHint = Object.entries(record)
+      .filter(([key, value]) => typeof value === "string" && /^(https?:|blob:|data:|\\/)/i.test(value))
+      .map(([key]) => key)
+      .join(" ");
+    const combinedHint = [nextHint, localHint].filter(Boolean).join(" ");
+    for (const [key, nested] of Object.entries(record)) add(nested, [combinedHint, key].filter(Boolean).join(" "));
   };
-  add(value);
-  return [...new Set(urls)];
+  add(value, hint);
+  return candidates.filter((candidate, index, all) => all.findIndex((x) => x.url === candidate.url) === index);
+}
+
+function pickMediaCandidate(
+  candidates: { url: string; hint: string }[],
+  patterns: RegExp[],
+): string | null {
+  return (
+    candidates.find((candidate) => patterns.some((pattern) => pattern.test(candidate.hint)))?.url ?? null
+  );
 }
 
 async function fetchAudioBlob(url: string): Promise<Blob> {
@@ -113,8 +126,7 @@ function audioBufferToWav(buffer: AudioBuffer): Blob {
   write(0, "RIFF");
   view.setUint32(4, 36 + frames * channels * bytesPerSample, true);
   write(8, "WAVE");
-  write(12, "fmt ");
-  view.setUint32(16, 16, true);
+  view.setUint32(12, 16, true);
   view.setUint16(20, 1, true);
   view.setUint16(22, channels, true);
   view.setUint32(24, sampleRate, true);
@@ -135,7 +147,7 @@ function audioBufferToWav(buffer: AudioBuffer): Blob {
 }
 
 async function buildRedCover(source: Blob, onStatus: (status: string) => void): Promise<Blob> {
-  onStatus("1/4 — Separating vocals, drums, bass and other instruments…");
+  onStatus("1/4 — Separating the song into the cleanest available vocal/instrumental stems…");
   const separated = await runStudioJob(
     "vocal-separation",
     {
@@ -150,32 +162,50 @@ async function buildRedCover(source: Blob, onStatus: (status: string) => void): 
     },
     onStatus,
   );
-  const urls = mediaUrlsFromValue(separated.value);
-  if (separated.url && !urls.includes(separated.url)) urls.unshift(separated.url);
-  if (urls.length < 5) {
-    throw new Error(
-      "The stem separator did not return the four individual stems. No mix was created, so the source song remains untouched.",
-    );
+
+  const candidates = collectMediaCandidates(separated.value);
+  if (separated.url && !candidates.some((candidate) => candidate.url === separated.url)) {
+    candidates.unshift({ url: separated.url, hint: "result output" });
+  }
+  if (!candidates.length) {
+    throw new Error("The stem separator returned no audio files. The original song was not modified.");
   }
 
-  const [mixedUrl, vocalsUrl, drumsUrl, bassUrl, otherUrl] = urls;
-  void mixedUrl;
+  const vocalUrl =
+    pickMediaCandidate(candidates, [/\\bvocal(s)?\\b/, /vocals?/, /voice/]) ??
+    candidates.find((candidate) => /vocal|voice/i.test(candidate.url))?.url ??
+    null;
+  const instrumentalUrl =
+    pickMediaCandidate(candidates, [/no[_ -]?vocal/, /instrumental/, /accompaniment/, /music[_ -]?only/]) ??
+    null;
+  const drumUrl = pickMediaCandidate(candidates, [/\\bdrum(s)?\\b/]);
+  const bassUrl = pickMediaCandidate(candidates, [/\\bbass\\b/]);
+  const otherUrl = pickMediaCandidate(candidates, [/\\bother\\b/]);
+  const mixedUrl =
+    pickMediaCandidate(candidates, [/mixed/, /mixture/, /full[_ -]?song/, /output/]) ?? separated.url ?? null;
+
+  const orderedAudio = candidates.map((candidate) => candidate.url);
+  const fallbackVocalUrl = vocalUrl ?? orderedAudio.find((url) => url !== mixedUrl) ?? null;
+  if (!fallbackVocalUrl) {
+    throw new Error("The stem separator did not expose a usable vocal stem. The original song was not modified.");
+  }
+
   onStatus("2/4 — Converting the isolated vocal with Red's trained RVC model…");
   const converted = await runStudioJob(
     "song-voice-swap",
-    { audio: await fetchAudioBlob(vocalsUrl), targetVoice: "Red" },
+    { audio: await fetchAudioBlob(fallbackVocalUrl), targetVoice: "Red" },
     onStatus,
   );
   if (!converted.url) throw new Error("Red RVC returned no playable converted vocal.");
-  const convertedVocal = converted.value instanceof Blob
-    ? converted.value
-    : await fetchAudioBlob(converted.url);
+  const convertedVocal =
+    converted.value instanceof Blob ? converted.value : await fetchAudioBlob(converted.url);
 
   onStatus("3/4 — Rebuilding the instrumental and mixing Red's converted vocal back in…");
   const AudioContextCtor =
     window.AudioContext ||
     (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
   if (!AudioContextCtor) throw new Error("This Android browser cannot mix the returned audio.");
+
   const decode = async (blob: Blob) => {
     const ctx = new AudioContextCtor();
     try {
@@ -184,14 +214,29 @@ async function buildRedCover(source: Blob, onStatus: (status: string) => void): 
       await ctx.close().catch(() => undefined);
     }
   };
-  const [drums, bass, other, vocal] = await Promise.all([
-    decode(await fetchAudioBlob(drumsUrl)),
-    decode(await fetchAudioBlob(bassUrl)),
-    decode(await fetchAudioBlob(otherUrl)),
-    decode(convertedVocal),
-  ]);
-  const sampleRate = Math.max(drums.sampleRate, bass.sampleRate, other.sampleRate, vocal.sampleRate);
-  const duration = Math.max(drums.duration, bass.duration, other.duration, vocal.duration);
+
+  const instrumentalUrls = instrumentalUrl
+    ? [instrumentalUrl]
+    : [drumUrl, bassUrl, otherUrl].filter((url): url is string => Boolean(url));
+  if (!instrumentalUrls.length && mixedUrl && mixedUrl !== fallbackVocalUrl) {
+    instrumentalUrls.push(mixedUrl);
+  }
+  if (!instrumentalUrls.length) {
+    throw new Error(
+      "The stem separator returned vocals but no instrumental/no-vocal stem. The original song was not modified.",
+    );
+  }
+
+  const buffers = await Promise.all(
+    [...instrumentalUrls, "__RED_VOCAL__"].map((url) =>
+      url === "__RED_VOCAL__" ? decode(convertedVocal) : fetchAudioBlob(url).then(decode),
+    ),
+  );
+  const vocal = buffers.pop();
+  if (!vocal) throw new Error("Converted Red vocal could not be decoded.");
+
+  const sampleRate = Math.max(...buffers.map((buffer) => buffer.sampleRate), vocal.sampleRate);
+  const duration = Math.max(...buffers.map((buffer) => buffer.duration), vocal.duration);
   const channels = 2;
   const offline = new OfflineAudioContext(channels, Math.ceil(duration * sampleRate), sampleRate);
   const connectStem = (buffer: AudioBuffer, gainValue: number) => {
@@ -202,9 +247,7 @@ async function buildRedCover(source: Blob, onStatus: (status: string) => void): 
     sourceNode.connect(gain).connect(offline.destination);
     sourceNode.start(0);
   };
-  connectStem(drums, 0.86);
-  connectStem(bass, 0.86);
-  connectStem(other, 0.86);
+  buffers.forEach((buffer) => connectStem(buffer, 0.9));
   connectStem(vocal, 1.0);
   const rendered = await offline.startRendering();
   const wav = audioBufferToWav(rendered);
