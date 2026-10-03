@@ -172,15 +172,15 @@ async function buildRedCover(source: Blob, onStatus: (status: string) => void): 
   }
 
   const vocalUrl =
-    pickMediaCandidate(candidates, [/\\bvocal(s)?\\b/, /vocals?/, /voice/]) ??
+    pickMediaCandidate(candidates, [/\bvocal(s)?\b/, /vocals?/, /voice/]) ??
     candidates.find((candidate) => /vocal|voice/i.test(candidate.url))?.url ??
     null;
   const instrumentalUrl =
     pickMediaCandidate(candidates, [/no[_ -]?vocal/, /instrumental/, /accompaniment/, /music[_ -]?only/]) ??
     null;
-  const drumUrl = pickMediaCandidate(candidates, [/\\bdrum(s)?\\b/]);
-  const bassUrl = pickMediaCandidate(candidates, [/\\bbass\\b/]);
-  const otherUrl = pickMediaCandidate(candidates, [/\\bother\\b/]);
+  const drumUrl = pickMediaCandidate(candidates, [/\bdrum(s)?\b/]);
+  const bassUrl = pickMediaCandidate(candidates, [/\bbass\b/]);
+  const otherUrl = pickMediaCandidate(candidates, [/\bother\b/]);
   const mixedUrl =
     pickMediaCandidate(candidates, [/mixed/, /mixture/, /full[_ -]?song/, /output/]) ?? separated.url ?? null;
 
