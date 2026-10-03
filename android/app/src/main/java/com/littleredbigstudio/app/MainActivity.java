@@ -25,6 +25,8 @@ import android.webkit.WebViewClient;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.FileOutputStream;
+import android.util.Base64;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -395,6 +397,30 @@ public class MainActivity extends Activity {
         if (callbackId != null) notifyTtsResult(callbackId, false);
     }
 
+    private void playEncodedAudio(String base64, String mimeType, String callbackId) {
+        if (base64 == null || base64.trim().isEmpty()) { notifyTtsResult(callbackId, false); return; }
+        if (!requestAudioFocus()) { notifyTtsResult(callbackId, false); return; }
+        final File output = new File(getCacheDir(), "buddy-web-audio-" + System.nanoTime() + ".bin");
+        try {
+            byte[] bytes = Base64.decode(base64, Base64.DEFAULT);
+            if (bytes.length == 0) throw new IOException("Empty audio payload.");
+            try (FileOutputStream stream = new FileOutputStream(output)) { stream.write(bytes); }
+            if (buddyPlayer != null) { try { buddyPlayer.stop(); } catch (Throwable ignored) {} try { buddyPlayer.release(); } catch (Throwable ignored) {} }
+            MediaPlayer player = new MediaPlayer();
+            buddyPlayer = player;
+            AtomicBoolean callbackSent = new AtomicBoolean(false);
+            player.setAudioAttributes(new AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA).setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build());
+            player.setDataSource(output.getAbsolutePath());
+            player.setOnPreparedListener(mp -> {
+                try { mp.start(); if (callbackSent.compareAndSet(false, true)) notifyTtsResult(callbackId, true); }
+                catch (Throwable error) { failTtsPlayback(callbackId, new AtomicBoolean(false), output); }
+            });
+            player.setOnErrorListener((mp, what, extra) -> { failTtsPlayback(callbackId, new AtomicBoolean(false), output); return true; });
+            player.setOnCompletionListener(mp -> { abandonAudioFocus(); try { mp.release(); } catch (Throwable ignored) {} if (buddyPlayer == mp) buddyPlayer = null; output.delete(); });
+            player.prepareAsync();
+        } catch (Throwable error) { try { output.delete(); } catch (Throwable ignored) {} abandonAudioFocus(); notifyTtsResult(callbackId, false); }
+    }
+
     private boolean requestAudioFocus() {
         if (audioManager == null) return true;
 
@@ -460,6 +486,11 @@ public class MainActivity extends Activity {
             if (!awaitTtsReady()) return false;
             main.post(() -> speakNow(text));
             return true;
+        }
+
+        @JavascriptInterface public void playBase64Async(String base64, String mimeType, String callbackId) {
+            if (base64 == null || base64.trim().isEmpty()) { notifyTtsResult(callbackId, false); return; }
+            main.post(() -> playEncodedAudio(base64, mimeType, callbackId));
         }
 
         @JavascriptInterface public void speakAsync(String text, String callbackId) {
