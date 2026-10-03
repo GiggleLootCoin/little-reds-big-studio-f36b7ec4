@@ -197,4 +197,42 @@ jobs:
           git commit -m "Publish Little Red's Big Studio APK"
           git push --force origin HEAD:apk-download
 
-# direct delivery trigger
+
+  publish-independent-download:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/fix/real-studio-apk-hardening-2026-10-03'
+    needs: build-apk
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download the exact APK artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: little-reds-big-studio-apk-native
+          path: dist-apk
+      - name: Upload APK to independent HTTPS storage
+        id: upload
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="$(find dist-apk -type f -name '*.apk' -print -quit)"
+          test -n "$APK"
+          test -s "$APK"
+          RESPONSE="$(curl -fsS --retry 3 -F "file=@$APK;filename=Little-Reds-Big-Studio.apk" https://upload.gofile.io/uploadfile)"
+          echo "$RESPONSE"
+          DOWNLOAD_URL="$(printf '%s' "$RESPONSE" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d["data"]["downloadPage"])')"
+          test -n "$DOWNLOAD_URL"
+          echo "DOWNLOAD_URL=$DOWNLOAD_URL" >> "$GITHUB_OUTPUT"
+          printf '%s
+' "$DOWNLOAD_URL" > download-url.txt
+      - name: Publish download URL to repository
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          URL="$(cat download-url.txt)"
+          printf '%s
+' "$URL" > DOWNLOAD_URL.txt
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add DOWNLOAD_URL.txt
+          git commit -m "Publish current APK download URL" || true
+          git push origin HEAD:${GITHUB_REF_NAME}
