@@ -39,20 +39,28 @@ jobs:
       - name: Build the web UI bundle
         run: npx vite build
 
-      - name: Package the verified client bundle into the APK
+      - name: Build dedicated native Android client bundle
         run: |
           set -euo pipefail
-          echo "Built HTML files:"
-          find dist -maxdepth 6 -type f -name '*.html' -print
-          CLIENT_DIR="dist/client"
-          test -s "$CLIENT_DIR/_shell.html"
-          test -s "$CLIENT_DIR/index.html" || true
+          rm -rf dist-android
+          npx vite build --config vite.android.config.ts
+          test -s dist-android/android.html
+          echo "Android HTML:"
+          sed -n '1,120p' dist-android/android.html
+
+      - name: Package the dedicated client bundle into the APK
+        run: |
+          set -euo pipefail
           rm -rf android/app/src/main/assets
           mkdir -p android/app/src/main/assets
-          cp -a "$CLIENT_DIR"/. android/app/src/main/assets/
-          cp "$CLIENT_DIR/_shell.html" android/app/src/main/assets/index.html
+          cp -a dist-android/. android/app/src/main/assets/
+          cp dist-android/android.html android/app/src/main/assets/index.html
+          rm -f android/app/src/main/assets/android.html
           test -s android/app/src/main/assets/index.html
+          test -s android/app/src/main/assets/assets/*.js
           echo "Bundled asset count: $(find android/app/src/main/assets -type f | wc -l)"
+          echo "Bundled entry:"
+          sed -n '1,80p' android/app/src/main/assets/index.html
 
       - name: Prepare Android SDK and signing
         env:
