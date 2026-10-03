@@ -35,7 +35,7 @@ jobs:
         run: |
           set -euo pipefail
           npm ci --no-audit --no-fund --legacy-peer-deps
-          npm run build
+          npx vite build
           INDEX_FILE="$(find dist -maxdepth 4 -type f -name index.html -print -quit)"
           test -n "$INDEX_FILE"
           CLIENT_DIR="$(dirname "$INDEX_FILE")"
