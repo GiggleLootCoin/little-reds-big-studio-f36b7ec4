@@ -19,7 +19,7 @@ jobs:
       - name: Download the exact new native APK
         run: |
           set -euo pipefail
-          curl -fL --retry 3 -o Little-Reds-Big-Studio.apk "https://github.com/GiggleLootCoin/little-reds-big-studio-f36b7ec4/releases/download/apk-native-android-1/app-release.apk"
+          curl -fL --retry 3 -o Little-Reds-Big-Studio.apk "https://github.com/GiggleLootCoin/little-reds-big-studio-f36b7ec4/releases/download/apk-native-android-3/app-release.apk"
           test -s Little-Reds-Big-Studio.apk
           sha256sum Little-Reds-Big-Studio.apk
 
