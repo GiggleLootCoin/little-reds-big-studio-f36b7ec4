@@ -84,24 +84,15 @@ export function BuddyLiveChat() {
     speakingRef.current = true;
     setBuddyStatus("working", { message: "Buddy is speaking…" });
     const v = getBuddyVoiceProfile();
-    let nativeError = "";
+    const isRedClone = v.mode === "clone" || (v.mode === "preset" && v.speaker === "Red");
     try {
-      // On the standalone Android build, try the native phone speaker first.
-      // If native TTS is unavailable, the real remote voice path must still get
-      // a chance. The previous code threw immediately here, which meant a
-      // native TTS failure could never reach the working server-side audio
-      // fallback.
-      if (typeof window !== "undefined" && (window as typeof window & {
-        AndroidBuddyVoice?: { isAvailable?: () => boolean };
-      }).AndroidBuddyVoice?.isAvailable?.()) {
-        const nativeStarted = await speakBuddyLocally(text, "browser-en-us");
-        if (nativeStarted) {
-          setStatus("Buddy is speaking through the phone speaker.");
-          return;
-        }
-        nativeError = "The Android speech engine could not start playback.";
-      }
-
+      // IMPORTANT: a saved Red clone must never be pre-empted by Android's
+      // generic system TTS. The previous implementation did exactly that:
+      // native TTS ran first and returned on success, so the actual Red clone
+      // engine was never reached on Android.
+      //
+      // Clone routing is authoritative. Native Android TTS is only an
+      // emergency fallback AFTER the selected clone/preset audio path fails.
       let r: { url: string; provider?: string };
       if (v.speaker === "Red" || (v.mode === "clone" && !v.speaker)) {
         let sample: Blob | null = null;
@@ -178,13 +169,19 @@ export function BuddyLiveChat() {
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
       // Native Android is the final local recovery path. Do not let Web Speech hide a production audio failure.
-      const fallbackStarted = await speakBuddyLocally(text, "browser-en-us");
-      if (fallbackStarted) {
-        setStatus("Buddy is speaking with the phone's validated native voice.");
-        return;
+      // Native TTS is a last-resort emergency voice only. It must never
+      // silently replace the user's selected Red clone during normal routing.
+      if (!isRedClone && typeof window !== "undefined" &&
+          (window as typeof window & { AndroidBuddyVoice?: { isAvailable?: () => boolean } })
+            .AndroidBuddyVoice?.isAvailable?.()) {
+        const fallbackStarted = await speakBuddyLocally(text, "browser-en-us");
+        if (fallbackStarted) {
+          setStatus("Buddy is speaking with the phone's validated native voice.");
+          return;
+        }
       }
       const playbackError = new Error(
-        `Buddy audio failed. ${detail || nativeError || "No usable audio playback path is available."}`,
+        `Buddy audio failed. ${detail || "No usable audio playback path is available."}`,
       );
       setStatus(playbackError.message);
       throw playbackError;
