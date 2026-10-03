@@ -46,6 +46,13 @@ jobs:
           test -s android/app/src/main/assets/index.html
           find android/app/src/main/assets -type f -print | sort
           grep -Eo 'assets/[^"]+\.js' android/app/src/main/assets/index.html
+      - name: Install Little Red's Big Studio launcher logo
+        run: |
+          set -euo pipefail
+          test -s "1784996969001.png"
+          mkdir -p android/app/src/main/res/drawable
+          cp "1784996969001.png" android/app/src/main/res/drawable/lrbgs_logo.png
+          test -s android/app/src/main/res/drawable/lrbgs_logo.png
       - name: Install Android SDK
         env:
           TWA_SIGNING_KEY_BASE64: ${{ secrets.TWA_SIGNING_KEY_BASE64 }}
