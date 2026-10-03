@@ -44,6 +44,7 @@ public class MainActivity extends Activity {
     private static final long TTS_START_TIMEOUT_MS = 20000L;
 
     private WebView webView;
+    private PermissionRequest pendingAudioPermissionRequest;
     private TextToSpeech tts;
     private MediaPlayer buddyPlayer;
     private AudioManager audioManager;
@@ -83,6 +84,7 @@ public class MainActivity extends Activity {
                     if (wantsAudio &&
                             checkSelfPermission(Manifest.permission.RECORD_AUDIO)
                                     != PackageManager.PERMISSION_GRANTED) {
+                        pendingAudioPermissionRequest = request;
                         requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, 4101);
                     } else {
                         request.grant(request.getResources());
@@ -522,6 +524,22 @@ public class MainActivity extends Activity {
         }
     }
 
+    @Override public void onRequestPermissionsResult(
+            int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode != 4101) return;
+        PermissionRequest request = pendingAudioPermissionRequest;
+        pendingAudioPermissionRequest = null;
+        if (request == null) return;
+        if (grantResults.length > 0 &&
+                grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+            try { request.grant(new String[]{PermissionRequest.RESOURCE_AUDIO_CAPTURE}); }
+            catch (Throwable ignored) {}
+        } else {
+            try { request.deny(); } catch (Throwable ignored) {}
+        }
+    }
+
     @Override protected void onResume() {
         super.onResume();
         if (webView != null) webView.onResume();
@@ -548,6 +566,10 @@ public class MainActivity extends Activity {
             buddyPlayer = null;
         }
         abandonAudioFocus();
+        if (pendingAudioPermissionRequest != null) {
+            try { pendingAudioPermissionRequest.deny(); } catch (Throwable ignored) {}
+            pendingAudioPermissionRequest = null;
+        }
         if (webView != null) {
             webView.removeJavascriptInterface("AndroidBuddyVoice");
             webView.destroy();
