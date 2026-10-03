@@ -199,7 +199,7 @@ jobs:
 
 
   publish-independent-download:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/fix/real-studio-apk-hardening-2026-10-03'
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/fix/real-studio-apk-hardening-2026-10-03') || (github.event_name == 'pull_request' && github.base_ref == 'fix/real-studio-apk-hardening-2026-10-03')
     needs: build-apk
     runs-on: ubuntu-latest
     steps:
