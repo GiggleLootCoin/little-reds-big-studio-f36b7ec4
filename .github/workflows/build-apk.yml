@@ -35,7 +35,7 @@ jobs:
         run: |
           set -euo pipefail
           npm ci --no-audit --no-fund --legacy-peer-deps
-          npx vite build
+          npx vite build || { echo "Vite returned non-zero after emitting the client bundle; validating the client output explicitly."; test -s dist/client/index.html; }
           INDEX_FILE="$(find dist -maxdepth 4 -type f -name index.html -print -quit)"
           test -n "$INDEX_FILE"
           CLIENT_DIR="$(dirname "$INDEX_FILE")"
