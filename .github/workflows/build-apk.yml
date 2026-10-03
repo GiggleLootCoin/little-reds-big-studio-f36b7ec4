@@ -163,4 +163,36 @@ jobs:
         id: deployment
         uses: actions/deploy-pages@v4
 
-# Independent APK delivery route verified via GitHub Pages.
+
+  publish-direct-apk:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/fix/real-studio-apk-hardening-2026-10-03'
+    needs: build-apk
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download the exact APK artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: little-reds-big-studio-apk-native
+          path: dist-apk
+      - name: Publish APK to dedicated raw-download branch
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="$(find dist-apk -type f -name '*.apk' -print -quit)"
+          test -n "$APK"
+          test -s "$APK"
+          git init publish-apk
+          cd publish-apk
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git remote add origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git checkout --orphan apk-download
+          rm -rf ./*
+          cp "../$APK" ./app-release.apk
+          git add app-release.apk
+          git commit -m "Publish Little Red's Big Studio APK"
+          git push --force origin HEAD:apk-download
