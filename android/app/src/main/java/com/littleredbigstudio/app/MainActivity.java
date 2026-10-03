@@ -52,6 +52,7 @@ public class MainActivity extends Activity {
     private static final long TTS_START_TIMEOUT_MS = 20000L;
 
     private WebView webView;
+    private PermissionRequest pendingWebPermissionRequest;
     private boolean localBundleLoaded = true;
     private TextToSpeech tts;
     private MediaPlayer buddyPlayer;
@@ -92,7 +93,9 @@ public class MainActivity extends Activity {
                     if (wantsAudio &&
                             checkSelfPermission(Manifest.permission.RECORD_AUDIO)
                                     != PackageManager.PERMISSION_GRANTED) {
-                        requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, 4101);
+                        pendingWebPermissionRequest = request;
+                        requestPermissions(
+                                new String[]{Manifest.permission.RECORD_AUDIO}, 4101);
                     } else {
                         request.grant(request.getResources());
                     }
@@ -573,6 +576,30 @@ public class MainActivity extends Activity {
                 }
                 abandonAudioFocus();
             });
+        }
+    }
+
+    @Override
+    public void onRequestPermissionsResult(
+            int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode != 4101) return;
+
+        PermissionRequest pending = pendingWebPermissionRequest;
+        pendingWebPermissionRequest = null;
+        if (pending == null) return;
+
+        if (grantResults.length > 0 &&
+                grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+            try {
+                pending.grant(pending.getResources());
+            } catch (Throwable ignored) {
+                pending.deny();
+            }
+        } else {
+            try {
+                pending.deny();
+            } catch (Throwable ignored) {}
         }
     }
 
