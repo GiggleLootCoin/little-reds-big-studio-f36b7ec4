@@ -1,4 +1,4 @@
-import type { StudioArtifact, StudioCapability, StudioJobInput } from "./studio-runtime-impl";
+import { runStudioJob as runStudioJobImpl, type StudioArtifact, type StudioCapability, type StudioJobInput } from "./studio-runtime-impl";
 import { getBuddyVoiceProfile, getBuddyVoiceSample, markBuddyCloneVerified } from "./buddy-voice";
 import { getBuiltInRedVoiceSample } from "./red-default-voice";
 import { saveVoiceSample } from "./voice-profile";
@@ -8,7 +8,7 @@ import { createBestFreeVoiceClone } from "./real-voice-clone-v2";
 import { buildBuddyMemoryContext, rememberUserMessage } from "./buddy-memory.mjs";
 import { isLocalQwenEnabled, runLocalQwen } from "./local-qwen";
 import { getStoredPresetPreview } from "./stored-preset-previews";
-import { convertWithApplioSpace } from "./media/rvc-applio";
+import { convertWithApplioSpace, convertWithSimpleRvcSpace } from "./media/rvc-applio";
 
 export type { StudioArtifact, StudioCapability, StudioJobInput } from "./studio-runtime-impl";
 export { runtimeProviders } from "./studio-runtime-impl";
@@ -156,8 +156,7 @@ async function runVerifiedClone(
   } catch (primaryError) {
     onStatus?.("Primary voice generation was unavailable. Trying the free fallback…");
     try {
-      const runtime = await import("./studio-runtime-impl");
-      const fallback = await runtime.runStudioJob(
+      const fallback = await runStudioJobImpl(
         "voice-clone",
         {
           refAudio: sample,
@@ -232,7 +231,7 @@ async function runRedRvcConversion(
     throw new Error("This verified RVC route currently targets the authorized Red voice model only.");
   }
   onStatus?.("Loading Red's trained RVC voice model…");
-  const response = await convertWithApplioSpace({
+  const request = {
     audio,
     model: String(input.model ?? RED_RVC_MODEL_URL),
     index: typeof input.index === "string" ? input.index : undefined,
@@ -244,7 +243,20 @@ async function runRedRvcConversion(
         ? input.f0Method
         : "rmvpe",
     autotune: Boolean(input.autotune ?? false),
-  });
+  } as const;
+  let response: Response;
+  try {
+    response = await convertWithApplioSpace(request);
+  } catch (primaryError) {
+    onStatus?.("Primary RVC engine is unavailable. Trying the independent free RVC engine…");
+    try {
+      response = await convertWithSimpleRvcSpace(request);
+    } catch (fallbackError) {
+      throw new Error(
+        `Red RVC failed on both free engines. Primary: ${primaryError instanceof Error ? primaryError.message : String(primaryError)}. Fallback: ${fallbackError instanceof Error ? fallbackError.message : String(fallbackError)}`,
+      );
+    }
+  }
   const blob = await response.blob();
   if (!blob.size) throw new Error("Applio RVC returned an empty audio artifact.");
   const normalized = await normalizeAndVerifyBrowserAudio(blob);
@@ -277,13 +289,12 @@ export async function runStudioJob(
     if (!(sample instanceof Blob)) {
       const speaker = String(input.speaker ?? "").trim();
       if (speaker && speaker !== "Red") {
-        const runtime = await import("./studio-runtime-impl");
         const presetInput = {
           ...input,
           text: String(input.text ?? input.target_text ?? input.prompt ?? DEFAULT_CLONE_TEXT).trim(),
           speaker,
         };
-        return runtime.runStudioJob("tts", presetInput, onStatus);
+        return runStudioJobImpl("tts", presetInput, onStatus);
       }
       throw new Error("A reference voice recording is required for a real clone.");
     }
@@ -388,6 +399,5 @@ export async function runStudioJob(
       }
     }
   }
-  const mod = await import("./studio-runtime-impl");
-  return mod.runStudioJob(capability, preparedInput, onStatus);
+  return runStudioJobImpl(capability, preparedInput, onStatus);
 }

@@ -79,6 +79,32 @@ export function BuddyLiveChat() {
     }
     finally { busyRef.current = false; setBusy(false); if (liveRef.current && !speakingRef.current) setTimeout(() => void beginLive(), 250); }
   }
+  async function playGeneratedAudioNatively(url: string): Promise<boolean> {
+    if (typeof window === "undefined") return false;
+    const bridge = (window as typeof window & { AndroidBuddyVoice?: { playBase64Async?: (base64: string, mimeType: string, callbackId: string) => void } }).AndroidBuddyVoice;
+    if (!bridge?.playBase64Async || !url) return false;
+    try {
+      const response = await fetch(url);
+      if (!response.ok) return false;
+      const blob = await response.blob();
+      if (!blob.size) return false;
+      const bytes = new Uint8Array(await blob.arrayBuffer());
+      let binary = "";
+      for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+      const base64 = btoa(binary);
+      const callbackId = "audio-" + Date.now() + "-" + Math.random().toString(36).slice(2);
+      return await new Promise<boolean>((resolve) => {
+        let settled = false;
+        const finish = (ok: boolean) => { if (settled) return; settled = true; window.clearTimeout(timer); delete (window as typeof window & { __buddyAndroidTtsCallbacks?: Record<string, (ok: boolean) => void> }).__buddyAndroidTtsCallbacks?.[callbackId]; resolve(ok); };
+        const timer = window.setTimeout(() => finish(false), 12000);
+        const callbacks = ((window as typeof window & { __buddyAndroidTtsCallbacks?: Record<string, (ok: boolean) => void> }).__buddyAndroidTtsCallbacks ??= {});
+        callbacks[callbackId] = finish;
+        (window as typeof window & { __buddyAndroidTtsResult?: (id: string, ok: boolean) => void }).__buddyAndroidTtsResult ??= (id, ok) => { (window as typeof window & { __buddyAndroidTtsCallbacks?: Record<string, (ok: boolean) => void> }).__buddyAndroidTtsCallbacks?.[id]?.(ok); };
+        bridge.playBase64Async?.(base64, blob.type || "audio/mpeg", callbackId);
+      });
+    } catch { return false; }
+  }
+
   async function speak(text: string) {
     if (muted || speakingRef.current) return;
     speakingRef.current = true;
@@ -164,14 +190,15 @@ export function BuddyLiveChat() {
         r = { url: URL.createObjectURL(blob), provider: response.headers.get("x-voice-provider") || `Preset TTS (${preset.speaker})` };
       }
       if (!r.url) throw Error("No usable Buddy voice was returned.");
-      await playBuddyAudio(r.url);
+      const nativePlayed = await playGeneratedAudioNatively(r.url);
+      if (!nativePlayed) await playBuddyAudio(r.url);
       if (r.url.startsWith("blob:")) URL.revokeObjectURL(r.url);
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
       // Native Android is the final local recovery path. Do not let Web Speech hide a production audio failure.
       // Native TTS is a last-resort emergency voice only. It must never
       // silently replace the user's selected Red clone during normal routing.
-      if (!isRedClone && typeof window !== "undefined" &&
+      if (typeof window !== "undefined" &&
           (window as typeof window & { AndroidBuddyVoice?: { isAvailable?: () => boolean } })
             .AndroidBuddyVoice?.isAvailable?.()) {
         const fallbackStarted = await speakBuddyLocally(text, "browser-en-us");

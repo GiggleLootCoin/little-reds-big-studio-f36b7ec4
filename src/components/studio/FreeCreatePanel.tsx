@@ -73,10 +73,193 @@ async function audioDurationSeconds(blob: Blob): Promise<number> {
   }
 }
 
+function collectMediaCandidates(value: unknown, hint = ""): { url: string; hint: string }[] {
+  const candidates: { url: string; hint: string }[] = [];
+  const add = (next: unknown, nextHint: string) => {
+    if (typeof next === "string" && /^(https?:|blob:|data:|\/)/i.test(next)) {
+      candidates.push({ url: next, hint: nextHint.toLowerCase() });
+      return;
+    }
+    if (!next || typeof next !== "object" || next instanceof Blob) return;
+    if (Array.isArray(next)) {
+      next.forEach((item, index) => add(item, nextHint || String(index)));
+      return;
+    }
+    const record = next as Record<string, unknown>;
+    const localHint = Object.entries(record)
+      .filter(([key, value]) => typeof value === "string" && /^(https?:|blob:|data:|\/)/i.test(value))
+      .map(([key]) => key)
+      .join(" ");
+    const combinedHint = [nextHint, localHint].filter(Boolean).join(" ");
+    for (const [key, nested] of Object.entries(record)) add(nested, [combinedHint, key].filter(Boolean).join(" "));
+  };
+  add(value, hint);
+  return candidates.filter((candidate, index, all) => all.findIndex((x) => x.url === candidate.url) === index);
+}
+
+function pickMediaCandidate(
+  candidates: { url: string; hint: string }[],
+  patterns: RegExp[],
+): string | null {
+  return (
+    candidates.find((candidate) => patterns.some((pattern) => pattern.test(candidate.hint)))?.url ?? null
+  );
+}
+
+async function fetchAudioBlob(url: string): Promise<Blob> {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`Audio artifact download failed (HTTP ${response.status}).`);
+  const blob = await response.blob();
+  if (!blob.size) throw new Error("Audio artifact was empty.");
+  return blob;
+}
+
+function audioBufferToWav(buffer: AudioBuffer): Blob {
+  const channels = buffer.numberOfChannels;
+  const frames = buffer.length;
+  const sampleRate = buffer.sampleRate;
+  const bytesPerSample = 2;
+  const output = new ArrayBuffer(44 + frames * channels * bytesPerSample);
+  const view = new DataView(output);
+  const write = (offset: number, text: string) =>
+    [...text].forEach((char, index) => view.setUint8(offset + index, char.charCodeAt(0)));
+  write(0, "RIFF");
+  view.setUint32(4, 36 + frames * channels * bytesPerSample, true);
+  write(8, "WAVE");
+  view.setUint32(12, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, channels, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * channels * bytesPerSample, true);
+  view.setUint16(32, channels * bytesPerSample, true);
+  view.setUint16(34, 16, true);
+  write(36, "data");
+  view.setUint32(40, frames * channels * bytesPerSample, true);
+  let offset = 44;
+  for (let frame = 0; frame < frames; frame++) {
+    for (let channel = 0; channel < channels; channel++) {
+      const sample = Math.max(-1, Math.min(1, buffer.getChannelData(channel)[frame]));
+      view.setInt16(offset, sample < 0 ? sample * 0x8000 : sample * 0x7fff, true);
+      offset += 2;
+    }
+  }
+  return new Blob([output], { type: "audio/wav" });
+}
+
+async function buildRedCover(source: Blob, onStatus: (status: string) => void): Promise<Blob> {
+  onStatus("1/4 — Separating the song into the cleanest available vocal/instrumental stems…");
+  const separated = await runStudioJob(
+    "vocal-separation",
+    {
+      audio: source,
+      model_name: "htdemucs_ft",
+      vocals: true,
+      drums: true,
+      bass: true,
+      other: true,
+      mp3: false,
+      mp3_bitrate: 192,
+    },
+    onStatus,
+  );
+
+  const candidates = collectMediaCandidates(separated.value);
+  if (separated.url && !candidates.some((candidate) => candidate.url === separated.url)) {
+    candidates.unshift({ url: separated.url, hint: "result output" });
+  }
+  if (!candidates.length) {
+    throw new Error("The stem separator returned no audio files. The original song was not modified.");
+  }
+
+  const vocalUrl =
+    pickMediaCandidate(candidates, [/\bvocal(s)?\b/, /vocals?/, /voice/]) ??
+    candidates.find((candidate) => /vocal|voice/i.test(candidate.url))?.url ??
+    null;
+  const instrumentalUrl =
+    pickMediaCandidate(candidates, [/no[_ -]?vocal/, /instrumental/, /accompaniment/, /music[_ -]?only/]) ??
+    null;
+  const drumUrl = pickMediaCandidate(candidates, [/\bdrum(s)?\b/]);
+  const bassUrl = pickMediaCandidate(candidates, [/\bbass\b/]);
+  const otherUrl = pickMediaCandidate(candidates, [/\bother\b/]);
+  const mixedUrl =
+    pickMediaCandidate(candidates, [/mixed/, /mixture/, /full[_ -]?song/, /output/]) ?? separated.url ?? null;
+
+  const orderedAudio = candidates.map((candidate) => candidate.url);
+  const fallbackVocalUrl = vocalUrl ?? orderedAudio.find((url) => url !== mixedUrl) ?? null;
+  if (!fallbackVocalUrl) {
+    throw new Error("The stem separator did not expose a usable vocal stem. The original song was not modified.");
+  }
+
+  onStatus("2/4 — Converting the isolated vocal with Red's trained RVC model…");
+  const converted = await runStudioJob(
+    "song-voice-swap",
+    { audio: await fetchAudioBlob(fallbackVocalUrl), targetVoice: "Red" },
+    onStatus,
+  );
+  if (!converted.url) throw new Error("Red RVC returned no playable converted vocal.");
+  const convertedVocal =
+    converted.value instanceof Blob ? converted.value : await fetchAudioBlob(converted.url);
+
+  onStatus("3/4 — Rebuilding the instrumental and mixing Red's converted vocal back in…");
+  const AudioContextCtor =
+    window.AudioContext ||
+    (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+  if (!AudioContextCtor) throw new Error("This Android browser cannot mix the returned audio.");
+
+  const decode = async (blob: Blob) => {
+    const ctx = new AudioContextCtor();
+    try {
+      return await ctx.decodeAudioData(await blob.arrayBuffer());
+    } finally {
+      await ctx.close().catch(() => undefined);
+    }
+  };
+
+  const instrumentalUrls = instrumentalUrl
+    ? [instrumentalUrl]
+    : [drumUrl, bassUrl, otherUrl].filter((url): url is string => Boolean(url));
+  if (!instrumentalUrls.length && mixedUrl && mixedUrl !== fallbackVocalUrl) {
+    instrumentalUrls.push(mixedUrl);
+  }
+  if (!instrumentalUrls.length) {
+    throw new Error(
+      "The stem separator returned vocals but no instrumental/no-vocal stem. The original song was not modified.",
+    );
+  }
+
+  const buffers = await Promise.all(
+    [...instrumentalUrls, "__RED_VOCAL__"].map((url) =>
+      url === "__RED_VOCAL__" ? decode(convertedVocal) : fetchAudioBlob(url).then(decode),
+    ),
+  );
+  const vocal = buffers.pop();
+  if (!vocal) throw new Error("Converted Red vocal could not be decoded.");
+
+  const sampleRate = Math.max(...buffers.map((buffer) => buffer.sampleRate), vocal.sampleRate);
+  const duration = Math.max(...buffers.map((buffer) => buffer.duration), vocal.duration);
+  const channels = 2;
+  const offline = new OfflineAudioContext(channels, Math.ceil(duration * sampleRate), sampleRate);
+  const connectStem = (buffer: AudioBuffer, gainValue: number) => {
+    const sourceNode = offline.createBufferSource();
+    sourceNode.buffer = buffer;
+    const gain = offline.createGain();
+    gain.gain.value = gainValue;
+    sourceNode.connect(gain).connect(offline.destination);
+    sourceNode.start(0);
+  };
+  buffers.forEach((buffer) => connectStem(buffer, 0.9));
+  connectStem(vocal, 1.0);
+  const rendered = await offline.startRendering();
+  const wav = audioBufferToWav(rendered);
+  if (wav.size < 4096) throw new Error("The finished Red cover rendered as an empty audio file.");
+  onStatus("4/4 — Verifying and saving the finished Red cover…");
+  return wav;
+}
+
 export function FreeCreatePanel() {
   const [brief, setBrief] = useState("");
   const [lyrics, setLyrics] = useState("");
-  const [busy, setBusy] = useState<StudioCapability | "track-package" | null>(null);
+  const [busy, setBusy] = useState<StudioCapability | "track-package" | "red-cover" | null>(null);
   const [status, setStatus] = useState(
     "Buddy will choose a compatible free route and verify the returned result.",
   );
@@ -125,6 +308,33 @@ export function FreeCreatePanel() {
       setBusy(null);
     }
   };
+  const generateRedCover = async () => {
+    if (busy || !sourceAudio) return;
+    save();
+    setBusy("red-cover");
+    setArtifact(null);
+    try {
+      const finished = await buildRedCover(sourceAudio, setStatus);
+      await saveLocalArtifact(finished, `${brief.trim() || sourceAudio.name.replace(/\.[^.]+$/, "") || "red-cover"}-Red-cover.wav`);
+      const url = URL.createObjectURL(finished);
+      setArtifact({
+        capability: "song-voice-swap",
+        value: finished,
+        url,
+        provider: "Little Red's Big Studio — Demucs + Red RVC + local mix",
+      });
+      setStatus("Finished Red cover verified and saved on this device.");
+    } catch (error) {
+      setStatus(
+        error instanceof Error
+          ? error.message
+          : "Red cover could not be completed. The original source file was not modified.",
+      );
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const generateTrackPackage = async () => {
     if (busy) return;
     save();
@@ -284,6 +494,27 @@ export function FreeCreatePanel() {
             onChange={(e) => setReferenceVoice(e.target.files?.[0] || null)}
           />
         </label>
+      </div>
+      <div className="rounded-2xl border border-primary/25 bg-primary/5 p-3">
+        <div className="flex items-start gap-3">
+          <Music2 className="mt-0.5 size-5 shrink-0 text-primary" />
+          <div className="min-w-0 flex-1">
+            <p className="font-semibold">Make a complete Red cover</p>
+            <p className="mt-1 text-xs leading-5 text-muted-foreground">
+              One button: separate the song, use Red's trained RVC model, rebuild the instrumental,
+              mix the converted vocal back in, verify the WAV, and save it locally. No reference-voice
+              upload is required.
+            </p>
+          </div>
+        </div>
+        <StudioButton
+          className="mt-3 w-full"
+          disabled={!sourceAudio || !!busy}
+          onClick={() => void generateRedCover()}
+        >
+          <Music2 className="size-4" />
+          {busy === "red-cover" ? "Making your Red cover…" : "Make My Red Cover"}
+        </StudioButton>
       </div>
       <div className="grid gap-2 sm:grid-cols-2">
         <StudioButton
