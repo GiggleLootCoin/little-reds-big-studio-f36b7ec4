@@ -146,7 +146,7 @@ public class MainActivity extends Activity {
       if(!installed.isEmpty())return installed.get(0);
       return ollama?"qwen3.5:0.8b":"qwen3.5-0.8b";
     }
-    String q=chosen.toLowerCase(Locale.US).replace(" q4_k_m","").replace("-","").replace(" ","");
+    String q=chosen.toLowerCase(Locale.US).replace(" q4_k_m","").replaceAll("[^a-z0-9]","");
     for(String x:installed){String n=x.toLowerCase(Locale.US).replace("-","").replace("_","").replace(" ","");if(q.contains("qwen")&&n.contains("qwen")&&q.contains("08b")&&n.contains("08b"))return x;if(q.contains("phi4mini")&&n.contains("phi")&&n.contains("mini"))return x;if(q.contains("mistral7b")&&n.contains("mistral")&&n.contains("7b"))return x;if(q.contains("llama32")&&n.contains("llama")&&n.contains("32"))return x;if(q.contains("llama31")&&n.contains("llama")&&n.contains("31"))return x;if(q.contains("deepseekr115b")&&n.contains("deepseek")&&n.contains("15b"))return x;if(q.contains("deepseekr17b")&&n.contains("deepseek")&&n.contains("7b"))return x;if(q.contains("gemma31b")&&n.contains("gemma")&&n.contains("1b"))return x;if(q.contains("gemma34b")&&n.contains("gemma")&&n.contains("4b"))return x;if(q.contains("smollm21.7b")&&n.contains("smollm")&&n.contains("17b"))return x;if(q.contains("granite4")&&n.contains("granite"))return x;if(q.contains("ministral3b")&&n.contains("ministral")&&n.contains("3b"))return x;if(q.contains("nemotronmini")&&n.contains("nemotron")&&n.contains("mini"))return x;}
     if(installed.isEmpty())throw new Exception("No installed local model was discovered at "+endpoint);
     throw new Exception("Selected model is not installed. Available: "+installed);
@@ -164,11 +164,11 @@ public class MainActivity extends Activity {
     OutputStream os=c.getOutputStream();os.write(body.toString().getBytes("UTF-8"));os.close();
     int code=c.getResponseCode();InputStream in=code>=200&&code<300?c.getInputStream():c.getErrorStream();
     if(code<200||code>=300){String raw=read(in);c.disconnect();throw new Exception("HTTP "+code+": "+raw);}
-    BufferedReader r=new BufferedReader(new InputStreamReader(in,"UTF-8")); StringBuilder out=new StringBuilder(); String line;
+    BufferedReader r=new BufferedReader(new InputStreamReader(in,"UTF-8")); StringBuilder out=new StringBuilder(); String line; long lastPaint=0;
     while((line=r.readLine())!=null){
       String data=line.startsWith("data:")?line.substring(5).trim():line.trim(); if(data.isEmpty()||data.equals("[DONE]"))continue;
       try{JSONObject j=new JSONObject(data);String piece="";if(ollama){JSONObject msg=j.optJSONObject("message");if(msg!=null)piece=msg.optString("content","");}else{JSONArray choices=j.optJSONArray("choices");if(choices!=null&&choices.length()>0){JSONObject delta=choices.getJSONObject(0).optJSONObject("delta");if(delta!=null)piece=delta.optString("content","");}}
-        if(!piece.isEmpty()){out.append(piece);String shown=out.toString();mainHandler.post(()->{response.setText(shown);response.setSelection(response.getText().length());});}
+        if(!piece.isEmpty()){out.append(piece);long now=SystemClock.elapsedRealtime();if(now-lastPaint>=80){lastPaint=now;String shown=out.toString();mainHandler.post(()->response.setText(shown));}}
       }catch(JSONException ignored){}
     }
     r.close();c.disconnect();String result=out.toString().trim();if(result.isEmpty())throw new Exception("AI returned no text");return result;
