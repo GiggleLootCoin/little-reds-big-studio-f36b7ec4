@@ -4,6 +4,8 @@ on:
   workflow_dispatch:
   push:
     branches: [from-scratch-free-ai-2026-10-03]
+  pull_request:
+    branches: [main]
 
 permissions:
   contents: read
