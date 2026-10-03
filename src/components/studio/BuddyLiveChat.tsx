@@ -84,6 +84,7 @@ export function BuddyLiveChat() {
     speakingRef.current = true;
     setBuddyStatus("working", { message: "Buddy is speaking…" });
     const v = getBuddyVoiceProfile();
+    const isRedClone = v.mode === "clone" || (v.mode === "preset" && v.speaker === "Red");
     let nativeError = "";
     try {
       // IMPORTANT: a saved Red clone must never be pre-empted by Android's
@@ -93,7 +94,6 @@ export function BuddyLiveChat() {
       //
       // Clone routing is authoritative. Native Android TTS is only an
       // emergency fallback AFTER the selected clone/preset audio path fails.
-      const isRedClone = v.mode === "clone" || (v.mode === "preset" && v.speaker === "Red");
       let r: { url: string; provider?: string };
       if (v.speaker === "Red" || (v.mode === "clone" && !v.speaker)) {
         let sample: Blob | null = null;
