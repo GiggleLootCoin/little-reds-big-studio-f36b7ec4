@@ -2,6 +2,13 @@ plugins { id 'com.android.application' }
 
 android {
     namespace 'com.littleredbigstudio.app'
+
+    sourceSets {
+        main {
+            res.srcDir("$buildDir/generated/res/little-red-logo")
+        }
+    }
+
     compileSdk 36
 
     defaultConfig {
@@ -29,3 +36,18 @@ android {
         }
     }
 }
+
+
+tasks.register("prepareLittleRedLauncherIcon") {
+    doLast {
+        def outDir = file("$buildDir/generated/res/little-red-logo/drawable")
+        outDir.mkdirs()
+        copy {
+            from file("../1784996969001.png")
+            into outDir
+            rename { "little_red_icon.png" }
+        }
+    }
+}
+
+preBuild.dependsOn(tasks.named("prepareLittleRedLauncherIcon"))

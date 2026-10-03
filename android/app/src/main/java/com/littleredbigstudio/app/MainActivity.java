@@ -35,14 +35,16 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public class MainActivity extends Activity {
-    private static final String START_URL =
-            "https://little-reds-big-studio-f36b7ec4.gigglelootcoin.workers.dev/?app_build=e5931dcd83263178fc1b52dc1b65384c0539037b";
+    private static final String START_ORIGIN =
+            "https://little-reds-big-studio-f36b7ec4.gigglelootcoin.workers.dev/";
+    private static final String START_URL = START_ORIGIN;
 
     private static final String GOOGLE_TTS = "com.google.android.tts";
     private static final String SAMSUNG_TTS = "com.samsung.SMT";
     private static final long TTS_START_TIMEOUT_MS = 20000L;
 
     private WebView webView;
+    private PermissionRequest pendingAudioPermissionRequest;
     private TextToSpeech tts;
     private MediaPlayer buddyPlayer;
     private AudioManager audioManager;
@@ -82,6 +84,7 @@ public class MainActivity extends Activity {
                     if (wantsAudio &&
                             checkSelfPermission(Manifest.permission.RECORD_AUDIO)
                                     != PackageManager.PERMISSION_GRANTED) {
+                        pendingAudioPermissionRequest = request;
                         requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, 4101);
                     } else {
                         request.grant(request.getResources());
@@ -93,7 +96,7 @@ public class MainActivity extends Activity {
         webView.setWebViewClient(new WebViewClient() {
             @Override public boolean shouldOverrideUrlLoading(
                     WebView view, WebResourceRequest request) {
-                return !request.getUrl().toString().startsWith(START_URL);
+                return !request.getUrl().toString().startsWith(START_ORIGIN);
             }
         });
 
@@ -276,6 +279,7 @@ public class MainActivity extends Activity {
 
         final String utteranceId = "buddy-file-" + System.nanoTime();
         final AtomicBoolean settled = new AtomicBoolean(false);
+        final AtomicBoolean playbackStarted = new AtomicBoolean(false);
         final File output = new File(getCacheDir(), utteranceId + ".wav");
 
         try {
@@ -290,7 +294,7 @@ public class MainActivity extends Activity {
                     main.post(() -> {
                         if (settled.get()) return;
                         try {
-                            playSynthesizedFile(output, callbackId, settled);
+                            playSynthesizedFile(output, callbackId, settled, playbackStarted);
                         } catch (Throwable error) {
                             failTtsPlayback(callbackId, settled, output);
                         }
@@ -324,15 +328,21 @@ public class MainActivity extends Activity {
             }
 
             main.postDelayed(() -> {
-                if (!settled.get()) failTtsPlayback(callbackId, settled, output);
-            }, Math.max(TTS_START_TIMEOUT_MS, 20000L));
+                // Once MediaPlayer has actually started, do not kill a long
+                // response merely because synthesis began more than 30 seconds
+                // ago. The timeout only guards a genuinely stuck synthesis.
+                if (!settled.get() && !playbackStarted.get()) {
+                    failTtsPlayback(callbackId, settled, output);
+                }
+            }, Math.max(TTS_START_TIMEOUT_MS, 30000L));
         } catch (Throwable error) {
             failTtsPlayback(callbackId, settled, output);
         }
     }
 
     private void playSynthesizedFile(
-            File output, String callbackId, AtomicBoolean settled) {
+            File output, String callbackId, AtomicBoolean settled,
+            AtomicBoolean playbackStarted) {
         if (!output.exists() || output.length() == 0) {
             failTtsPlayback(callbackId, settled, output);
             return;
@@ -355,6 +365,7 @@ public class MainActivity extends Activity {
             player.setOnPreparedListener(mp -> {
                 try {
                     mp.start();
+                    playbackStarted.set(true);
                     if (callbackId != null && callbackSent.compareAndSet(false, true)) {
                         notifyTtsResult(callbackId, true);
                     }
@@ -513,6 +524,22 @@ public class MainActivity extends Activity {
         }
     }
 
+    @Override public void onRequestPermissionsResult(
+            int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode != 4101) return;
+        PermissionRequest request = pendingAudioPermissionRequest;
+        pendingAudioPermissionRequest = null;
+        if (request == null) return;
+        if (grantResults.length > 0 &&
+                grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+            try { request.grant(new String[]{PermissionRequest.RESOURCE_AUDIO_CAPTURE}); }
+            catch (Throwable ignored) {}
+        } else {
+            try { request.deny(); } catch (Throwable ignored) {}
+        }
+    }
+
     @Override protected void onResume() {
         super.onResume();
         if (webView != null) webView.onResume();
@@ -539,6 +566,10 @@ public class MainActivity extends Activity {
             buddyPlayer = null;
         }
         abandonAudioFocus();
+        if (pendingAudioPermissionRequest != null) {
+            try { pendingAudioPermissionRequest.deny(); } catch (Throwable ignored) {}
+            pendingAudioPermissionRequest = null;
+        }
         if (webView != null) {
             webView.removeJavascriptInterface("AndroidBuddyVoice");
             webView.destroy();

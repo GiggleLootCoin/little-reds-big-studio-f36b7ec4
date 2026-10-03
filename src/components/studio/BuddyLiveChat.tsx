@@ -168,10 +168,11 @@ export function BuddyLiveChat() {
       if (r.url.startsWith("blob:")) URL.revokeObjectURL(r.url);
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
-      // Native Android is the final local recovery path. Do not let Web Speech hide a production audio failure.
-      // Native TTS is a last-resort emergency voice only. It must never
-      // silently replace the user's selected Red clone during normal routing.
-      if (!isRedClone && typeof window !== "undefined" &&
+      // Native Android is the final local recovery path. Red clone and the
+      // fast Aura backup remain first; the phone voice is only used if both
+      // real audio paths fail. This guarantees an audible response instead of
+      // deliberately returning silence on Android.
+      if (typeof window !== "undefined" &&
           (window as typeof window & { AndroidBuddyVoice?: { isAvailable?: () => boolean } })
             .AndroidBuddyVoice?.isAvailable?.()) {
         const fallbackStarted = await speakBuddyLocally(text, "browser-en-us");

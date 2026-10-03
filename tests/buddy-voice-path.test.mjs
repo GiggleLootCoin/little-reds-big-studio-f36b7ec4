@@ -22,11 +22,12 @@ test("tap-to-talk uses native Android speech recognition before the slower Whisp
   assert.match(chat, /else if \(b\.size\)[\s\S]*?stt\(b\)/);
 });
 
-test("Android never pre-empts the selected Red clone with generic native TTS", () => {
+test("Android keeps Red clone first and permits native voice as the final recovery", () => {
   const speakBlock = chat.slice(chat.indexOf("async function speak"), chat.indexOf("function stopAll", chat.indexOf("async function speak")));
   assert.match(speakBlock, /const isRedClone = v\.mode === "clone"/);
-  assert.match(speakBlock, /!isRedClone/);
   assert.match(speakBlock, /AndroidBuddyVoice/);
+  assert.match(speakBlock, /Red clone and the/);
+  assert.doesNotMatch(speakBlock, /if \(!isRedClone/);
   assert.ok(
     speakBlock.indexOf("const isRedClone") < speakBlock.indexOf("let r: { url: string; provider?: string }"),
     "clone routing decision must happen before audio-engine selection",
