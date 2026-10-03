@@ -35,8 +35,9 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public class MainActivity extends Activity {
-    private static final String START_URL =
-            "https://little-reds-big-studio-f36b7ec4.gigglelootcoin.workers.dev/?app_build=e5931dcd83263178fc1b52dc1b65384c0539037b";
+    private static final String START_ORIGIN =
+            "https://little-reds-big-studio-f36b7ec4.gigglelootcoin.workers.dev/";
+    private static final String START_URL = START_ORIGIN;
 
     private static final String GOOGLE_TTS = "com.google.android.tts";
     private static final String SAMSUNG_TTS = "com.samsung.SMT";
@@ -93,7 +94,7 @@ public class MainActivity extends Activity {
         webView.setWebViewClient(new WebViewClient() {
             @Override public boolean shouldOverrideUrlLoading(
                     WebView view, WebResourceRequest request) {
-                return !request.getUrl().toString().startsWith(START_URL);
+                return !request.getUrl().toString().startsWith(START_ORIGIN);
             }
         });
 
@@ -276,6 +277,7 @@ public class MainActivity extends Activity {
 
         final String utteranceId = "buddy-file-" + System.nanoTime();
         final AtomicBoolean settled = new AtomicBoolean(false);
+        final AtomicBoolean playbackStarted = new AtomicBoolean(false);
         final File output = new File(getCacheDir(), utteranceId + ".wav");
 
         try {
@@ -290,7 +292,7 @@ public class MainActivity extends Activity {
                     main.post(() -> {
                         if (settled.get()) return;
                         try {
-                            playSynthesizedFile(output, callbackId, settled);
+                            playSynthesizedFile(output, callbackId, settled, playbackStarted);
                         } catch (Throwable error) {
                             failTtsPlayback(callbackId, settled, output);
                         }
@@ -324,15 +326,21 @@ public class MainActivity extends Activity {
             }
 
             main.postDelayed(() -> {
-                if (!settled.get()) failTtsPlayback(callbackId, settled, output);
-            }, Math.max(TTS_START_TIMEOUT_MS, 20000L));
+                // Once MediaPlayer has actually started, do not kill a long
+                // response merely because synthesis began more than 30 seconds
+                // ago. The timeout only guards a genuinely stuck synthesis.
+                if (!settled.get() && !playbackStarted.get()) {
+                    failTtsPlayback(callbackId, settled, output);
+                }
+            }, Math.max(TTS_START_TIMEOUT_MS, 30000L));
         } catch (Throwable error) {
             failTtsPlayback(callbackId, settled, output);
         }
     }
 
     private void playSynthesizedFile(
-            File output, String callbackId, AtomicBoolean settled) {
+            File output, String callbackId, AtomicBoolean settled,
+            AtomicBoolean playbackStarted) {
         if (!output.exists() || output.length() == 0) {
             failTtsPlayback(callbackId, settled, output);
             return;
@@ -355,6 +363,7 @@ public class MainActivity extends Activity {
             player.setOnPreparedListener(mp -> {
                 try {
                     mp.start();
+                    playbackStarted.set(true);
                     if (callbackId != null && callbackSent.compareAndSet(false, true)) {
                         notifyTtsResult(callbackId, true);
                     }
