@@ -10,17 +10,10 @@ android {
         versionCode 1
         versionName '2.0.0-next'
     }
-    signingConfigs {
-        release {
-            storeFile file("release-key.jks")
-            storePassword System.getenv("STUDIO_SIGNING_STORE_PASSWORD") ?: "android"
-            keyAlias "key0"
-            keyPassword System.getenv("STUDIO_SIGNING_KEY_PASSWORD") ?: "android"
-        }
-    }
     buildTypes {
         release {
-            signingConfig signingConfigs.release
+            // Isolated phone-test build: never depend on a private keystore.
+            signingConfig signingConfigs.debug
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
