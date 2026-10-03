@@ -1,121 +1,62 @@
-name: Build Little Red's Big Studio APK
-# Rebuild current main so the installable APK contains the latest Android Buddy voice fixes.
+name: Build Little Red's Big Studio — isolated native APK
 
 on:
   pull_request:
-    branches: [main, "fix/studio-hardening-2026-10-03"]
-  push:
-    branches: [main, "fix/android-buddy-voice-and-apk-2026-10-03"]
+    branches: [main]
   workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
-  build-apk:
+  build-isolated-apk:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 25
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up JDK 17
-        uses: actions/setup-java@v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: 17
-
-      - name: Node.js
-        uses: actions/setup-node@v5
-        with:
-          node-version: 24
-          cache: npm
-
-      - name: Install Node dependencies
-        run: npm ci --no-audit --no-fund --legacy-peer-deps
-
-      - name: Build the web UI bundle
-        continue-on-error: true
-        run: npx vite build
-
-      - name: Package the verified client bundle into the APK
-        run: |
-          set -euo pipefail
-          echo "Built HTML files:"
-          find dist -maxdepth 6 -type f -name '*.html' -print
-          CLIENT_DIR="dist/client"
-          test -s "$CLIENT_DIR/_shell.html"
-          rm -rf android/app/src/main/assets
-          mkdir -p android/app/src/main/assets
-          cp -a "$CLIENT_DIR"/. android/app/src/main/assets/
-          cp "$CLIENT_DIR/_shell.html" android/app/src/main/assets/index.html
-          test -s android/app/src/main/assets/index.html
-
-      - name: Prepare Android SDK and signing
-        env:
-          TWA_SIGNING_KEY_BASE64: ${{ secrets.TWA_SIGNING_KEY_BASE64 }}
+      - name: Android SDK
         run: |
           set -euo pipefail
           SDK_ROOT="$HOME/android-sdk"
-          echo "SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
           mkdir -p "$SDK_ROOT"
           curl -fsSLo "$RUNNER_TEMP/cmdline-tools.zip" "https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip"
           unzip -q "$RUNNER_TEMP/cmdline-tools.zip" -d "$RUNNER_TEMP/android-tools"
           mkdir -p "$SDK_ROOT/cmdline-tools/latest"
           cp -a "$RUNNER_TEMP/android-tools/cmdline-tools/bin" "$RUNNER_TEMP/android-tools/cmdline-tools/lib" "$SDK_ROOT/cmdline-tools/latest/"
-          SDKMANAGER="$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
-          for i in $(seq 1 100); do printf 'y\n'; done | "$SDKMANAGER" --licenses --sdk_root="$SDK_ROOT" >/tmp/sdk-licenses.log 2>&1 || true
-          "$SDKMANAGER" --install "platform-tools" "build-tools;35.0.0" "platforms;android-36" >/tmp/sdk-install.log 2>&1
-          if [ -n "$TWA_SIGNING_KEY_BASE64" ]; then
-            echo "$TWA_SIGNING_KEY_BASE64" | base64 -d > android/app/release-key.jks
-          else
-            keytool -genkeypair -keystore android/app/release-key.jks -storepass android -keypass android -alias key0 -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Little Red's Big Studio"
-          fi
-
-      - name: Install pinned Gradle
+          yes | "$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null 2>&1 || true
+          "$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" "platform-tools" "platforms;android-35" "build-tools;35.0.0"
+      - name: Gradle
         run: |
-          set -euo pipefail
           curl -fsSLo "$RUNNER_TEMP/gradle.zip" "https://services.gradle.org/distributions/gradle-8.9-bin.zip"
           unzip -q "$RUNNER_TEMP/gradle.zip" -d "$RUNNER_TEMP"
           echo "$RUNNER_TEMP/gradle-8.9/bin" >> "$GITHUB_PATH"
-          gradle --version
-
-      - name: Build native Android APK
-        env:
-          ANDROID_HOME: ${{ env.SDK_ROOT }}
-          ANDROID_SDK_ROOT: ${{ env.SDK_ROOT }}
-          TWA_SIGNING_KEY_PASSWORD: ${{ secrets.TWA_SIGNING_KEY_PASSWORD || 'android' }}
-          TWA_SIGNING_KEY_STORE_PASSWORD: ${{ secrets.TWA_SIGNING_KEY_STORE_PASSWORD || 'android' }}
-        run: |
-          set -euo pipefail
-          gradle --no-daemon --stacktrace -p android assembleRelease
-
+      - name: Build isolated project
+        run: gradle --no-daemon --stacktrace -p studio-next assembleRelease
       - name: Verify APK
         run: |
           set -euo pipefail
-          APK="android/app/build/outputs/apk/release/app-release.apk"
+          APK="studio-next/app/build/outputs/apk/release/app-release.apk"
           test -s "$APK"
-          "$SDK_ROOT/build-tools/35.0.0/apksigner" verify --verbose "$APK"
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose "$APK"
           sha256sum "$APK"
           stat -c '%s bytes' "$APK"
-
-      - name: Upload APK artifact
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: little-reds-big-studio-apk-native
-          path: android/app/build/outputs/apk/release/app-release.apk
-          if-no-files-found: error
+          name: little-reds-big-studio-isolated-apk
+          path: studio-next/app/build/outputs/apk/release/app-release.apk
           retention-days: 30
-          compression-level: 9
-
-      - name: Publish persistent GitHub Release
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      - name: Publish persistent test release
+        if: github.event_name == 'pull_request'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          TAG="apk-native-$GITHUB_RUN_NUMBER"
-          gh release create "$TAG" android/app/build/outputs/apk/release/app-release.apk \
-            --repo "$GITHUB_REPOSITORY" \
-            --title "Little Red's Big Studio Native APK $GITHUB_RUN_NUMBER" \
-            --notes "Native Android WebView build from main commit $GITHUB_SHA; includes Android Text-to-Speech fallback for Buddy voice responses."
+          TAG="studio-next-pr-${{ github.event.pull_request.number }}-${GITHUB_RUN_NUMBER}"
+          gh release create "$TAG" studio-next/app/build/outputs/apk/release/app-release.apk             --repo "$GITHUB_REPOSITORY"             --title "Little Red's Big Studio — isolated APK test $GITHUB_RUN_NUMBER"             --notes "Separate native Android build from the studio-next branch. Main was not modified."
