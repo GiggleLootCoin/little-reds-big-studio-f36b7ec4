@@ -54,7 +54,7 @@ public class MainActivity extends Activity {
     private static final long TTS_START_TIMEOUT_MS = 20000L;
 
     private WebView webView;
-    private boolean localBundleLoaded = true;
+    private boolean localBundleLoaded = false;
     private TextToSpeech tts;
     private MediaPlayer buddyPlayer;
     private AudioManager audioManager;
@@ -101,7 +101,7 @@ public class MainActivity extends Activity {
             }
 
             @Override public void onPageStarted(WebView view, String url, android.graphics.Bitmap favicon) {
-                localBundleLoaded = url.contains("/assets/index.html");
+                localBundleLoaded = url.startsWith(LOCAL_ASSET_ORIGIN);
             }
 
             @Override public void onReceivedError(
@@ -109,6 +109,10 @@ public class MainActivity extends Activity {
                 if (request.isForMainFrame()) {
                     android.util.Log.e("LittleRedsBigStudioWebView",
                             "Main-frame load error: " + error.getErrorCode() + " " + error.getDescription());
+                    if (!localBundleLoaded) {
+                        localBundleLoaded = true;
+                        view.loadUrl(LOCAL_START_URL);
+                    }
                 }
             }
 
@@ -151,7 +155,7 @@ public class MainActivity extends Activity {
         webView.addJavascriptInterface(new BuddyVoiceBridge(), "AndroidBuddyVoice");
         setContentView(webView);
         initTts();
-        webView.loadUrl(LOCAL_START_URL);
+        webView.loadUrl(START_URL);
     }
 
     private void initTts() {
