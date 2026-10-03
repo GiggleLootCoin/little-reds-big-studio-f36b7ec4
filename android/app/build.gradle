@@ -33,3 +33,5 @@ android {
         }
     }
 }
+
+// Production APK: web UI is bundled into Android assets by the release workflow.
