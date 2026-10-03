@@ -3,7 +3,7 @@ name: Build Little Red's Big Studio APK
 
 on:
   pull_request:
-    branches: [main, "fix/android-buddy-voice-and-apk-2026-10-03"]
+    branches: [main, "fix/studio-hardening-2026-10-03"]
   push:
     branches: [main, "fix/android-buddy-voice-and-apk-2026-10-03"]
   workflow_dispatch:
@@ -24,6 +24,25 @@ jobs:
         with:
           distribution: temurin
           java-version: 17
+
+      - name: Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Build and package the web UI into the APK
+        run: |
+          set -euo pipefail
+          npm ci --no-audit --no-fund --legacy-peer-deps
+          npm run build
+          INDEX_FILE="$(find dist -maxdepth 4 -type f -name index.html -print -quit)"
+          test -n "$INDEX_FILE"
+          CLIENT_DIR="$(dirname "$INDEX_FILE")"
+          rm -rf android/app/src/main/assets
+          mkdir -p android/app/src/main/assets
+          cp -a "$CLIENT_DIR"/. android/app/src/main/assets/
+          test -s android/app/src/main/assets/index.html
 
       - name: Prepare Android SDK and signing
         env:
