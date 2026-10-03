@@ -41,10 +41,14 @@ jobs:
       - name: Package the verified client bundle into the APK
         run: |
           set -euo pipefail
-          test -s dist/client/index.html
+          echo "Built HTML files:"
+          find dist -maxdepth 6 -type f -name '*.html' -print
+          INDEX_FILE="$(find dist -maxdepth 6 -type f -name index.html -print -quit)"
+          test -n "$INDEX_FILE"
+          CLIENT_DIR="$(dirname "$INDEX_FILE")"
           rm -rf android/app/src/main/assets
           mkdir -p android/app/src/main/assets
-          cp -a dist/client/. android/app/src/main/assets/
+          cp -a "$CLIENT_DIR"/. android/app/src/main/assets/
           test -s android/app/src/main/assets/index.html
 
       - name: Prepare Android SDK and signing
