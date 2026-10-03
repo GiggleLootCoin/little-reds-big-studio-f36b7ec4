@@ -1,4 +1,4 @@
-import type { StudioArtifact, StudioCapability, StudioJobInput } from "./studio-runtime-impl";
+import { runStudioJob as runStudioJobImpl, type StudioArtifact, type StudioCapability, type StudioJobInput } from "./studio-runtime-impl";
 import { getBuddyVoiceProfile, getBuddyVoiceSample, markBuddyCloneVerified } from "./buddy-voice";
 import { getBuiltInRedVoiceSample } from "./red-default-voice";
 import { saveVoiceSample } from "./voice-profile";
@@ -156,8 +156,7 @@ async function runVerifiedClone(
   } catch (primaryError) {
     onStatus?.("Primary voice generation was unavailable. Trying the free fallback…");
     try {
-      const runtime = await import("./studio-runtime-impl");
-      const fallback = await runtime.runStudioJob(
+      const fallback = await runStudioJobImpl(
         "voice-clone",
         {
           refAudio: sample,
@@ -290,13 +289,12 @@ export async function runStudioJob(
     if (!(sample instanceof Blob)) {
       const speaker = String(input.speaker ?? "").trim();
       if (speaker && speaker !== "Red") {
-        const runtime = await import("./studio-runtime-impl");
         const presetInput = {
           ...input,
           text: String(input.text ?? input.target_text ?? input.prompt ?? DEFAULT_CLONE_TEXT).trim(),
           speaker,
         };
-        return runtime.runStudioJob("tts", presetInput, onStatus);
+        return runStudioJobImpl("tts", presetInput, onStatus);
       }
       throw new Error("A reference voice recording is required for a real clone.");
     }
@@ -401,6 +399,5 @@ export async function runStudioJob(
       }
     }
   }
-  const mod = await import("./studio-runtime-impl");
-  return mod.runStudioJob(capability, preparedInput, onStatus);
+  return runStudioJobImpl(capability, preparedInput, onStatus);
 }
