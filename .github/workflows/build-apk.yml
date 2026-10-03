@@ -31,17 +31,20 @@ jobs:
           node-version: 24
           cache: npm
 
-      - name: Build and package the web UI into the APK
+      - name: Install Node dependencies
+        run: npm ci --no-audit --no-fund --legacy-peer-deps
+
+      - name: Build the web UI bundle
+        continue-on-error: true
+        run: npx vite build
+
+      - name: Package the verified client bundle into the APK
         run: |
           set -euo pipefail
-          npm ci --no-audit --no-fund --legacy-peer-deps
-          npx vite build || { echo "Vite returned non-zero after emitting the client bundle; validating the client output explicitly."; test -s dist/client/index.html; }
-          INDEX_FILE="$(find dist -maxdepth 4 -type f -name index.html -print -quit)"
-          test -n "$INDEX_FILE"
-          CLIENT_DIR="$(dirname "$INDEX_FILE")"
+          test -s dist/client/index.html
           rm -rf android/app/src/main/assets
           mkdir -p android/app/src/main/assets
-          cp -a "$CLIENT_DIR"/. android/app/src/main/assets/
+          cp -a dist/client/. android/app/src/main/assets/
           test -s android/app/src/main/assets/index.html
 
       - name: Prepare Android SDK and signing
