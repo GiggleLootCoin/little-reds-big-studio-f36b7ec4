@@ -3,9 +3,6 @@ name: Deploy Little Red's Big Studio
 on:
   push:
     branches: [main]
-  pull_request:
-    branches: [main]
-    types: [opened, synchronize, reopened]
   workflow_dispatch:
 
 permissions:
@@ -23,8 +20,6 @@ jobs:
     steps:
       # Production deploy: full voice, chat, and real RVC smoke remain mandatory after every main push.
       # Final verification cycle: dependency lockfile is kept synchronized before CI.
-      # Pull-request runs are enabled so verified fixes can be deployed even when a bot-authored
-      # main push does not create a new workflow run.
       - name: Checkout
         uses: actions/checkout@v4
       - name: Setup Node
