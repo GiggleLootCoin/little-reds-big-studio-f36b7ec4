@@ -8,7 +8,7 @@ import { createBestFreeVoiceClone } from "./real-voice-clone-v2";
 import { buildBuddyMemoryContext, rememberUserMessage } from "./buddy-memory.mjs";
 import { isLocalQwenEnabled, runLocalQwen } from "./local-qwen";
 import { getStoredPresetPreview } from "./stored-preset-previews";
-import { convertWithApplioSpace } from "./media/rvc-applio";
+import { convertWithApplioSpace, convertWithSimpleRvcSpace } from "./media/rvc-applio";
 
 export type { StudioArtifact, StudioCapability, StudioJobInput } from "./studio-runtime-impl";
 export { runtimeProviders } from "./studio-runtime-impl";
@@ -232,7 +232,7 @@ async function runRedRvcConversion(
     throw new Error("This verified RVC route currently targets the authorized Red voice model only.");
   }
   onStatus?.("Loading Red's trained RVC voice model…");
-  const response = await convertWithApplioSpace({
+  const request = {
     audio,
     model: String(input.model ?? RED_RVC_MODEL_URL),
     index: typeof input.index === "string" ? input.index : undefined,
@@ -244,7 +244,20 @@ async function runRedRvcConversion(
         ? input.f0Method
         : "rmvpe",
     autotune: Boolean(input.autotune ?? false),
-  });
+  } as const;
+  let response: Response;
+  try {
+    response = await convertWithApplioSpace(request);
+  } catch (primaryError) {
+    onStatus?.("Primary RVC engine is unavailable. Trying the independent free RVC engine…");
+    try {
+      response = await convertWithSimpleRvcSpace(request);
+    } catch (fallbackError) {
+      throw new Error(
+        `Red RVC failed on both free engines. Primary: ${primaryError instanceof Error ? primaryError.message : String(primaryError)}. Fallback: ${fallbackError instanceof Error ? fallbackError.message : String(fallbackError)}`,
+      );
+    }
+  }
   const blob = await response.blob();
   if (!blob.size) throw new Error("Applio RVC returned an empty audio artifact.");
   const normalized = await normalizeAndVerifyBrowserAudio(blob);
