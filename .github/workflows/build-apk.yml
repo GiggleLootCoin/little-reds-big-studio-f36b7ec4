@@ -122,7 +122,12 @@ jobs:
           set -euo pipefail
           APK="android/app/build/outputs/apk/release/app-release.apk"
           test -s "$APK"
+          unzip -tq "$APK"
           "$SDK_ROOT/build-tools/35.0.0/apksigner" verify --verbose "$APK"
+          "$SDK_ROOT/build-tools/35.0.0/aapt" dump badging "$APK" > /tmp/apk-badging.txt
+          grep -q "package: name='com.littleredbigstudio.app'" /tmp/apk-badging.txt
+          grep -q "launchable-activity" /tmp/apk-badging.txt
+          unzip -l "$APK" | grep -q "assets/index.html"
           sha256sum "$APK"
           stat -c '%s bytes' "$APK"
 
