@@ -111,13 +111,13 @@ jobs:
           compression-level: 9
 
       - name: Publish persistent GitHub Release
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/fix/real-studio-apk-hardening-2026-10-03')
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          TAG="apk-native-$GITHUB_RUN_NUMBER"
+          TAG="apk-native-hardening-$GITHUB_RUN_NUMBER"
           gh release create "$TAG" android/app/build/outputs/apk/release/app-release.apk \
             --repo "$GITHUB_REPOSITORY" \
-            --title "Little Red's Big Studio Native APK $GITHUB_RUN_NUMBER" \
-            --notes "Native Android WebView build from main commit $GITHUB_SHA; includes Android Text-to-Speech fallback for Buddy voice responses."
+            --title "Little Red's Big Studio Native APK — Hardening Build $GITHUB_RUN_NUMBER" \
+            --notes "Native Android WebView build of the real Little Red's Big Studio from hardening commit $GITHUB_SHA; includes Android Text-to-Speech fallback and microphone permission handling."
