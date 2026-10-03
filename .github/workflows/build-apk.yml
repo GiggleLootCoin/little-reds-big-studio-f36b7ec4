@@ -36,7 +36,20 @@ jobs:
           curl -fsSLo "$RUNNER_TEMP/gradle.zip" "https://services.gradle.org/distributions/gradle-8.9-bin.zip"
           unzip -q "$RUNNER_TEMP/gradle.zip" -d "$RUNNER_TEMP"
           echo "$RUNNER_TEMP/gradle-8.9/bin" >> "$GITHUB_PATH"
+      - name: Prepare release signing
+        env:
+          STUDIO_SIGNING_KEY_BASE64: ${{ secrets.TWA_SIGNING_KEY_BASE64 }}
+        run: |
+          set -euo pipefail
+          if [ -n "$STUDIO_SIGNING_KEY_BASE64" ]; then
+            echo "$STUDIO_SIGNING_KEY_BASE64" | base64 -d > studio-next/app/release-key.jks
+          else
+            keytool -genkeypair -keystore studio-next/app/release-key.jks -storepass android -keypass android -alias key0 -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Little Red's Big Studio Next"
+          fi
       - name: Build isolated project
+        env:
+          STUDIO_SIGNING_STORE_PASSWORD: ${{ secrets.TWA_SIGNING_KEY_STORE_PASSWORD || 'android' }}
+          STUDIO_SIGNING_KEY_PASSWORD: ${{ secrets.TWA_SIGNING_KEY_PASSWORD || 'android' }}
         run: gradle --no-daemon --stacktrace -p studio-next assembleRelease
       - name: Verify APK
         run: |
