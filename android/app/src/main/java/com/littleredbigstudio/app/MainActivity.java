@@ -60,6 +60,7 @@ public class MainActivity extends Activity {
     private volatile boolean ttsReady = false;
     private volatile String activeEngine = "";
     private volatile String activeVoice = "";
+    private PermissionRequest pendingWebPermissionRequest;
     private final CountDownLatch ttsInitLatch = new CountDownLatch(1);
     private final Handler main = new Handler(Looper.getMainLooper());
     private final AudioManager.OnAudioFocusChangeListener focusListener = focusChange -> {};
@@ -92,6 +93,7 @@ public class MainActivity extends Activity {
                     if (wantsAudio &&
                             checkSelfPermission(Manifest.permission.RECORD_AUDIO)
                                     != PackageManager.PERMISSION_GRANTED) {
+                        pendingWebPermissionRequest = request;
                         requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, 4101);
                     } else {
                         request.grant(request.getResources());
@@ -576,6 +578,20 @@ public class MainActivity extends Activity {
         }
     }
 
+    @Override public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == 4101) {
+            PermissionRequest pending = pendingWebPermissionRequest;
+            pendingWebPermissionRequest = null;
+            if (pending == null) return;
+            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                try { pending.grant(pending.getResources()); } catch (Throwable ignored) {}
+            } else {
+                try { pending.deny(); } catch (Throwable ignored) {}
+            }
+        }
+    }
+
     @Override protected void onResume() {
         super.onResume();
         if (webView != null) webView.onResume();
@@ -602,6 +618,10 @@ public class MainActivity extends Activity {
             buddyPlayer = null;
         }
         abandonAudioFocus();
+        if (pendingWebPermissionRequest != null) {
+            try { pendingWebPermissionRequest.deny(); } catch (Throwable ignored) {}
+            pendingWebPermissionRequest = null;
+        }
         if (webView != null) {
             webView.removeJavascriptInterface("AndroidBuddyVoice");
             webView.destroy();
