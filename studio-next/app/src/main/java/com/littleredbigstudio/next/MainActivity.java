@@ -26,7 +26,7 @@ public class MainActivity extends Activity {
   SharedPreferences prefs; TextToSpeech tts; SpeechRecognizer recognizer; ExecutorService io=Executors.newSingleThreadExecutor();
   TextView status,response,modelLabel,voiceLabel; EditText input; Switch handsFree; boolean listening=false; AudioManager audioManager;
   final Handler mainHandler=new Handler(Looper.getMainLooper()); AtomicBoolean requestInFlight=new AtomicBoolean(false); long requestStartedAt=0; Runnable elapsedTicker; ArrayList<String> ttsEngines=new ArrayList<>(); int ttsEngineIndex=-1;
-  String endpoint,model,selectedVoiceName="";
+  String endpoint,model,selectedVoiceName=""; Voice activeVoice; boolean usingOfflineVoice=false;
   String[] MODELS={"Auto / installed model","Qwen3.5-0.8B Q4_K_M","Qwen3.5-4B","Qwen3.5-8B","Phi-4-mini","Mistral 7B","Llama 3.2 3B","Llama 3.1 8B","DeepSeek-R1 1.5B","DeepSeek-R1 7B","Gemma 3 1B","Gemma 3 4B","SmolLM2 1.7B","Granite 4","Ministral 3B","Nemotron Mini"};
 
   @Override public void onCreate(Bundle b){
@@ -86,7 +86,12 @@ public class MainActivity extends Activity {
         fallbackTtsEngine(); return;
       }
       tts.setSpeechRate(0.98f); tts.setPitch(1.0f);
-      if(!selectedVoiceName.isEmpty()) for(Voice v:tts.getVoices()) if(v.getName().equals(selectedVoiceName)){tts.setVoice(v);break;}
+      activeVoice=null; usingOfflineVoice=false;
+      if(!selectedVoiceName.isEmpty()) for(Voice v:tts.getVoices()) if(v.getName().equals(selectedVoiceName)&&v.getLocale()!=null&&v.getLocale().getLanguage().equals("en")&&!v.isNetworkConnectionRequired()){activeVoice=v;break;}
+      if(activeVoice!=null){tts.setVoice(activeVoice);usingOfflineVoice=true;} else {
+        selectedVoiceName=""; prefs.edit().remove("voice").apply();
+        activeVoice=pickBestOfflineVoice(); if(activeVoice!=null){tts.setVoice(activeVoice);usingOfflineVoice=true;}
+      }
       tts.setOnUtteranceProgressListener(new UtteranceProgressListener(){
         public void onStart(String id){runOnUiThread(()->status.setText("●  Speaking"));
         }
@@ -95,7 +100,7 @@ public class MainActivity extends Activity {
         }
       });
       String engineName=tts.getDefaultEngine();
-      voiceLabel.setText("Voice: "+(engineName==null?"Android TTS":engineName)+" — ready");
+      voiceLabel.setText("Voice: "+(engineName==null?"Android TTS":engineName)+" — "+(activeVoice==null?"default":activeVoice.getName())+(usingOfflineVoice?" (offline)":""));
       status.setText("●  Ready");
     }catch(Exception e){fallbackTtsEngine();}
   }
@@ -181,10 +186,26 @@ public class MainActivity extends Activity {
     String id="studio-"+System.currentTimeMillis(); Bundle p=new Bundle();p.putString(TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID,id);
     if(audioManager!=null && audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)==0){status.setText("●  Media volume is muted");return;}
     int lang=tts.isLanguageAvailable(Locale.US); if(lang==TextToSpeech.LANG_MISSING_DATA||lang==TextToSpeech.LANG_NOT_SUPPORTED){status.setText("●  TTS English data unavailable");return;}
-    int result=tts.speak(clean,TextToSpeech.QUEUE_FLUSH,p,id); if(result==TextToSpeech.ERROR)status.setText("●  Voice playback failed");
+    int result=tts.speak(clean,TextToSpeech.QUEUE_FLUSH,p,id);
+    if(result==TextToSpeech.ERROR)status.setText("●  Voice playback failed");
+    else if(result==TextToSpeech.ERROR_NETWORK||result==TextToSpeech.ERROR_NETWORK_TIMEOUT)status.setText("●  Voice tried to use network — switching offline");
+    else if(result==TextToSpeech.ERROR_NOT_INSTALLED_YET)status.setText("●  Voice data is not installed");
+    else if(result==TextToSpeech.ERROR_OUTPUT||result==TextToSpeech.ERROR_SYNTHESIS)status.setText("●  Voice engine/output error");
   }
   void chooseModel(){int checked=Math.max(0,Arrays.asList(MODELS).indexOf(model));new AlertDialog.Builder(this).setTitle("Choose AI model").setSingleChoiceItems(MODELS,checked,(d,w)->{model=MODELS[w];prefs.edit().putString("model",model).apply();modelLabel.setText("Model: "+model);d.dismiss();}).show();}
-  void chooseVoice(){if(tts==null)return;ArrayList<Voice> vs=new ArrayList<>();for(Voice v:tts.getVoices())if(v.getLocale()!=null&&v.getLocale().getLanguage().equals("en"))vs.add(v);Collections.sort(vs,(a,b)->a.getName().compareToIgnoreCase(b.getName()));String[] names=new String[vs.size()+1];names[0]="Red — best available native voice";for(int i=0;i<vs.size();i++)names[i+1]=vs.get(i).getName()+" | "+vs.get(i).getLocale();new AlertDialog.Builder(this).setTitle("Preset Voices").setItems(names,(d,w)->{if(w==0){selectedVoiceName="";tts.setLanguage(Locale.US);voiceLabel.setText("Voice: Red — best available native voice");}else{selectedVoiceName=vs.get(w-1).getName();tts.setVoice(vs.get(w-1));voiceLabel.setText("Voice: "+names[w]);}prefs.edit().putString("voice",selectedVoiceName).apply();}).show();}
+  Voice pickBestOfflineVoice(){if(tts==null)return null;Voice best=null;for(Voice v:tts.getVoices()){if(v.getLocale()==null||!v.getLocale().getLanguage().equals("en")||v.isNetworkConnectionRequired())continue;if(best==null||v.getQuality()>best.getQuality()||(v.getQuality()==best.getQuality()&&v.getLatency()<best.getLatency()))best=v;}return best;}
+  void chooseVoice(){
+    if(tts==null)return;
+    ArrayList<Voice> vs=new ArrayList<>();for(Voice v:tts.getVoices())if(v.getLocale()!=null&&v.getLocale().getLanguage().equals("en")&&!v.isNetworkConnectionRequired())vs.add(v);
+    Collections.sort(vs,(a,b)->{int q=Integer.compare(b.getQuality(),a.getQuality());return q!=0?q:Integer.compare(a.getLatency(),b.getLatency());});
+    String[] names=new String[vs.size()+2];names[0]="Red — use best verified offline Android voice";names[1]="Red clone — reference sample only (not loaded as TTS)";
+    for(int i=0;i<vs.size();i++)names[i+2]=vs.get(i).getName()+" | "+vs.get(i).getLocale()+" | offline";
+    new AlertDialog.Builder(this).setTitle("Voice System").setItems(names,(d,w)->{
+      if(w==0){activeVoice=pickBestOfflineVoice();selectedVoiceName=activeVoice==null?"":activeVoice.getName();if(activeVoice!=null){tts.setVoice(activeVoice);usingOfflineVoice=true;voiceLabel.setText("Voice: "+activeVoice.getName()+" (offline)");}else{tts.setLanguage(Locale.US);voiceLabel.setText("Voice: Android default");}prefs.edit().putString("voice",selectedVoiceName).apply();}
+      else if(w==1){toast("Your Red clone is kept as a reference/sample. It is not a TTS engine, so it cannot be used by Android TTS directly.");}
+      else {Voice v=vs.get(w-2);if(tts.setVoice(v)==TextToSpeech.SUCCESS){activeVoice=v;usingOfflineVoice=true;selectedVoiceName=v.getName();voiceLabel.setText("Voice: "+v.getName()+" (offline)");prefs.edit().putString("voice",selectedVoiceName).apply();}else toast("That voice could not be activated.");}
+    }).show();
+  }
   void settings(){LinearLayout l=new LinearLayout(this);l.setOrientation(LinearLayout.VERTICAL);l.setPadding(30,8,30,8);EditText e=new EditText(this);e.setHint("AI endpoint");e.setText(endpoint);e.setSingleLine();l.addView(e);TextView n=tv("PocketPal/Ollama /api/chat or OpenAI-compatible /v1/chat/completions. Default is localhost.",12,MUTED);n.setPadding(0,10,0,0);l.addView(n);new AlertDialog.Builder(this).setTitle("Studio Connection").setView(l).setPositiveButton("Save",(d,w)->{endpoint=e.getText().toString().trim();prefs.edit().putString("endpoint",endpoint).apply();status.setText("●  Endpoint saved");}).setNegativeButton("Cancel",null).show();}
   void toast(String s){Toast.makeText(this,s,Toast.LENGTH_SHORT).show();}
   @Override protected void onDestroy(){if(elapsedTicker!=null)mainHandler.removeCallbacks(elapsedTicker);if(recognizer!=null)recognizer.destroy();if(tts!=null)tts.shutdown();io.shutdownNow();super.onDestroy();}
