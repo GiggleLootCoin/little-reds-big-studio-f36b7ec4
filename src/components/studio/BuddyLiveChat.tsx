@@ -84,13 +84,13 @@ export function BuddyLiveChat() {
     speakingRef.current = true;
     setBuddyStatus("working", { message: "Buddy is speaking…" });
     const v = getBuddyVoiceProfile();
+    let nativeError = "";
     try {
       // On the standalone Android build, try the native phone speaker first.
       // If native TTS is unavailable, the real remote voice path must still get
       // a chance. The previous code threw immediately here, which meant a
       // native TTS failure could never reach the working server-side audio
       // fallback.
-      let nativeError = "";
       if (typeof window !== "undefined" && (window as typeof window & {
         AndroidBuddyVoice?: { isAvailable?: () => boolean };
       }).AndroidBuddyVoice?.isAvailable?.()) {
