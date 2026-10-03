@@ -5,10 +5,11 @@
         <intent><action android:name="android.speech.RecognitionService"/></intent>
         <intent><action android:name="android.intent.action.TTS_SERVICE"/></intent>
     </queries>
-    <application android:theme="@style/AppTheme" android:label="@string/app_name" android:allowBackup="false" android:usesCleartextTraffic="true" android:supportsRtl="true">
+    <application android:theme="@android:style/Theme.Material.NoActionBar" android:label="Little Red&apos;s Big Studio" android:allowBackup="false" android:usesCleartextTraffic="true" android:supportsRtl="true">
         <activity android:name=".MainActivity" android:screenOrientation="portrait" android:exported="true">
             <intent-filter>
-                <action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
     </application>
