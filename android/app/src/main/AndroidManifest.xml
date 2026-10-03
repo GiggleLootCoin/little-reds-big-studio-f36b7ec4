@@ -5,7 +5,7 @@
         <intent><action android:name="android.intent.action.TTS_SERVICE" /></intent>
         <intent><action android:name="android.speech.RecognitionService" /></intent>
     </queries>
-    <application android:allowBackup="false" android:label="@string/app_name" android:usesCleartextTraffic="false" android:theme="@style/AppTheme">
+    <application android:allowBackup="false" android:icon="@drawable/little_red_icon" android:roundIcon="@drawable/little_red_icon" android:label="@string/app_name" android:usesCleartextTraffic="false" android:theme="@style/AppTheme">
         <activity android:name=".MainActivity" android:screenOrientation="unspecified" android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
