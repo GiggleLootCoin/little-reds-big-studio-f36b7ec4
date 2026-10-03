@@ -84,10 +84,13 @@ export function BuddyLiveChat() {
     speakingRef.current = true;
     setBuddyStatus("working", { message: "Buddy is speaking…" });
     const v = getBuddyVoiceProfile();
+    let nativeError = "";
     try {
-      // On the standalone Android build, use the native audio path first.
-      // WebView media playback can be blocked after an asynchronous network
-      // response even when the page was unlocked by a prior tap.
+      // On the standalone Android build, try the native phone speaker first.
+      // If native TTS is unavailable, the real remote voice path must still get
+      // a chance. The previous code threw immediately here, which meant a
+      // native TTS failure could never reach the working server-side audio
+      // fallback.
       if (typeof window !== "undefined" && (window as typeof window & {
         AndroidBuddyVoice?: { isAvailable?: () => boolean };
       }).AndroidBuddyVoice?.isAvailable?.()) {
@@ -96,7 +99,7 @@ export function BuddyLiveChat() {
           setStatus("Buddy is speaking through the phone speaker.");
           return;
         }
-        throw new Error("The Android speech engine could not start playback.");
+        nativeError = "The Android speech engine could not start playback.";
       }
 
       let r: { url: string; provider?: string };
@@ -181,7 +184,7 @@ export function BuddyLiveChat() {
         return;
       }
       const playbackError = new Error(
-        `Buddy audio failed. ${detail || "No usable audio playback path is available."}`,
+        `Buddy audio failed. ${detail || nativeError || "No usable audio playback path is available."}`,
       );
       setStatus(playbackError.message);
       throw playbackError;

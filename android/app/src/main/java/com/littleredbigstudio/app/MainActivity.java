@@ -241,6 +241,86 @@ public class MainActivity extends Activity {
         return true;
     }
 
+    private void speakDirectOrFallback(String text, String callbackId) {
+        if (!ttsReady || tts == null || text == null || text.trim().isEmpty()) {
+            notifyTtsResult(callbackId, false);
+            return;
+        }
+
+        if (!requestAudioFocus()) {
+            notifyTtsResult(callbackId, false);
+            return;
+        }
+
+        if (audioManager != null &&
+                audioManager.getStreamVolume(AudioManager.STREAM_MUSIC) == 0 &&
+                Build.VERSION.SDK_INT >= 23) {
+            audioManager.adjustStreamVolume(
+                    AudioManager.STREAM_MUSIC, AudioManager.ADJUST_UNMUTE, 0);
+        }
+
+        final String utteranceId = "buddy-direct-" + System.nanoTime();
+        final AtomicBoolean callbackSent = new AtomicBoolean(false);
+        final AtomicBoolean fallbackStarted = new AtomicBoolean(false);
+
+        try {
+            tts.setOnUtteranceProgressListener(new UtteranceProgressListener() {
+                @Override public void onStart(String id) {
+                    if (!utteranceId.equals(id)) return;
+                    fallbackStarted.set(true);
+                    if (callbackSent.compareAndSet(false, true)) {
+                        notifyTtsResult(callbackId, true);
+                    }
+                }
+
+                @Override public void onDone(String id) {
+                    if (!utteranceId.equals(id)) return;
+                    main.post(() -> abandonAudioFocus());
+                }
+
+                @Override public void onError(String id) {
+                    if (!utteranceId.equals(id)) return;
+                    main.post(() -> fallbackToFileSynthesis(text, callbackId, fallbackStarted));
+                }
+
+                @Override public void onError(String id, int errorCode) {
+                    if (!utteranceId.equals(id)) return;
+                    main.post(() -> fallbackToFileSynthesis(text, callbackId, fallbackStarted));
+                }
+            });
+
+            Bundle params = new Bundle();
+            params.putInt(TextToSpeech.Engine.KEY_PARAM_STREAM, AudioManager.STREAM_MUSIC);
+            params.putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, 1.0f);
+            params.putFloat(TextToSpeech.Engine.KEY_PARAM_PAN, 0.0f);
+
+            int result = tts.speak(
+                    text.trim(), TextToSpeech.QUEUE_FLUSH, params, utteranceId);
+
+            if (result != TextToSpeech.SUCCESS) {
+                fallbackToFileSynthesis(text, callbackId, fallbackStarted);
+                return;
+            }
+
+            // Some Samsung/Google TTS versions can queue successfully but take
+            // several seconds before onStart. If that happens, use the file
+            // synthesis path rather than leaving Buddy stuck in "speaking".
+            main.postDelayed(() -> {
+                if (!callbackSent.get()) {
+                    fallbackToFileSynthesis(text, callbackId, fallbackStarted);
+                }
+            }, TTS_START_TIMEOUT_MS);
+        } catch (Throwable error) {
+            fallbackToFileSynthesis(text, callbackId, fallbackStarted);
+        }
+    }
+
+    private void fallbackToFileSynthesis(
+            String text, String callbackId, AtomicBoolean fallbackStarted) {
+        if (!fallbackStarted.compareAndSet(false, true)) return;
+        synthesizeAndPlay(text, callbackId);
+    }
+
     private void synthesizeAndPlay(String text, String callbackId) {
         if (!ttsReady || tts == null || text == null || text.trim().isEmpty()) {
             notifyTtsResult(callbackId, false);
@@ -266,9 +346,8 @@ public class MainActivity extends Activity {
         try {
             tts.setOnUtteranceProgressListener(new UtteranceProgressListener() {
                 @Override public void onStart(String id) {
-                    // Synthesis has started; this is deliberately NOT reported as
-                    // successful playback. The MediaPlayer callback below is the
-                    // authoritative audible-start signal.
+                    // File synthesis has started; MediaPlayer playback below is
+                    // the signal returned to JavaScript.
                 }
 
                 @Override public void onDone(String id) {
@@ -284,6 +363,12 @@ public class MainActivity extends Activity {
                 }
 
                 @Override public void onError(String id) {
+                    if (utteranceId.equals(id)) {
+                        main.post(() -> failTtsPlayback(callbackId, settled, output));
+                    }
+                }
+
+                @Override public void onError(String id, int errorCode) {
                     if (utteranceId.equals(id)) {
                         main.post(() -> failTtsPlayback(callbackId, settled, output));
                     }
@@ -305,7 +390,7 @@ public class MainActivity extends Activity {
 
             main.postDelayed(() -> {
                 if (!settled.get()) failTtsPlayback(callbackId, settled, output);
-            }, 20000L);
+            }, TTS_START_TIMEOUT_MS);
         } catch (Throwable error) {
             failTtsPlayback(callbackId, settled, output);
         }
@@ -453,7 +538,7 @@ public class MainActivity extends Activity {
                     notifyTtsResult(callbackId, false);
                     return;
                 }
-                main.post(() -> synthesizeAndPlay(text, callbackId));
+                main.post(() -> speakDirectOrFallback(text, callbackId));
             }, "buddy-tts-bridge").start();
         }
 
