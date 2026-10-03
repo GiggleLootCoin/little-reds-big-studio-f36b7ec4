@@ -7,6 +7,8 @@ import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.graphics.drawable.GradientDrawable;
 import android.os.*;
+import android.media.AudioAttributes;
+import android.media.AudioManager;
 import android.speech.*;
 import android.speech.tts.*;
 import android.view.*;
@@ -21,12 +23,12 @@ import android.speech.tts.UtteranceProgressListener;
 public class MainActivity extends Activity {
   final int PINK=Color.rgb(255,79,163),BG=Color.rgb(8,10,18),CARD=Color.rgb(20,23,34),TEXT=Color.rgb(244,246,252),MUTED=Color.rgb(156,164,183);
   SharedPreferences prefs; TextToSpeech tts; SpeechRecognizer recognizer; ExecutorService io=Executors.newSingleThreadExecutor();
-  TextView status,response,modelLabel,voiceLabel; EditText input; Switch handsFree; boolean listening=false;
+  TextView status,response,modelLabel,voiceLabel; EditText input; Switch handsFree; boolean listening=false; AudioManager audioManager;
   String endpoint,model,selectedVoiceName="";
   String[] MODELS={"Auto / installed model","Qwen3.5-0.8B Q4_K_M","Qwen3.5-4B","Qwen3.5-8B","Phi-4-mini","Mistral 7B","Llama 3.2 3B","Llama 3.1 8B","DeepSeek-R1 1.5B","DeepSeek-R1 7B","Gemma 3 1B","Gemma 3 4B","SmolLM2 1.7B","Granite 4","Ministral 3B","Nemotron Mini"};
 
   @Override public void onCreate(Bundle b){
-    super.onCreate(b); prefs=getSharedPreferences("studio",0);
+    super.onCreate(b); audioManager=(AudioManager)getSystemService(AUDIO_SERVICE); setVolumeControlStream(AudioManager.STREAM_MUSIC); prefs=getSharedPreferences("studio",0);
     endpoint=prefs.getString("endpoint","http://127.0.0.1:11434/v1/chat/completions");
     model=prefs.getString("model","Auto / installed model"); selectedVoiceName=prefs.getString("voice","");
     buildUi(); initTts(); initSpeech();
@@ -63,7 +65,7 @@ public class MainActivity extends Activity {
     TextView foot=tv("Local-first | native Android audio | model-agnostic | no Cloudflare dependency",11,MUTED);foot.setPadding(6,14,6,20);body.addView(foot);scroll.addView(body);root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));setContentView(root);
   }
 
-  void initTts(){tts=new TextToSpeech(this,code->{if(code==TextToSpeech.SUCCESS){tts.setLanguage(Locale.US);tts.setSpeechRate(0.98f);tts.setPitch(1.0f);if(!selectedVoiceName.isEmpty())for(Voice v:tts.getVoices())if(v.getName().equals(selectedVoiceName)){tts.setVoice(v);break;}tts.setOnUtteranceProgressListener(new UtteranceProgressListener(){
+  void initTts(){tts=new TextToSpeech(this,code->{if(code==TextToSpeech.SUCCESS){tts.setAudioAttributes(new AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ASSISTANT).setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build());tts.setLanguage(Locale.US);tts.setSpeechRate(0.98f);tts.setPitch(1.0f);if(!selectedVoiceName.isEmpty())for(Voice v:tts.getVoices())if(v.getName().equals(selectedVoiceName)){tts.setVoice(v);break;}tts.setOnUtteranceProgressListener(new UtteranceProgressListener(){
     public void onStart(String id){runOnUiThread(()->status.setText("●  Speaking"));}
     public void onDone(String id){runOnUiThread(()->{status.setText("●  Ready");if(handsFree!=null&&handsFree.isChecked())new Handler().postDelayed(()->listen(),450);});}
     public void onError(String id){runOnUiThread(()->status.setText("●  Voice error"));}});}});}
@@ -89,7 +91,7 @@ public class MainActivity extends Activity {
   }
   String read(InputStream in)throws Exception{BufferedReader r=new BufferedReader(new InputStreamReader(in,"UTF-8"));StringBuilder s=new StringBuilder();String x;while((x=r.readLine())!=null)s.append(x);return s.toString();}
 
-  void speak(String text){if(tts==null)return;String clean=text.replace("**","").trim();if(clean.length()>3500)clean=clean.substring(0,3500);String id="studio-"+System.currentTimeMillis();Bundle p=new Bundle();p.putString(TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID,id);if(tts.speak(clean,TextToSpeech.QUEUE_FLUSH,p,id)==TextToSpeech.ERROR)status.setText("●  Voice error");}
+  void speak(String text){if(tts==null){status.setText("●  Voice engine not ready");return;}String clean=text.replace("**","").trim();if(clean.length()>3500)clean=clean.substring(0,3500);String id="studio-"+System.currentTimeMillis();Bundle p=new Bundle();p.putString(TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID,id);if(audioManager!=null && audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)==0){status.setText("●  Media volume is muted");return;} int result=tts.speak(clean,TextToSpeech.QUEUE_FLUSH,p,id); if(result==TextToSpeech.ERROR)status.setText("●  Voice playback failed");}
   void chooseModel(){int checked=Math.max(0,Arrays.asList(MODELS).indexOf(model));new AlertDialog.Builder(this).setTitle("Choose AI model").setSingleChoiceItems(MODELS,checked,(d,w)->{model=MODELS[w];prefs.edit().putString("model",model).apply();modelLabel.setText("Model: "+model);d.dismiss();}).show();}
   void chooseVoice(){if(tts==null)return;ArrayList<Voice> vs=new ArrayList<>();for(Voice v:tts.getVoices())if(v.getLocale()!=null&&v.getLocale().getLanguage().equals("en"))vs.add(v);Collections.sort(vs,(a,b)->a.getName().compareToIgnoreCase(b.getName()));String[] names=new String[vs.size()+1];names[0]="Red — best available native voice";for(int i=0;i<vs.size();i++)names[i+1]=vs.get(i).getName()+" | "+vs.get(i).getLocale();new AlertDialog.Builder(this).setTitle("Preset Voices").setItems(names,(d,w)->{if(w==0){selectedVoiceName="";tts.setLanguage(Locale.US);voiceLabel.setText("Voice: Red — best available native voice");}else{selectedVoiceName=vs.get(w-1).getName();tts.setVoice(vs.get(w-1));voiceLabel.setText("Voice: "+names[w]);}prefs.edit().putString("voice",selectedVoiceName).apply();}).show();}
   void settings(){LinearLayout l=new LinearLayout(this);l.setOrientation(LinearLayout.VERTICAL);l.setPadding(30,8,30,8);EditText e=new EditText(this);e.setHint("AI endpoint");e.setText(endpoint);e.setSingleLine();l.addView(e);TextView n=tv("PocketPal/Ollama /api/chat or OpenAI-compatible /v1/chat/completions. Default is localhost.",12,MUTED);n.setPadding(0,10,0,0);l.addView(n);new AlertDialog.Builder(this).setTitle("Studio Connection").setView(l).setPositiveButton("Save",(d,w)->{endpoint=e.getText().toString().trim();prefs.edit().putString("endpoint",endpoint).apply();status.setText("●  Endpoint saved");}).setNegativeButton("Cancel",null).show();}
