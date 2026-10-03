@@ -35,8 +35,35 @@ jobs:
         run: npm ci --no-audit --no-fund --legacy-peer-deps
 
       - name: Build the web UI bundle
-        continue-on-error: true
-        run: npx vite build
+        run: npm run build
+
+      - name: Verify packaged client bundle
+        run: |
+          set -euo pipefail
+          CLIENT_DIR="dist/client"
+          test -s "$CLIENT_DIR/_shell.html"
+          node --input-type=module <<'NODE'
+          import fs from "node:fs";
+          import path from "node:path";
+          const root = "dist/client";
+          const html = fs.readFileSync(path.join(root, "_shell.html"), "utf8");
+          const refs = [...html.matchAll(/(?:src|href)=["']([^"']+)["']/g)]
+            .map(m => m[1])
+            .filter(ref => !/^(?:https?:|data:|#|mailto:|tel:)/i.test(ref));
+          const missing = [];
+          for (const ref of refs) {
+            const clean = ref.split(/[?#]/, 1)[0];
+            const candidate = path.resolve(root, clean.replace(/^\//, ""));
+            if (!candidate.startsWith(path.resolve(root) + path.sep) || !fs.existsSync(candidate)) {
+              missing.push(ref);
+            }
+          }
+          if (missing.length) {
+            console.error("Missing local bundle references:", missing);
+            process.exit(1);
+          }
+          console.log("Verified local bundle references:", refs.length);
+          NODE
 
       - name: Package the verified client bundle into the APK
         run: |
