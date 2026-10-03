@@ -1,0 +1,63 @@
+name: Build separate Little Red's Big Studio Next APK
+
+on:
+  push:
+    branches: [studio-next-native-2026-10-03]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 17
+      - name: Android SDK
+        run: |
+          set -euo pipefail
+          SDK_ROOT="$HOME/android-sdk"
+          echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
+          mkdir -p "$SDK_ROOT"
+          curl -fsSLo "$RUNNER_TEMP/cmdline-tools.zip" "https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip"
+          unzip -q "$RUNNER_TEMP/cmdline-tools.zip" -d "$RUNNER_TEMP/android-tools"
+          mkdir -p "$SDK_ROOT/cmdline-tools/latest"
+          cp -a "$RUNNER_TEMP/android-tools/cmdline-tools/bin" "$RUNNER_TEMP/android-tools/cmdline-tools/lib" "$SDK_ROOT/cmdline-tools/latest/"
+          yes | "$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null 2>&1 || true
+          "$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" "platform-tools" "platforms;android-35" "build-tools;35.0.0"
+      - name: Gradle
+        run: |
+          curl -fsSLo "$RUNNER_TEMP/gradle.zip" "https://services.gradle.org/distributions/gradle-8.9-bin.zip"
+          unzip -q "$RUNNER_TEMP/gradle.zip" -d "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/gradle-8.9/bin" >> "$GITHUB_PATH"
+      - name: Build
+        run: gradle --no-daemon --stacktrace -p studio-next assembleRelease
+      - name: Verify
+        run: |
+          set -euo pipefail
+          APK="studio-next/app/build/outputs/apk/release/app-release.apk"
+          test -s "$APK"
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose "$APK"
+          sha256sum "$APK"
+          stat -c '%s bytes' "$APK"
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: little-reds-big-studio-next-apk
+          path: studio-next/app/build/outputs/apk/release/app-release.apk
+          retention-days: 30
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG="studio-next-apk-$GITHUB_RUN_NUMBER"
+          gh release create "$TAG" studio-next/app/build/outputs/apk/release/app-release.apk             --repo "$GITHUB_REPOSITORY"             --title "Little Red's Big Studio — New Native APK $GITHUB_RUN_NUMBER"             --notes "Separate native Android build. It does not modify the existing main application."
