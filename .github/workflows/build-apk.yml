@@ -3,6 +3,8 @@ name: Build Little Red's Big Studio — isolated native APK
 on:
   pull_request:
     branches: [main]
+  push:
+    branches: [studio-next-native-2026-10-03]
   workflow_dispatch:
 
 permissions:
@@ -66,10 +68,10 @@ jobs:
           path: studio-next/app/build/outputs/apk/release/app-release.apk
           retention-days: 30
       - name: Publish persistent test release
-        if: github.event_name == 'pull_request'
+        if: github.event_name == 'push'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          TAG="studio-next-pr-${{ github.event.pull_request.number }}-${GITHUB_RUN_NUMBER}"
-          gh release create "$TAG" studio-next/app/build/outputs/apk/release/app-release.apk             --repo "$GITHUB_REPOSITORY"             --title "Little Red's Big Studio — isolated APK test $GITHUB_RUN_NUMBER"             --notes "Separate native Android build from the studio-next branch. Main was not modified."
+          TAG="studio-next-${GITHUB_RUN_NUMBER}"
+          gh release create "$TAG" studio-next/app/build/outputs/apk/release/app-release.apk             --repo "$GITHUB_REPOSITORY"             --title "Little Red's Big Studio — isolated APK test ${GITHUB_RUN_NUMBER}"             --notes "Separate native Android build from studio-next-native-2026-10-03. Main was not modified."
