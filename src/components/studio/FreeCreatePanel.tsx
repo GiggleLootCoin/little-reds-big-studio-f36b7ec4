@@ -76,7 +76,7 @@ async function audioDurationSeconds(blob: Blob): Promise<number> {
 function collectMediaCandidates(value: unknown, hint = ""): { url: string; hint: string }[] {
   const candidates: { url: string; hint: string }[] = [];
   const add = (next: unknown, nextHint: string) => {
-    if (typeof next === "string" && /^(https?:|blob:|data:|\\/)/i.test(next)) {
+    if (typeof next === "string" && /^(https?:|blob:|data:|\/)/i.test(next)) {
       candidates.push({ url: next, hint: nextHint.toLowerCase() });
       return;
     }
@@ -87,7 +87,7 @@ function collectMediaCandidates(value: unknown, hint = ""): { url: string; hint:
     }
     const record = next as Record<string, unknown>;
     const localHint = Object.entries(record)
-      .filter(([key, value]) => typeof value === "string" && /^(https?:|blob:|data:|\\/)/i.test(value))
+      .filter(([key, value]) => typeof value === "string" && /^(https?:|blob:|data:|\/)/i.test(value))
       .map(([key]) => key)
       .join(" ");
     const combinedHint = [nextHint, localHint].filter(Boolean).join(" ");
