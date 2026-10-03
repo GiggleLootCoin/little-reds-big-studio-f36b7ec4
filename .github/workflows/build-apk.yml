@@ -10,6 +10,8 @@ on:
 
 permissions:
   contents: write
+  pages: write
+  id-token: write
 
 jobs:
   build-apk:
@@ -121,3 +123,42 @@ jobs:
             --repo "$GITHUB_REPOSITORY" \
             --title "Little Red's Big Studio Native APK — Hardening Build $GITHUB_RUN_NUMBER" \
             --notes "Native Android WebView build of the real Little Red's Big Studio from hardening commit $GITHUB_SHA; includes Android Text-to-Speech fallback and microphone permission handling."
+
+  deploy-download-page:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/fix/real-studio-apk-hardening-2026-10-03'
+    needs: build-apk
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Download the exact APK artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: little-reds-big-studio-apk-native
+          path: site
+      - name: Prepare download page
+        run: |
+          set -euo pipefail
+          APK="site/app-release.apk"
+          test -s "$APK"
+          cat > site/index.html <<'HTML'
+          <!doctype html>
+          <html><head><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#111111"><title>Little Red's Big Studio</title></head>
+          <body style="font-family:system-ui,sans-serif;max-width:680px;margin:0 auto;padding:32px;background:#111;color:#fff;text-align:center">
+          <h1>Little Red's Big Studio</h1>
+          <p>Native Android APK</p>
+          <a href="./app-release.apk" download="Little-Reds-Big-Studio.apk" style="display:inline-block;padding:16px 24px;border-radius:14px;background:#fff;color:#111;text-decoration:none;font-weight:700">Download Little Red's Big Studio</a>
+          </body></html>
+          HTML
+          printf 'APK size: '; stat -c '%s bytes' "$APK"
+          printf 'APK SHA-256: '; sha256sum "$APK"
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: site
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
