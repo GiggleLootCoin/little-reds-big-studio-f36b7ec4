@@ -26,7 +26,6 @@ import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
-import androidx.webkit.WebViewAssetLoader;
 
 import java.io.File;
 import java.io.IOException;
@@ -56,7 +55,6 @@ public class MainActivity extends Activity {
     private static final long TTS_START_TIMEOUT_MS = 20000L;
 
     private WebView webView;
-    private boolean localBundleLoaded = true;
     private TextToSpeech tts;
     private MediaPlayer buddyPlayer;
     private AudioManager audioManager;
@@ -106,33 +104,29 @@ public class MainActivity extends Activity {
             }
         });
 
-        final WebViewAssetLoader assetLoader = new WebViewAssetLoader.Builder()
-                .setDomain("little-reds-big-studio-f36b7ec4.gigglelootcoin.workers.dev")
-                .addPathHandler("/assets/", new WebViewAssetLoader.AssetsPathHandler(this))
-                .build();
-
+        webView.setBackgroundColor(android.graphics.Color.rgb(11, 5, 6));
         webView.setWebViewClient(new WebViewClient() {
-            @Override public WebResourceResponse shouldInterceptRequest(
-                    WebView view, WebResourceRequest request) {
-                WebResourceResponse local = assetLoader.shouldInterceptRequest(request.getUrl());
-                return local;
-            }
-
             @Override public boolean shouldOverrideUrlLoading(
                     WebView view, WebResourceRequest request) {
                 String url = request.getUrl().toString();
                 return !url.startsWith(REMOTE_ORIGIN);
             }
 
-            @Override public void onPageStarted(WebView view, String url, android.graphics.Bitmap favicon) {
-                localBundleLoaded = url.contains("/assets/index.html");
+            @Override public void onReceivedError(
+                    WebView view, WebResourceRequest request,
+                    android.webkit.WebResourceError error) {
+                if (request.isForMainFrame()) {
+                    showBootError("Little Red's Big Studio could not load.\n\n" +
+                            "Check your internet connection, then tap Retry.");
+                }
             }
 
-            @Override public void onReceivedError(
-                    WebView view, WebResourceRequest request, android.webkit.WebResourceError error) {
-                if (request.isForMainFrame() && localBundleLoaded) {
-                    localBundleLoaded = false;
-                    view.loadUrl(START_URL);
+            @Override public void onReceivedHttpError(
+                    WebView view, WebResourceRequest request,
+                    android.webkit.WebResourceResponse errorResponse) {
+                if (request.isForMainFrame()) {
+                    showBootError("Little Red's Big Studio returned a loading error.\n\n" +
+                            "Tap Retry to try again.");
                 }
             }
         });
@@ -140,7 +134,25 @@ public class MainActivity extends Activity {
         webView.addJavascriptInterface(new BuddyVoiceBridge(), "AndroidBuddyVoice");
         setContentView(webView);
         initTts();
-        webView.loadUrl(LOCAL_START_URL);
+        // Load the real production Studio first. The previous APK attempted to
+        // boot a copied SPA shell from a synthetic /assets/ URL; that can render
+        // as a blank page when its generated module graph does not match the
+        // shell. Keeping the production origin here also preserves its exact
+        // routing, asset URLs, auth, and API behavior.
+        webView.loadUrl(START_URL);
+    }
+
+    private void showBootError(String message) {
+        if (webView == null) return;
+        String safe = message.replace("&", "&amp;").replace("<", "&lt;")
+                .replace(">", "&gt;").replace("\n", "<br>");
+        String html = "<!doctype html><html><body style='margin:0;background:#0b0506;color:#fff;font-family:sans-serif;display:flex;min-height:100vh;align-items:center;justify-content:center;text-align:center'>" +
+                "<div style='max-width:330px;padding:28px'><div style='font-size:54px'>●</div>" +
+                "<h1 style='margin:10px 0;color:#ff4d61'>Little Red's Big Studio</h1>" +
+                "<p style='line-height:1.5;color:#ddd'>" + safe + "</p>" +
+                "<button onclick='location.reload()' style='margin-top:12px;padding:13px 24px;border:0;border-radius:24px;background:#d71932;color:white;font-weight:700'>Retry</button>" +
+                "</div></body></html>";
+        webView.loadDataWithBaseURL(REMOTE_ORIGIN + "/", html, "text/html", "UTF-8", REMOTE_ORIGIN + "/");
     }
 
     private void ensureSpeechRecognizer() {
