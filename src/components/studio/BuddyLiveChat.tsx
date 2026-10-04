@@ -17,6 +17,7 @@ import "./BuddyVisual.css";
 type Message = { id: string; role: "user" | "assistant"; content: string; createdAt: number; attachments?: { id: string; name: string; type: string; size: number }[] };
 type BrowserSpeechRecognition = { continuous: boolean; interimResults: boolean; lang: string; onresult: ((event: { results: ArrayLike<{ 0: { transcript: string }; isFinal: boolean }> }) => void) | null; onerror: ((event: { error?: string }) => void) | null; onend: (() => void) | null; start: () => void; stop: () => void };
 type BrowserSpeechConstructor = new () => BrowserSpeechRecognition;
+type NativeBuddyBridge = { nativeSpeechAvailable?: () => boolean; microphoneGranted?: () => boolean; requestMicrophone?: () => boolean; startNativeListening?: (language: string) => boolean; stopNativeListening?: () => void };
 const KEY = "lrbgs-buddy-chat-v4";
 const IDENTITY = "You are Buddy, Little Red's personal creative studio companion. Your name is Buddy. Never identify yourself as Qwen, an AI model, a provider, or another assistant. Do not mention hidden model/provider machinery unless explicitly asked. Speak like a real, attentive person: natural, concise, warm, direct, and quick to the useful point. Avoid canned filler, repetitive greetings, unnecessary disclaimers, and long preambles. Match the user's energy without becoming theatrical. When an image is attached, actually inspect it and answer what you can see. Use conversation context when provided. The final user message is the current turn: answer that message directly, do not repeat an earlier answer unless the user explicitly asks you to repeat it.";
 
@@ -26,22 +27,212 @@ export function BuddyLiveChat() {
   const nativeSpeech = useRef<BrowserSpeechRecognition | null>(null), nativeTranscript = useRef(""), nativeSpeechAvailable = useRef(false);
 
   function browserSpeechConstructor(): BrowserSpeechConstructor | null { if (typeof window === "undefined") return null; const w = window as typeof window & { SpeechRecognition?: BrowserSpeechConstructor; webkitSpeechRecognition?: BrowserSpeechConstructor }; return w.SpeechRecognition || w.webkitSpeechRecognition || null; }
-  function stopNativeSpeech() { const current = nativeSpeech.current; nativeSpeech.current = null; if (!current) return; try { current.stop(); } catch {} }
-  function startNativeSpeech() {
-    stopNativeSpeech(); nativeTranscript.current = ""; const Constructor = browserSpeechConstructor(); nativeSpeechAvailable.current = Boolean(Constructor); if (!Constructor) return;
-    try { const recognition = new Constructor(); recognition.continuous = true; recognition.interimResults = false; recognition.lang = String(getBuddyVoiceProfile().language || "en-US").replace("English", "en-US"); recognition.onresult = (event) => { const parts: string[] = []; for (let i = 0; i < event.results.length; i += 1) { const result = event.results[i]; if (result?.isFinal && result[0]?.transcript) parts.push(result[0].transcript); } if (parts.length) { nativeTranscript.current = parts.join(" ").trim(); setTranscript(nativeTranscript.current); if (liveRef.current && rec.current?.state === "recording") { try { rec.current.stop(); } catch {} } } }; recognition.onerror = () => undefined; recognition.onend = () => { if (liveRef.current && rec.current?.state === "recording" && nativeSpeech.current === recognition) { try { recognition.start(); } catch {} } }; nativeSpeech.current = recognition; recognition.start(); } catch { nativeSpeech.current = null; nativeSpeechAvailable.current = false; }
+  function androidBridge(): NativeBuddyBridge | null {
+    if (typeof window === "undefined") return null;
+    return (window as typeof window & { AndroidBuddyVoice?: NativeBuddyBridge }).AndroidBuddyVoice ?? null;
   }
-  useEffect(() => { try { const x = JSON.parse(localStorage.getItem(KEY) || "[]"); if (Array.isArray(x)) setMessages(x.slice(-50)); } catch {} setAwareness(getBuddyAwarenessCapabilities()); void listMicrophones().then(setMics).catch(() => setMics([])); return () => { liveRef.current = false; stopNativeSpeech(); if (silenceTimer.current) clearTimeout(silenceTimer.current); silenceTimer.current = null; if (raf.current) cancelAnimationFrame(raf.current); raf.current = null; try { void ctx.current?.close(); } catch {} ctx.current = null; try { rec.current?.stop(); } catch {} rec.current = null; stopMicrophone(stream.current); stream.current = null; try { audio.current?.pause(); } catch {} }; }, []);
+  function stopNativeSpeech() {
+    const bridge = androidBridge();
+    try { bridge?.stopNativeListening?.(); } catch {}
+    const current = nativeSpeech.current;
+    nativeSpeech.current = null;
+    if (current) { try { current.stop(); } catch {} }
+  }
+  function startNativeSpeech() {
+    stopNativeSpeech();
+    nativeTranscript.current = "";
+    const bridge = androidBridge();
+    const language = String(getBuddyVoiceProfile().language || "en-US").replace("English", "en-US");
+    if (bridge?.nativeSpeechAvailable?.()) {
+      nativeSpeechAvailable.current = true;
+      try {
+        const started = bridge.startNativeListening?.(language);
+        if (!started) {
+          setRecording(false);
+          setStatus(bridge.microphoneGranted?.() ? "Android speech recognition is unavailable on this phone." : "Allow microphone access for Buddy, then try again.");
+        }
+      } catch {
+        nativeSpeechAvailable.current = false;
+        setRecording(false);
+        setStatus("Android speech recognition could not start.");
+      }
+      return;
+    }
+    const Constructor = browserSpeechConstructor();
+    nativeSpeechAvailable.current = Boolean(Constructor);
+    if (!Constructor) return;
+    try {
+      const recognition = new Constructor();
+      recognition.continuous = true;
+      recognition.interimResults = false;
+      recognition.lang = language;
+      recognition.onresult = (event) => {
+        const parts: string[] = [];
+        for (let i = 0; i < event.results.length; i += 1) {
+          const result = event.results[i];
+          if (result?.isFinal && result[0]?.transcript) parts.push(result[0].transcript);
+        }
+        if (parts.length) {
+          nativeTranscript.current = parts.join(" ").trim();
+          setTranscript(nativeTranscript.current);
+          if (liveRef.current && rec.current?.state === "recording") { try { rec.current.stop(); } catch {} }
+        }
+      };
+      recognition.onerror = () => undefined;
+      recognition.onend = () => {
+        if (liveRef.current && rec.current?.state === "recording" && nativeSpeech.current === recognition) {
+          try { recognition.start(); } catch {}
+        }
+      };
+      nativeSpeech.current = recognition;
+      recognition.start();
+    } catch {
+      nativeSpeech.current = null;
+      nativeSpeechAvailable.current = false;
+    }
+  }
+  useEffect(() => {
+    try { const x = JSON.parse(localStorage.getItem(KEY) || "[]"); if (Array.isArray(x)) setMessages(x.slice(-50)); } catch {}
+    setAwareness(getBuddyAwarenessCapabilities());
+    const w = typeof window === "undefined" ? null : window as typeof window & {
+      __buddyNativeSpeechResult?: (text: string) => void;
+      __buddyNativeSpeechState?: (state: string) => void;
+      __buddyNativeSpeechError?: (code: number) => void;
+    };
+    if (w) {
+      w.__buddyNativeSpeechState = (state) => {
+        if (state === "ready" || state === "listening") {
+          setMicPermission("granted");
+          setRecording(true);
+          setStatus(liveRef.current ? "Listening…" : "Listening… speak to Buddy.");
+        }
+      };
+      w.__buddyNativeSpeechResult = (text) => {
+        const clean = String(text || "").trim();
+        setRecording(false);
+        nativeTranscript.current = clean;
+        if (!clean) { setStatus("I didn't catch that. Try again."); return; }
+        setTranscript(clean);
+        void answer(clean, true).catch((e) => setStatus(e instanceof Error ? e.message : "Buddy could not respond."));
+      };
+      w.__buddyNativeSpeechError = (code) => {
+        setRecording(false);
+        if (liveRef.current && code !== 7) setStatus("Buddy's microphone connection was interrupted. Try speaking again.");
+        else setStatus(code === 7 ? "I didn't catch that. Try again." : "Buddy's phone speech recognition could not hear you.");
+      };
+    }
+    void listMicrophones().then(setMics).catch(() => setMics([]));
+    return () => {
+      liveRef.current = false;
+      stopNativeSpeech();
+      if (w) { delete w.__buddyNativeSpeechResult; delete w.__buddyNativeSpeechState; delete w.__buddyNativeSpeechError; }
+      if (silenceTimer.current) clearTimeout(silenceTimer.current);
+      silenceTimer.current = null;
+      if (raf.current) cancelAnimationFrame(raf.current);
+      raf.current = null;
+      try { void ctx.current?.close(); } catch {}
+      ctx.current = null;
+      try { rec.current?.stop(); } catch {}
+      rec.current = null;
+      stopMicrophone(stream.current);
+      stream.current = null;
+      try { audio.current?.pause(); } catch {}
+    };
+  }, []);
   useEffect(() => { try { localStorage.setItem(KEY, JSON.stringify(messages.slice(-50))); } catch {} }, [messages]);
   async function refreshMics() { try { setMics(await listMicrophones()); } catch { setMics([]); } }
-  async function openMic() { try { setStatus("Opening your phone microphone…"); const s = await requestMicrophone(micId && micId !== "default" ? micId : undefined); if (!s.getAudioTracks()[0]?.readyState) throw Error("No live microphone stream was provided."); stream.current = s; setMicPermission("granted"); await refreshMics(); return s; } catch (e) { setMicPermission("denied"); const m = describeMicrophoneError(e); setStatus(m); setBuddyStatus("error", { message: m }); return null; } }
+  async function openMic() {
+    const bridge = androidBridge();
+    if (bridge?.nativeSpeechAvailable?.()) {
+      try {
+        if (bridge.microphoneGranted?.()) {
+          setMicPermission("granted");
+          setStatus("Microphone ready.");
+          return null;
+        }
+        bridge.requestMicrophone?.();
+        setStatus("Allow microphone access for Buddy in the Android prompt.");
+        window.setTimeout(() => {
+          if (bridge.microphoneGranted?.()) {
+            setMicPermission("granted");
+            setStatus("Microphone ready.");
+          }
+        }, 700);
+        return null;
+      } catch {
+        setMicPermission("denied");
+        setStatus("Buddy could not request the phone microphone.");
+        return null;
+      }
+    }
+    try {
+      setStatus("Opening your phone microphone…");
+      const s = await requestMicrophone(micId && micId !== "default" ? micId : undefined);
+      if (!s.getAudioTracks()[0]?.readyState) throw Error("No live microphone stream was provided.");
+      stream.current = s;
+      setMicPermission("granted");
+      await refreshMics();
+      return s;
+    } catch (e) {
+      setMicPermission("denied");
+      const m = describeMicrophoneError(e);
+      setStatus(m);
+      setBuddyStatus("error", { message: m });
+      return null;
+    }
+  }
   function stopMonitor() { if (silenceTimer.current) clearTimeout(silenceTimer.current); silenceTimer.current = null; if (raf.current) cancelAnimationFrame(raf.current); raf.current = null; try { void ctx.current?.close(); } catch {} ctx.current = null; }
   function monitor(s: MediaStream) { try { const c = new AudioContext(), a = c.createAnalyser(), src = c.createMediaStreamSource(s); ctx.current = c; a.fftSize = 2048; src.connect(a); const d = new Uint8Array(a.fftSize); const tick = () => { if (!liveRef.current || rec.current?.state !== "recording") return; a.getByteTimeDomainData(d); let sum = 0; for (const v of d) { const n = (v - 128) / 128; sum += n * n; } const rms = Math.sqrt(sum / d.length); if (rms > 0.018) { speech.current = true; if (silenceTimer.current) clearTimeout(silenceTimer.current); silenceTimer.current = null; } else if (speech.current && !silenceTimer.current) silenceTimer.current = window.setTimeout(() => { silenceTimer.current = null; if (rec.current?.state === "recording") rec.current.stop(); }, 1200); raf.current = requestAnimationFrame(tick); }; raf.current = requestAnimationFrame(tick); } catch { setStatus("Live microphone is active. Tap End Buddy when you finish speaking."); } }
   async function stt(blob: Blob) { if (!blob.size) throw Error("I didn't catch any audio. Try again."); setStatus("Transcribing what you said…"); try { const r = await runStudioJob("speech-to-text", { audio: blob }, setStatus); const t = artifactText(r.value).trim(); if (!t) throw Error("I couldn't understand that. Try again."); return t; } catch (error) { const browserText = nativeTranscript.current.trim(); if (browserText) { setStatus("Speech service is busy; using your phone's speech recognition."); return browserText; } throw error; } }
   function start(s: MediaStream, isLive: boolean) { if (typeof MediaRecorder === "undefined") throw Error("This browser cannot capture microphone audio."); const type = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/ogg"].find((x) => MediaRecorder.isTypeSupported(x)); const r = type ? new MediaRecorder(s, { mimeType: type }) : new MediaRecorder(s); chunks.current = []; speech.current = false; r.ondataavailable = (e) => { if (e.data.size) chunks.current.push(e.data); }; r.onstop = () => { stopMonitor(); const fastTranscript = nativeTranscript.current.trim(); stopNativeSpeech(); const b = new Blob(chunks.current, { type: r.mimeType || "audio/webm" }); chunks.current = []; rec.current = null; setRecording(false); if (fastTranscript) { setTranscript(fastTranscript); void answer(fastTranscript, true).catch((e) => setStatus(e instanceof Error ? e.message : "Buddy could not respond.")); } else if (b.size) void stt(b).then((t) => { setTranscript(t); return answer(t, true); }).catch((e) => setStatus(e instanceof Error ? e.message : "Speech recognition failed.")); }; rec.current = r; r.start(250); setRecording(true); setBuddyStatus("listening", { message: "Buddy is listening…" }); setStatus(isLive ? "Listening… pause naturally or tap End Buddy." : "Recording… tap Stop & Send when you're finished."); startNativeSpeech(); if (isLive) monitor(s); }
-  async function beginLive() { if (!liveRef.current || busyRef.current || speakingRef.current || rec.current) return; const s = stream.current?.active ? stream.current : await openMic(); if (s) try { start(s, true); liveWatchdog.current = window.setTimeout(() => { if (liveRef.current && rec.current?.state === "recording") { setStatus("I am still listening. Tap End Buddy when you finish."); } }, 15000); } catch (e) { setStatus(e instanceof Error ? e.message : "Microphone capture failed."); } }
+  async function beginLive() {
+    if (!liveRef.current || busyRef.current || speakingRef.current) return;
+    const bridge = androidBridge();
+    if (bridge?.nativeSpeechAvailable?.()) {
+      if (!bridge.microphoneGranted?.()) {
+        await openMic();
+        if (!bridge.microphoneGranted?.()) return;
+      }
+      setRecording(true);
+      setMicPermission("granted");
+      startNativeSpeech();
+      return;
+    }
+    if (rec.current) return;
+    const s = stream.current?.active ? stream.current : await openMic();
+    if (s) try {
+      start(s, true);
+      liveWatchdog.current = window.setTimeout(() => {
+        if (liveRef.current && rec.current?.state === "recording") setStatus("I am still listening. Tap End Buddy when you finish.");
+      }, 15000);
+    } catch (e) { setStatus(e instanceof Error ? e.message : "Microphone capture failed."); }
+  }
   async function toggleLive() { if (liveRef.current) { liveRef.current = false; setLive(false); stopNativeSpeech(); if (liveWatchdog.current) clearTimeout(liveWatchdog.current); liveWatchdog.current = null; try { rec.current?.stop(); } catch {} stopMonitor(); stopMicrophone(stream.current); stream.current = null; setRecording(false); setBuddyStatus("idle"); setStatus("Buddy call ended."); return; } void unlockBuddyAudio(); liveRef.current = true; setLive(true); await beginLive(); }
-  async function recordOnce() { if (busyRef.current || liveRef.current) return; if (recording) { try { rec.current?.stop(); } catch {} stopMonitor(); return; } void unlockBuddyAudio(); const s = await openMic(); if (s) try { start(s, false); } catch (e) { setStatus(e instanceof Error ? e.message : "Microphone capture failed."); } }
+  async function recordOnce() {
+    if (busyRef.current || liveRef.current) return;
+    if (recording) {
+      stopNativeSpeech();
+      try { rec.current?.stop(); } catch {}
+      stopMonitor();
+      setRecording(false);
+      return;
+    }
+    void unlockBuddyAudio();
+    const bridge = androidBridge();
+    if (bridge?.nativeSpeechAvailable?.()) {
+      if (!bridge.microphoneGranted?.()) {
+        await openMic();
+        if (!bridge.microphoneGranted?.()) return;
+      }
+      setMicPermission("granted");
+      setRecording(true);
+      setStatus("Listening… speak to Buddy.");
+      startNativeSpeech();
+      return;
+    }
+    const s = await openMic();
+    if (s) try { start(s, false); } catch (e) { setStatus(e instanceof Error ? e.message : "Microphone capture failed."); }
+  }
   async function captureAwareness(kind: "camera" | "screen") { if (busyRef.current) return; try { setStatus(kind === "camera" ? "Opening the camera…" : "Opening screen sharing…"); const file = kind === "camera" ? await captureBuddyCameraFrame() : await captureBuddyScreenFrame(); setAttachments((current) => [...current, file].slice(-6)); setStatus(kind === "camera" ? "Camera frame captured. Ask Buddy what you want it to inspect." : "Screen frame captured. Ask Buddy what you want it to inspect."); } catch (error) { setStatus(error instanceof Error ? error.message : `${kind} awareness could not be captured.`); } }
   async function dataUrl(file: File) { return new Promise<string>((resolve, reject) => { const r = new FileReader(); r.onload = () => resolve(String(r.result)); r.onerror = () => reject(r.error || new Error("Could not read attachment.")); r.readAsDataURL(file); }); }
   async function videoFrameDataUrl(file: File): Promise<string> { const url = URL.createObjectURL(file); try { const video = document.createElement("video"); video.preload = "metadata"; video.muted = true; video.playsInline = true; video.src = url; await new Promise<void>((resolve, reject) => { video.onloadeddata = () => resolve(); video.onerror = () => reject(new Error("The video attachment could not be decoded.")); }); const width = Math.min(video.videoWidth || 1280, 1280), height = Math.min(video.videoHeight || 720, 720); const canvas = document.createElement("canvas"); canvas.width = width; canvas.height = height; const context = canvas.getContext("2d"); if (!context) throw new Error("The video frame could not be rendered."); video.currentTime = 0; await new Promise<void>((resolve) => { video.onseeked = () => resolve(); }); context.drawImage(video, 0, 0, width, height); return canvas.toDataURL("image/jpeg", 0.84); } finally { URL.revokeObjectURL(url); } }
