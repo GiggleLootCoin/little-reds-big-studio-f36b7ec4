@@ -26,10 +26,27 @@ export function BuddyLiveChat() {
   const nativeSpeech = useRef<BrowserSpeechRecognition | null>(null), nativeTranscript = useRef(""), nativeSpeechAvailable = useRef(false);
 
   function browserSpeechConstructor(): BrowserSpeechConstructor | null { if (typeof window === "undefined") return null; const w = window as typeof window & { SpeechRecognition?: BrowserSpeechConstructor; webkitSpeechRecognition?: BrowserSpeechConstructor }; return w.SpeechRecognition || w.webkitSpeechRecognition || null; }
-  function stopNativeSpeech() { const current = nativeSpeech.current; nativeSpeech.current = null; if (!current) return; try { current.stop(); } catch {} }
+  function stopNativeSpeech() { const current = nativeSpeech.current; nativeSpeech.current = null; if (current) { try { current.stop(); } catch {} } const bridge = (window as typeof window & { AndroidBuddyVoice?: { stopNativeSpeech?: () => void } }).AndroidBuddyVoice; try { bridge?.stopNativeSpeech?.(); } catch {} }
   function startNativeSpeech() {
-    stopNativeSpeech(); nativeTranscript.current = ""; const Constructor = browserSpeechConstructor(); nativeSpeechAvailable.current = Boolean(Constructor); if (!Constructor) return;
-    try { const recognition = new Constructor(); recognition.continuous = true; recognition.interimResults = false; recognition.lang = String(getBuddyVoiceProfile().language || "en-US").replace("English", "en-US"); recognition.onresult = (event) => { const parts: string[] = []; for (let i = 0; i < event.results.length; i += 1) { const result = event.results[i]; if (result?.isFinal && result[0]?.transcript) parts.push(result[0].transcript); } if (parts.length) { nativeTranscript.current = parts.join(" ").trim(); setTranscript(nativeTranscript.current); if (liveRef.current && rec.current?.state === "recording") { try { rec.current.stop(); } catch {} } } }; recognition.onerror = () => undefined; recognition.onend = () => { if (liveRef.current && rec.current?.state === "recording" && nativeSpeech.current === recognition) { try { recognition.start(); } catch {} } }; nativeSpeech.current = recognition; recognition.start(); } catch { nativeSpeech.current = null; nativeSpeechAvailable.current = false; }
+    stopNativeSpeech(); nativeTranscript.current = "";
+    const bridge = (window as typeof window & { AndroidBuddyVoice?: { isNativeSpeechAvailable?: () => boolean; startNativeSpeech?: (language: string) => void; stopNativeSpeech?: () => void } }).AndroidBuddyVoice;
+    const language = String(getBuddyVoiceProfile().language || "en-US").replace("English", "en-US");
+    if (bridge?.isNativeSpeechAvailable?.() && bridge.startNativeSpeech) {
+      nativeSpeechAvailable.current = true;
+      (window as typeof window & { __buddyNativeSpeechResult?: (text: string) => void; __buddyNativeSpeechError?: (message: string) => void }).__buddyNativeSpeechResult = (text) => {
+        const clean = String(text || "").trim();
+        if (!clean) return;
+        nativeTranscript.current = clean; setTranscript(clean);
+        if (liveRef.current && rec.current?.state === "recording") { try { rec.current.stop(); } catch {} }
+      };
+      (window as typeof window & { __buddyNativeSpeechError?: (message: string) => void }).__buddyNativeSpeechError = (message) => {
+        setStatus(String(message || "Android speech recognition failed."));
+      };
+      bridge.startNativeSpeech(language);
+      return;
+    }
+    const Constructor = browserSpeechConstructor(); nativeSpeechAvailable.current = Boolean(Constructor); if (!Constructor) return;
+    try { const recognition = new Constructor(); recognition.continuous = true; recognition.interimResults = false; recognition.lang = language; recognition.onresult = (event) => { const parts: string[] = []; for (let i = 0; i < event.results.length; i += 1) { const result = event.results[i]; if (result?.isFinal && result[0]?.transcript) parts.push(result[0].transcript); } if (parts.length) { nativeTranscript.current = parts.join(" ").trim(); setTranscript(nativeTranscript.current); if (liveRef.current && rec.current?.state === "recording") { try { rec.current.stop(); } catch {} } } }; recognition.onerror = () => undefined; recognition.onend = () => { if (liveRef.current && rec.current?.state === "recording" && nativeSpeech.current === recognition) { try { recognition.start(); } catch {} } }; nativeSpeech.current = recognition; recognition.start(); } catch { nativeSpeech.current = null; nativeSpeechAvailable.current = false; }
   }
   useEffect(() => { try { const x = JSON.parse(localStorage.getItem(KEY) || "[]"); if (Array.isArray(x)) setMessages(x.slice(-50)); } catch {} setAwareness(getBuddyAwarenessCapabilities()); void listMicrophones().then(setMics).catch(() => setMics([])); return () => { liveRef.current = false; stopNativeSpeech(); if (silenceTimer.current) clearTimeout(silenceTimer.current); silenceTimer.current = null; if (raf.current) cancelAnimationFrame(raf.current); raf.current = null; try { void ctx.current?.close(); } catch {} ctx.current = null; try { rec.current?.stop(); } catch {} rec.current = null; stopMicrophone(stream.current); stream.current = null; try { audio.current?.pause(); } catch {} }; }, []);
   useEffect(() => { try { localStorage.setItem(KEY, JSON.stringify(messages.slice(-50))); } catch {} }, [messages]);
