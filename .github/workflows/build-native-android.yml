@@ -1,0 +1,120 @@
+name: Build Native Little Red's Big Studio APK
+
+on:
+  push:
+    branches:
+      - "fix/real-studio-apk-hardening-2026-10-03"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Set up Node 24
+        uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+          cache: npm
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund --legacy-peer-deps
+      - name: Build dedicated Android client
+        run: |
+          set -euo pipefail
+          rm -rf dist-android
+          npx vite build --config vite.android.config.ts
+          test -s dist-android/android.html
+          grep -q 'src=' dist-android/android.html
+      - name: Bundle Android client into app
+        run: |
+          set -euo pipefail
+          rm -rf android/app/src/main/assets
+          mkdir -p android/app/src/main/assets
+          cp -a dist-android/. android/app/src/main/assets/
+          cp dist-android/android.html android/app/src/main/assets/index.html
+          rm -f android/app/src/main/assets/android.html
+          test -s android/app/src/main/assets/index.html
+          find android/app/src/main/assets -type f -print | sort
+          grep -Eo 'assets/[^"]+\.js' android/app/src/main/assets/index.html
+      - name: Install Little Red's Big Studio launcher logo
+        run: |
+          set -euo pipefail
+          test -s "1784996969001.png"
+          mkdir -p android/app/src/main/res/drawable
+          cp "1784996969001.png" android/app/src/main/res/drawable/lrbgs_logo.png
+          test -s android/app/src/main/res/drawable/lrbgs_logo.png
+      - name: Install Android SDK
+        env:
+          TWA_SIGNING_KEY_BASE64: ${{ secrets.TWA_SIGNING_KEY_BASE64 }}
+        run: |
+          set -euo pipefail
+          SDK_ROOT="$HOME/android-sdk"
+          echo "SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
+          mkdir -p "$SDK_ROOT"
+          curl -fsSLo "$RUNNER_TEMP/cmdline-tools.zip" "https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip"
+          unzip -q "$RUNNER_TEMP/cmdline-tools.zip" -d "$RUNNER_TEMP/android-tools"
+          mkdir -p "$SDK_ROOT/cmdline-tools/latest"
+          cp -a "$RUNNER_TEMP/android-tools/cmdline-tools/bin" "$RUNNER_TEMP/android-tools/lib" "$SDK_ROOT/cmdline-tools/latest/" 2>/dev/null || true
+          cp -a "$RUNNER_TEMP/android-tools/cmdline-tools/lib" "$SDK_ROOT/cmdline-tools/latest/"
+          SDKMANAGER="$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$SDKMANAGER" --licenses --sdk_root="$SDK_ROOT" >/tmp/licenses.log 2>&1 || true
+          "$SDKMANAGER" --install "platform-tools" "build-tools;35.0.0" "platforms;android-36"
+          if [ -n "$TWA_SIGNING_KEY_BASE64" ]; then
+            echo "$TWA_SIGNING_KEY_BASE64" | base64 -d > android/app/release-key.jks
+          else
+            keytool -genkeypair -keystore android/app/release-key.jks -storepass android -keypass android -alias key0 -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Little Red's Big Studio"
+          fi
+      - name: Install Gradle 8.9
+        run: |
+          set -euo pipefail
+          curl -fsSLo "$RUNNER_TEMP/gradle.zip" "https://services.gradle.org/distributions/gradle-8.9-bin.zip"
+          unzip -q "$RUNNER_TEMP/gradle.zip" -d "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/gradle-8.9/bin" >> "$GITHUB_PATH"
+          gradle --version
+      - name: Assemble release APK
+        env:
+          ANDROID_HOME: ${{ env.SDK_ROOT }}
+          ANDROID_SDK_ROOT: ${{ env.SDK_ROOT }}
+          TWA_SIGNING_KEY_PASSWORD: ${{ secrets.TWA_SIGNING_KEY_PASSWORD }}
+          TWA_SIGNING_KEY_STORE_PASSWORD: ${{ secrets.TWA_SIGNING_KEY_STORE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          gradle --no-daemon --stacktrace -p android assembleRelease
+      - name: Verify APK contents and signature
+        run: |
+          set -euo pipefail
+          APK="android/app/build/outputs/apk/release/app-release.apk"
+          test -s "$APK"
+          "$SDK_ROOT/build-tools/35.0.0/apksigner" verify --verbose "$APK"
+          unzip -l "$APK" | grep 'assets/index.html'
+          unzip -l "$APK" | grep -E 'assets/assets/.*\.js' | head -20
+          echo "SIZE=$(stat -c '%s' "$APK")"
+          echo "SHA256=$(sha256sum "$APK" | cut -d' ' -f1)"
+      - name: Upload installable APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: little-reds-big-studio-native-android
+          path: android/app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
+      - name: Publish release APK
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG="apk-native-android-${GITHUB_RUN_NUMBER}"
+          gh release create "$TAG" android/app/build/outputs/apk/release/app-release.apk \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Little Red's Big Studio — Native Android ${GITHUB_RUN_NUMBER}" \
+            --notes "Real Little Red's Big Studio native Android build using a dedicated client entry without SSR hydration."

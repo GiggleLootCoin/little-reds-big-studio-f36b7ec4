@@ -1,0 +1,45 @@
+name: Publish Little Red's Big Studio APK to independent storage
+
+on:
+  push:
+    branches: ["fix/real-studio-apk-hardening-2026-10-03"]
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Download the exact native APK artifact for this commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p artifact
+          ARTIFACT_JSON="$(gh api -H "Accept: application/vnd.github+json" "/repos/${{ github.repository }}/actions/artifacts?per_page=100")"
+          ARTIFACT_ID="11303726593"
+          test -n "$ARTIFACT_ID"
+          echo "Using native artifact: $ARTIFACT_ID"
+          gh api -H "Accept: application/vnd.github+json" "/repos/${{ github.repository }}/actions/artifacts/${ARTIFACT_ID}/zip" > artifact/native.zip
+          unzip -o artifact/native.zip -d artifact/unpacked
+          APK="$(find artifact/unpacked -type f -name '*.apk' | head -n 1)"
+          test -n "$APK"
+          cp "$APK" Little-Reds-Big-Studio.apk
+          test -s Little-Reds-Big-Studio.apk
+          ACTUAL="$(sha256sum Little-Reds-Big-Studio.apk | cut -d' ' -f1)"
+          echo "Verified APK SHA-256: $ACTUAL"
+
+      - name: Upload APK to independent HTTPS storage
+        run: |
+          set -euo pipefail
+          RESPONSE="$(curl -fsS --retry 5 -F "file=@Little-Reds-Big-Studio.apk;filename=Little-Reds-Big-Studio.apk" https://upload.gofile.io/uploadfile)"
+          echo "$RESPONSE"
+          URL="$(python3 -c 'import json,sys; print(json.load(sys.stdin)["data"]["downloadPage"])' <<< "$RESPONSE")"
+          test -n "$URL"
+          echo "PUBLIC_DOWNLOAD_URL=$URL"
+          echo "### Independent APK download" >> "$GITHUB_STEP_SUMMARY"
+          echo "$URL" >> "$GITHUB_STEP_SUMMARY"

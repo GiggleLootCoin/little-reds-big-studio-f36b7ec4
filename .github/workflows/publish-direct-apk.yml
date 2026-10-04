@@ -1,0 +1,45 @@
+name: Publish direct APK download branch
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - fix/real-studio-apk-hardening-2026-10-03
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download built APK artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: little-reds-big-studio-apk-native
+          path: dist-apk
+
+      - name: Publish APK to dedicated download branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="$(find dist-apk -type f -name '*.apk' -print -quit)"
+          test -n "$APK"
+          test -s "$APK"
+
+          git init publish-apk
+          cd publish-apk
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git remote add origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+
+          git checkout --orphan apk-download
+          rm -rf ./*
+          cp "../$APK" ./app-release.apk
+          git add app-release.apk
+          git commit -m "Publish Little Red's Big Studio APK"
+          git push --force origin HEAD:apk-download
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+# trigger direct APK publication

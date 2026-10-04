@@ -71,7 +71,7 @@ const BUDDY_TAB: Record<BuddyTask, TabId> = {
   artwork: "video",
   video: "video",
 };
-function Studio() {
+export function Studio() {
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<TabId>("home");
   useEffect(() => {

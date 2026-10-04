@@ -3,7 +3,9 @@ package com.littleredbigstudio.app;
 import android.Manifest;
 import android.app.Activity;
 import android.content.Context;
+import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.hardware.SensorPrivacyManager;
 import android.media.AudioAttributes;
 import android.media.AudioFocusRequest;
 import android.media.AudioManager;
@@ -12,6 +14,9 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.speech.SpeechRecognizer;
+import android.speech.RecognitionListener;
+import android.speech.RecognizerIntent;
 import android.speech.tts.TextToSpeech;
 import android.speech.tts.UtteranceProgressListener;
 import android.speech.tts.Voice;
@@ -45,14 +50,16 @@ public class MainActivity extends Activity {
     // The APK carries the complete UI bundle. WebViewAssetLoader serves it from
     // the app while requests outside /assets/ fall through to the remote API.
     private static final String LOCAL_START_URL =
-            "https://little-reds-big-studio-f36b7ec4.gigglelootcoin.workers.dev/assets/index.html";
+            "https://appassets.androidplatform.net/assets/index.html";
+    private static final String LOCAL_ASSET_ORIGIN =
+            "https://appassets.androidplatform.net";
 
     private static final String GOOGLE_TTS = "com.google.android.tts";
     private static final String SAMSUNG_TTS = "com.samsung.SMT";
     private static final long TTS_START_TIMEOUT_MS = 20000L;
 
     private WebView webView;
-    private boolean localBundleLoaded = true;
+    private boolean localBundleLoaded = false;
     private TextToSpeech tts;
     private MediaPlayer buddyPlayer;
     private AudioManager audioManager;
@@ -60,6 +67,8 @@ public class MainActivity extends Activity {
     private volatile boolean ttsReady = false;
     private volatile String activeEngine = "";
     private volatile String activeVoice = "";
+    private PermissionRequest pendingWebPermissionRequest;
+    private SpeechRecognizer speechRecognizer;
     private final CountDownLatch ttsInitLatch = new CountDownLatch(1);
     private final Handler main = new Handler(Looper.getMainLooper());
     private final AudioManager.OnAudioFocusChangeListener focusListener = focusChange -> {};
@@ -79,29 +88,8 @@ public class MainActivity extends Activity {
         settings.setUserAgentString(
                 settings.getUserAgentString() + " LittleRedsBigStudioAndroid/NativeVoice");
 
-        webView.setWebChromeClient(new WebChromeClient() {
-            @Override public void onPermissionRequest(final PermissionRequest request) {
-                runOnUiThread(() -> {
-                    boolean wantsAudio = false;
-                    for (String resource : request.getResources()) {
-                        if (PermissionRequest.RESOURCE_AUDIO_CAPTURE.equals(resource)) {
-                            wantsAudio = true;
-                            break;
-                        }
-                    }
-                    if (wantsAudio &&
-                            checkSelfPermission(Manifest.permission.RECORD_AUDIO)
-                                    != PackageManager.PERMISSION_GRANTED) {
-                        requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, 4101);
-                    } else {
-                        request.grant(request.getResources());
-                    }
-                });
-            }
-        });
-
         final WebViewAssetLoader assetLoader = new WebViewAssetLoader.Builder()
-                .setDomain("little-reds-big-studio-f36b7ec4.gigglelootcoin.workers.dev")
+                .setDomain("appassets.androidplatform.net")
                 .addPathHandler("/assets/", new WebViewAssetLoader.AssetsPathHandler(this))
                 .build();
 
@@ -115,26 +103,72 @@ public class MainActivity extends Activity {
             @Override public boolean shouldOverrideUrlLoading(
                     WebView view, WebResourceRequest request) {
                 String url = request.getUrl().toString();
-                return !url.startsWith(REMOTE_ORIGIN);
+                return !(url.startsWith(REMOTE_ORIGIN) || url.startsWith(LOCAL_ASSET_ORIGIN));
             }
 
             @Override public void onPageStarted(WebView view, String url, android.graphics.Bitmap favicon) {
-                localBundleLoaded = url.contains("/assets/index.html");
+                localBundleLoaded = url.startsWith(LOCAL_ASSET_ORIGIN);
             }
 
             @Override public void onReceivedError(
                     WebView view, WebResourceRequest request, android.webkit.WebResourceError error) {
-                if (request.isForMainFrame() && localBundleLoaded) {
-                    localBundleLoaded = false;
-                    view.loadUrl(START_URL);
+                if (request.isForMainFrame()) {
+                    android.util.Log.e("LittleRedsBigStudioWebView",
+                            "Main-frame load error: " + error.getErrorCode() + " " + error.getDescription());
+                    if (!localBundleLoaded) {
+                        localBundleLoaded = true;
+                        view.loadUrl(LOCAL_START_URL);
+                    }
                 }
+            }
+
+            @Override public void onReceivedHttpError(
+                    WebView view, WebResourceRequest request, android.webkit.WebResourceResponse response) {
+                if (request.isForMainFrame()) {
+                    android.util.Log.e("LittleRedsBigStudioWebView",
+                            "Main-frame HTTP error: " + response.getStatusCode() + " " + response.getReasonPhrase());
+                }
+            }
+        });
+
+        webView.setWebChromeClient(new WebChromeClient() {
+            @Override public void onPermissionRequest(final PermissionRequest request) {
+                runOnUiThread(() -> {
+                    boolean wantsAudio = false;
+                    for (String resource : request.getResources()) {
+                        if (PermissionRequest.RESOURCE_AUDIO_CAPTURE.equals(resource)) {
+                            wantsAudio = true;
+                            break;
+                        }
+                    }
+                    if (wantsAudio && checkSelfPermission(Manifest.permission.RECORD_AUDIO)
+                            != PackageManager.PERMISSION_GRANTED) {
+                        pendingWebPermissionRequest = request;
+                        requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, 4101);
+                    } else {
+                        request.grant(request.getResources());
+                    }
+                });
+            }
+
+            @Override public boolean onConsoleMessage(android.webkit.ConsoleMessage message) {
+                android.util.Log.e("LittleRedsBigStudioWebView",
+                        message.message() + " @" + message.sourceId() + ":" + message.lineNumber());
+                return true;
             }
         });
 
         webView.addJavascriptInterface(new BuddyVoiceBridge(), "AndroidBuddyVoice");
         setContentView(webView);
         initTts();
-        webView.loadUrl(LOCAL_START_URL);
+        // Establish Android microphone permission before WebView requests getUserMedia.
+        // Samsung Android/WebView can otherwise race the two permission gates and
+        // return NotAllowedError even though RECORD_AUDIO is already allowed later.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M &&
+                checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, 4101);
+        }
+        webView.loadUrl(START_URL);
     }
 
     private void initTts() {
@@ -500,6 +534,99 @@ public class MainActivity extends Activity {
         });
     }
 
+    private String jsSafe(String value) {
+        if (value == null) return "";
+        return value.replace("\\", "\\\\").replace("'", "\\'").replace("\\n", "\\n").replace("\\r", "\\r");
+    }
+
+    private void sendNativeSpeechResult(String text) {
+        if (webView == null) return;
+        String safe = jsSafe(text);
+        main.post(() -> webView.evaluateJavascript(
+                "window.__buddyNativeSpeechResult && window.__buddyNativeSpeechResult('" + safe + "');", null));
+    }
+
+    private void sendNativeSpeechError(String message) {
+        if (webView == null) return;
+        String safe = jsSafe(message);
+        main.post(() -> webView.evaluateJavascript(
+                "window.__buddyNativeSpeechError && window.__buddyNativeSpeechError('" + safe + "');", null));
+    }
+
+    private boolean isSystemMicrophoneBlocked() {
+        if (Build.VERSION.SDK_INT < 31) return false;
+        try {
+            SensorPrivacyManager manager = getSystemService(SensorPrivacyManager.class);
+            return manager != null && manager.supportsSensorToggle(SensorPrivacyManager.Sensors.MICROPHONE)
+                    && manager.isSensorPrivacyEnabled(SensorPrivacyManager.Sensors.MICROPHONE);
+        } catch (Throwable ignored) {
+            return false;
+        }
+    }
+
+    private String nativeMicrophoneStatus() {
+        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) return "permission";
+        if (isSystemMicrophoneBlocked()) return "device_mic_off";
+        if (!SpeechRecognizer.isRecognitionAvailable(this)) return "speech_service_unavailable";
+        return "ready";
+    }
+
+    private void startNativeSpeechRecognition(String language) {
+        main.post(() -> {
+            if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+                sendNativeSpeechError("Android microphone permission is not granted.");
+                return;
+            }
+            if (isSystemMicrophoneBlocked()) {
+                sendNativeSpeechError("Android Mic Access is blocking microphone input for all apps. Turn on Mic Access in Quick Settings, then try Buddy again.");
+                return;
+            }
+            if (!SpeechRecognizer.isRecognitionAvailable(this)) {
+                sendNativeSpeechError("No Android speech recognition service is available on this phone.");
+                return;
+            }
+            try {
+                stopNativeSpeechRecognition();
+                speechRecognizer = SpeechRecognizer.createSpeechRecognizer(this);
+                speechRecognizer.setRecognitionListener(new RecognitionListener() {
+                    @Override public void onReadyForSpeech(Bundle params) {}
+                    @Override public void onBeginningOfSpeech() {}
+                    @Override public void onRmsChanged(float rmsdB) {}
+                    @Override public void onBufferReceived(byte[] buffer) {}
+                    @Override public void onEndOfSpeech() {}
+                    @Override public void onPartialResults(Bundle partialResults) {}
+                    @Override public void onEvent(int eventType, Bundle params) {}
+                    @Override public void onError(int error) {
+                        sendNativeSpeechError("Android speech recognition error " + error + ".");
+                    }
+                    @Override public void onResults(Bundle results) {
+                        ArrayList<String> matches = results == null ? null :
+                                results.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
+                        if (matches != null && !matches.isEmpty()) sendNativeSpeechResult(matches.get(0));
+                        else sendNativeSpeechError("I didn't catch that. Try again.");
+                    }
+                });
+                Intent intent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
+                intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
+                intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE, language == null || language.trim().isEmpty() ? Locale.US.toLanguageTag() : language);
+                intent.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false);
+                intent.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1);
+                speechRecognizer.startListening(intent);
+            } catch (Throwable error) {
+                sendNativeSpeechError("Android speech recognition could not start.");
+            }
+        });
+    }
+
+    private void stopNativeSpeechRecognition() {
+        if (speechRecognizer != null) {
+            try { speechRecognizer.stopListening(); } catch (Throwable ignored) {}
+            try { speechRecognizer.cancel(); } catch (Throwable ignored) {}
+            try { speechRecognizer.destroy(); } catch (Throwable ignored) {}
+            speechRecognizer = null;
+        }
+    }
+
     public final class BuddyVoiceBridge {
         @JavascriptInterface public boolean isAvailable() {
             return ttsReady && tts != null;
@@ -518,6 +645,22 @@ public class MainActivity extends Activity {
             if (!awaitTtsReady()) return false;
             main.post(() -> speakNow(text));
             return true;
+        }
+
+        @JavascriptInterface public boolean isNativeSpeechAvailable() {
+            return "ready".equals(nativeMicrophoneStatus());
+        }
+
+        @JavascriptInterface public String microphoneStatus() {
+            return nativeMicrophoneStatus();
+        }
+
+        @JavascriptInterface public void startNativeSpeech(String language) {
+            startNativeSpeechRecognition(language);
+        }
+
+        @JavascriptInterface public void stopNativeSpeech() {
+            main.post(() -> stopNativeSpeechRecognition());
         }
 
         @JavascriptInterface public void playBase64Async(String base64, String mimeType, String callbackId) {
@@ -576,6 +719,20 @@ public class MainActivity extends Activity {
         }
     }
 
+    @Override public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == 4101) {
+            PermissionRequest pending = pendingWebPermissionRequest;
+            pendingWebPermissionRequest = null;
+            if (pending == null) return;
+            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                try { pending.grant(pending.getResources()); } catch (Throwable ignored) {}
+            } else {
+                try { pending.deny(); } catch (Throwable ignored) {}
+            }
+        }
+    }
+
     @Override protected void onResume() {
         super.onResume();
         if (webView != null) webView.onResume();
@@ -602,6 +759,11 @@ public class MainActivity extends Activity {
             buddyPlayer = null;
         }
         abandonAudioFocus();
+        if (pendingWebPermissionRequest != null) {
+            try { pendingWebPermissionRequest.deny(); } catch (Throwable ignored) {}
+            pendingWebPermissionRequest = null;
+        }
+        stopNativeSpeechRecognition();
         if (webView != null) {
             webView.removeJavascriptInterface("AndroidBuddyVoice");
             webView.destroy();

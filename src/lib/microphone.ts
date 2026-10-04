@@ -39,20 +39,35 @@ export async function requestMicrophone(deviceId?: string): Promise<MediaStream>
     throw new Error("Microphone access requires a secure HTTPS page.");
   if (!navigator.mediaDevices?.getUserMedia)
     throw new Error("This browser does not provide microphone access.");
+  // Android WebView can reject otherwise-valid constraint combinations on
+  // some Samsung devices. Always try the simplest native audio request first;
+  // once a live stream exists, the app can use it without needing to know the
+  // exact hardware input name.
+  if (preferDeviceMicrophone()) {
+    try {
+      return await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+    } catch {}
+  }
+
   const base: MediaTrackConstraints = {
     echoCancellation: true,
     noiseSuppression: true,
     autoGainControl: true,
-    channelCount: 1,
   };
   const constraints: MediaTrackConstraints = { ...base };
   if (deviceId && deviceId !== "default") constraints.deviceId = { exact: deviceId };
   try {
     return await navigator.mediaDevices.getUserMedia({ audio: constraints, video: false });
   } catch (error) {
-    if (deviceId && deviceId !== "default")
-      return navigator.mediaDevices.getUserMedia({ audio: base, video: false });
-    throw error;
+    // A selected device ID can become stale after a headset/Bluetooth change.
+    // Retry without it before reporting that the phone has no microphone.
+    if (deviceId && deviceId !== "default") {
+      try {
+        return await navigator.mediaDevices.getUserMedia({ audio: base, video: false });
+      } catch {}
+    }
+    // Final compatibility fallback for older WebView builds.
+    return navigator.mediaDevices.getUserMedia({ audio: true, video: false });
   }
 }
 
