@@ -1,11 +1,12 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.CAMERA" />
     <queries>
         <intent><action android:name="android.intent.action.TTS_SERVICE" /></intent>
         <intent><action android:name="android.speech.RecognitionService" /></intent>
     </queries>
-    <application android:allowBackup="false" android:label="@string/app_name" android:usesCleartextTraffic="false" android:theme="@style/AppTheme">
+    <application android:icon="@drawable/buffet_icon" android:roundIcon="@drawable/buffet_icon" android:allowBackup="false" android:label="@string/app_name" android:usesCleartextTraffic="false" android:theme="@style/AppTheme">
         <activity android:name=".MainActivity" android:screenOrientation="unspecified" android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
