@@ -1,0 +1,93 @@
+name: Build Little Red's Big AI Buffet APK
+
+on:
+  push:
+    branches: [ "feat/little-reds-big-ai-buffet-apk-20261005" ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-buffet-apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Prepare Android SDK and signing
+        run: |
+          set -euo pipefail
+          SDK_ROOT="$HOME/android-sdk"
+          echo "SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
+          mkdir -p "$SDK_ROOT"
+          curl -fsSLo "$RUNNER_TEMP/cmdline-tools.zip" "https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip"
+          unzip -q "$RUNNER_TEMP/cmdline-tools.zip" -d "$RUNNER_TEMP/android-tools"
+          mkdir -p "$SDK_ROOT/cmdline-tools/latest"
+          cp -a "$RUNNER_TEMP/android-tools/cmdline-tools/bin" "$RUNNER_TEMP/android-tools/cmdline-tools/lib" "$SDK_ROOT/cmdline-tools/latest/"
+          SDKMANAGER="$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
+          for i in $(seq 1 100); do printf 'y\n'; done | "$SDKMANAGER" --licenses --sdk_root="$SDK_ROOT" >/tmp/sdk-licenses.log 2>&1 || true
+          "$SDKMANAGER" --install "platform-tools" "build-tools;35.0.0" "platforms;android-36" >/tmp/sdk-install.log 2>&1
+          keytool -genkeypair -keystore android/app/release-key.jks -storepass android -keypass android -alias key0 -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Little Red's Big AI Buffet"
+
+      - name: Install pinned Gradle
+        run: |
+          set -euo pipefail
+          curl -fsSLo "$RUNNER_TEMP/gradle.zip" "https://services.gradle.org/distributions/gradle-8.9-bin.zip"
+          unzip -q "$RUNNER_TEMP/gradle.zip" -d "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/gradle-8.9/bin" >> "$GITHUB_PATH"
+          gradle --version
+
+      - name: Package Buffet UI
+        run: |
+          set -euo pipefail
+          rm -rf android/app/src/main/assets
+          mkdir -p android/app/src/main/assets
+          cp android/buffet/index.html android/app/src/main/assets/index.html
+          test -s android/app/src/main/assets/index.html
+
+      - name: Build native Android APK
+        env:
+          ANDROID_HOME: ${{ env.SDK_ROOT }}
+          ANDROID_SDK_ROOT: ${{ env.SDK_ROOT }}
+          TWA_SIGNING_KEY_PASSWORD: android
+          TWA_SIGNING_KEY_STORE_PASSWORD: android
+        run: |
+          set -euo pipefail
+          gradle --no-daemon --stacktrace -p android assembleRelease
+
+      - name: Verify APK
+        run: |
+          set -euo pipefail
+          APK="android/app/build/outputs/apk/release/app-release.apk"
+          test -s "$APK"
+          "$SDK_ROOT/build-tools/35.0.0/apksigner" verify --verbose "$APK"
+          sha256sum "$APK"
+          stat -c '%s bytes' "$APK"
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: little-reds-big-ai-buffet-apk
+          path: android/app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 9
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG="ai-buffet-apk-${GITHUB_RUN_NUMBER}"
+          gh release create "$TAG" android/app/build/outputs/apk/release/app-release.apk \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Little Red's Big AI Buffet APK ${GITHUB_RUN_NUMBER}" \
+            --notes "Standalone native Android build of Little Red's Big AI Buffet with bundled UI and native Android voice path."
