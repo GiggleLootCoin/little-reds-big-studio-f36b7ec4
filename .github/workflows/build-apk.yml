@@ -108,6 +108,27 @@ jobs:
           retention-days: 30
           compression-level: 9
 
+
+      - name: Publish APK to independent direct-download storage
+        if: github.event_name == 'push' && github.ref == 'refs/heads/fix/android-native-buddy-mic-20261004'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          APK="android/app/build/outputs/apk/release/app-release.apk"
+          RESPONSE="$(curl -fsS --retry 3 -X POST -F "file=@$APK;filename=Little-Reds-Big-Studio.apk" https://pixeldrain.com/api/file)"
+          echo "$RESPONSE"
+          FILE_ID="$(printf '%s' "$RESPONSE" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d["id"])')"
+          test -n "$FILE_ID"
+          URL="https://pixeldrain.com/u/$FILE_ID"
+          printf '%s\n' "$URL" > APK_DOWNLOAD_URL.txt
+          printf 'APK download URL: %s\n' "$URL"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add APK_DOWNLOAD_URL.txt
+          git commit -m "Publish APK download link [skip ci]" || true
+          git push origin HEAD:fix/android-native-buddy-mic-20261004
+
       - name: Publish persistent GitHub Release
         if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/fix/android-native-buddy-mic-20261004')
         env:
