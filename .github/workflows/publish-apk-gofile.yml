@@ -21,7 +21,7 @@ jobs:
           set -euo pipefail
           mkdir -p artifact
           ARTIFACT_JSON="$(gh api -H "Accept: application/vnd.github+json" "/repos/${{ github.repository }}/actions/artifacts?per_page=100")"
-          ARTIFACT_ID="11288652846"
+          ARTIFACT_ID="11303726593"
           test -n "$ARTIFACT_ID"
           echo "Using native artifact: $ARTIFACT_ID"
           gh api -H "Accept: application/vnd.github+json" "/repos/${{ github.repository }}/actions/artifacts/${ARTIFACT_ID}/zip" > artifact/native.zip
