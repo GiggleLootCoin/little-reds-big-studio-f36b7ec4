@@ -3,6 +3,8 @@ package com.littleredbigstudio.app;
 import android.Manifest;
 import android.app.Activity;
 import android.content.Context;
+import android.content.Intent;
+import android.net.Uri;
 import android.content.pm.PackageManager;
 import android.media.AudioAttributes;
 import android.media.AudioFocusRequest;
@@ -115,7 +117,12 @@ public class MainActivity extends Activity {
             @Override public boolean shouldOverrideUrlLoading(
                     WebView view, WebResourceRequest request) {
                 String url = request.getUrl().toString();
-                return !url.startsWith(REMOTE_ORIGIN);
+                if (url.startsWith(REMOTE_ORIGIN)) return false;
+                try {
+                    Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
+                    startActivity(intent);
+                } catch (Throwable ignored) {}
+                return true;
             }
 
             @Override public void onPageStarted(WebView view, String url, android.graphics.Bitmap favicon) {
@@ -132,6 +139,7 @@ public class MainActivity extends Activity {
         });
 
         webView.addJavascriptInterface(new BuddyVoiceBridge(), "AndroidBuddyVoice");
+        webView.addJavascriptInterface(new AndroidExternalBridge(), "AndroidExternal");
         setContentView(webView);
         initTts();
         webView.loadUrl(LOCAL_START_URL);
@@ -500,6 +508,13 @@ public class MainActivity extends Activity {
         });
     }
 
+    public final class AndroidExternalBridge {
+        @JavascriptInterface public void open(String url) {
+            if (url == null || url.trim().isEmpty()) return;
+            try { startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url))); } catch (Throwable ignored) {}
+        }
+    }
+
     public final class BuddyVoiceBridge {
         @JavascriptInterface public boolean isAvailable() {
             return ttsReady && tts != null;
@@ -604,6 +619,7 @@ public class MainActivity extends Activity {
         abandonAudioFocus();
         if (webView != null) {
             webView.removeJavascriptInterface("AndroidBuddyVoice");
+            webView.removeJavascriptInterface("AndroidExternal");
             webView.destroy();
         }
         super.onDestroy();
