@@ -76,12 +76,15 @@ public class MainActivity extends Activity {
         WebSettings settings = webView.getSettings();
         settings.setJavaScriptEnabled(true);
         settings.setDomStorageEnabled(true);
-        settings.setCacheMode(WebSettings.LOAD_NO_CACHE);
+        settings.setCacheMode(WebSettings.LOAD_DEFAULT);
         settings.setMediaPlaybackRequiresUserGesture(false);
         settings.setAllowFileAccess(false);
+        settings.setAllowFileAccessFromFileURLs(false);
+        settings.setAllowUniversalAccessFromFileURLs(false);
         settings.setAllowContentAccess(false);
         settings.setUserAgentString(
                 settings.getUserAgentString() + " LittleRedsBigStudioAndroid/NativeVoice");
+        settings.setSupportMultipleWindows(false);
 
         webView.setWebChromeClient(new WebChromeClient() {
             @Override public void onPermissionRequest(final PermissionRequest request) {
@@ -109,7 +112,7 @@ public class MainActivity extends Activity {
             @Override public boolean shouldOverrideUrlLoading(
                     WebView view, WebResourceRequest request) {
                 String url = request.getUrl().toString();
-                return !url.startsWith(REMOTE_ORIGIN);
+                return false;
             }
 
             @Override public void onReceivedError(
