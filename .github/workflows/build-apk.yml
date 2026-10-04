@@ -5,7 +5,7 @@ on:
   pull_request:
     branches: [main, "fix/studio-hardening-2026-10-03"]
   push:
-    branches: [main, "fix/android-buddy-voice-and-apk-2026-10-03"]
+    branches: [main, "fix/android-buddy-voice-and-apk-2026-10-03", "fix/android-native-buddy-mic-20261004"]
   workflow_dispatch:
 
 permissions:
@@ -109,13 +109,13 @@ jobs:
           compression-level: 9
 
       - name: Publish persistent GitHub Release
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/fix/android-native-buddy-mic-20261004')
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          TAG="apk-native-$GITHUB_RUN_NUMBER"
+          TAG="apk-native-buddy-mic-$GITHUB_RUN_NUMBER"
           gh release create "$TAG" android/app/build/outputs/apk/release/app-release.apk \
             --repo "$GITHUB_REPOSITORY" \
-            --title "Little Red's Big Studio Native APK $GITHUB_RUN_NUMBER" \
-            --notes "Native Android WebView build from main commit $GITHUB_SHA; includes Android Text-to-Speech fallback for Buddy voice responses."
+            --title "Little Red's Big Studio Native APK — Buddy Mic $GITHUB_RUN_NUMBER" \
+            --notes "Native Android build from Buddy mic fix branch commit $GITHUB_SHA. Buddy speech input uses Android SpeechRecognizer directly instead of WebView getUserMedia; original Studio UI remains bundled in the APK."
