@@ -20,11 +20,11 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p artifact
-          ARTIFACT_JSON="$(gh api -H "Accept: application/vnd.github+json"             "/repos/${{ github.repository }}/actions/artifacts?per_page=100")"
+          ARTIFACT_JSON="$(gh api -H "Accept: application/vnd.github+json" "/repos/${{ github.repository }}/actions/artifacts?per_page=100")"
           ARTIFACT_ID="$(python3 -c 'import json,sys; d=json.load(sys.stdin); xs=[a for a in d["artifacts"] if a["name"]=="little-reds-big-studio-native-android" and not a["expired"] and a["workflow_run"]["head_sha"]=="'${GITHUB_SHA}'"]; print(xs[0]["id"] if xs else "")' <<< "$ARTIFACT_JSON")"
           test -n "$ARTIFACT_ID"
           echo "Using native artifact: $ARTIFACT_ID"
-          gh api -H "Accept: application/vnd.github+json"             "/repos/${{ github.repository }}/actions/artifacts/${ARTIFACT_ID}/zip"             > artifact/native.zip
+          gh api -H "Accept: application/vnd.github+json" "/repos/${{ github.repository }}/actions/artifacts/${ARTIFACT_ID}/zip" > artifact/native.zip
           unzip -o artifact/native.zip -d artifact/unpacked
           APK="$(find artifact/unpacked -type f -name '*.apk' | head -n 1)"
           test -n "$APK"
