@@ -175,14 +175,6 @@ public class MainActivity extends Activity {
         });
     }
 
-    private String nativeSpeechLanguage() {
-        String language = Locale.US.toLanguageTag();
-        try {
-            Object value = webView == null ? null : null;
-        } catch (Throwable ignored) {}
-        return language;
-    }
-
     private boolean startNativeListening(String language) {
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, 4102);
