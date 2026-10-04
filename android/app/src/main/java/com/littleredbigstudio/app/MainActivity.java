@@ -5,6 +5,7 @@ import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.hardware.SensorPrivacyManager;
 import android.media.AudioAttributes;
 import android.media.AudioFocusRequest;
 import android.media.AudioManager;
@@ -552,10 +553,32 @@ public class MainActivity extends Activity {
                 "window.__buddyNativeSpeechError && window.__buddyNativeSpeechError('" + safe + "');", null));
     }
 
+    private boolean isSystemMicrophoneBlocked() {
+        if (Build.VERSION.SDK_INT < 31) return false;
+        try {
+            SensorPrivacyManager manager = getSystemService(SensorPrivacyManager.class);
+            return manager != null && manager.supportsSensorToggle(SensorPrivacyManager.Sensors.MICROPHONE)
+                    && manager.isSensorPrivacyEnabled(SensorPrivacyManager.Sensors.MICROPHONE);
+        } catch (Throwable ignored) {
+            return false;
+        }
+    }
+
+    private String nativeMicrophoneStatus() {
+        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) return "permission";
+        if (isSystemMicrophoneBlocked()) return "device_mic_off";
+        if (!SpeechRecognizer.isRecognitionAvailable(this)) return "speech_service_unavailable";
+        return "ready";
+    }
+
     private void startNativeSpeechRecognition(String language) {
         main.post(() -> {
             if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
                 sendNativeSpeechError("Android microphone permission is not granted.");
+                return;
+            }
+            if (isSystemMicrophoneBlocked()) {
+                sendNativeSpeechError("Android Mic Access is blocking microphone input for all apps. Turn on Mic Access in Quick Settings, then try Buddy again.");
                 return;
             }
             if (!SpeechRecognizer.isRecognitionAvailable(this)) {
@@ -625,8 +648,11 @@ public class MainActivity extends Activity {
         }
 
         @JavascriptInterface public boolean isNativeSpeechAvailable() {
-            return checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
-                    && SpeechRecognizer.isRecognitionAvailable(MainActivity.this);
+            return "ready".equals(nativeMicrophoneStatus());
+        }
+
+        @JavascriptInterface public String microphoneStatus() {
+            return nativeMicrophoneStatus();
         }
 
         @JavascriptInterface public void startNativeSpeech(String language) {
