@@ -1,5 +1,5 @@
 name: Build Little Red's Big Studio APK
-# Rebuild current main so the installable APK contains the latest Android Buddy voice fixes.
+# Rebuild current main so the installable APK contains the latest Android Buddy voice fixes.\n# Direct-download publishing is performed after a successful branch build.
 
 on:
   pull_request:
