@@ -1,11 +1,15 @@
 name: Build Little Red's Big Studio APK
-# Rebuild current main so the installable APK contains the latest Android Buddy voice fixes.
+# Rebuild current main so the installable APK contains the latest Android Buddy voice fixes.\n# Direct-download publishing is performed after a successful branch build.
+
+concurrency:
+  group: little-reds-big-studio-apk-\${{ github.ref }}
+  cancel-in-progress: true
 
 on:
   pull_request:
     branches: [main, "fix/studio-hardening-2026-10-03"]
   push:
-    branches: [main, "fix/android-buddy-voice-and-apk-2026-10-03"]
+    branches: [main, "fix/android-buddy-voice-and-apk-2026-10-03", "fix/android-native-buddy-mic-20261004"]
   workflow_dispatch:
 
 permissions:
@@ -35,8 +39,13 @@ jobs:
         run: npm ci --no-audit --no-fund --legacy-peer-deps
 
       - name: Build the web UI bundle
-        continue-on-error: true
-        run: npx vite build
+        run: |
+          set -euo pipefail
+          rm -rf dist
+          npx vite build
+          test -s dist/client/_shell.html
+          test "$(find dist/client -type f | wc -l)" -gt 5
+          echo "Verified TanStack Start SPA shell and client asset graph."
 
       - name: Package the verified client bundle into the APK
         run: |
@@ -108,14 +117,32 @@ jobs:
           retention-days: 30
           compression-level: 9
 
+
+      - name: Publish APK to GoFile
+        if: github.event_name == 'push' && github.ref == 'refs/heads/fix/android-native-buddy-mic-20261004'
+        run: |
+          set -euo pipefail
+          APK="android/app/build/outputs/apk/release/app-release.apk"
+          RESPONSE="$(curl -fsS --retry 3 -X POST -F "file=@$APK;filename=Little-Reds-Big-Studio-Native-Buddy-Mic.apk" https://upload.gofile.io/uploadfile)"
+          echo "$RESPONSE"
+          DOWNLOAD_PAGE="$(printf '%s' "$RESPONSE" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d.get("data",{}).get("downloadPage",""))')"
+          test -n "$DOWNLOAD_PAGE"
+          printf '%s\n' "$DOWNLOAD_PAGE" > APK_DOWNLOAD_URL.txt
+          echo "GoFile download page: $DOWNLOAD_PAGE"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add APK_DOWNLOAD_URL.txt
+          git commit -m "docs: publish native Buddy APK GoFile link [skip ci]" || true
+          git push origin HEAD:fix/android-native-buddy-mic-20261004
+
       - name: Publish persistent GitHub Release
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/fix/android-native-buddy-mic-20261004')
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          TAG="apk-native-$GITHUB_RUN_NUMBER"
+          TAG="apk-native-buddy-mic-$GITHUB_RUN_NUMBER"
           gh release create "$TAG" android/app/build/outputs/apk/release/app-release.apk \
             --repo "$GITHUB_REPOSITORY" \
-            --title "Little Red's Big Studio Native APK $GITHUB_RUN_NUMBER" \
-            --notes "Native Android WebView build from main commit $GITHUB_SHA; includes Android Text-to-Speech fallback for Buddy voice responses."
+            --title "Little Red's Big Studio Native APK — Buddy Mic $GITHUB_RUN_NUMBER" \
+            --notes "Native Android build from Buddy mic fix branch commit $GITHUB_SHA. Buddy speech input uses Android SpeechRecognizer directly instead of WebView getUserMedia; original Studio UI remains bundled in the APK."

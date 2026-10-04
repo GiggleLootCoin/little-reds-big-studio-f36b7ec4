@@ -12,6 +12,9 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.speech.SpeechRecognizer;
+import android.speech.RecognitionListener;
+import android.speech.RecognizerIntent;
 import android.speech.tts.TextToSpeech;
 import android.speech.tts.UtteranceProgressListener;
 import android.speech.tts.Voice;
@@ -23,13 +26,13 @@ import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
-import androidx.webkit.WebViewAssetLoader;
 
 import java.io.File;
 import java.io.IOException;
 import java.io.FileOutputStream;
 import android.util.Base64;
 import java.util.ArrayList;
+import android.content.Intent;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
@@ -52,7 +55,6 @@ public class MainActivity extends Activity {
     private static final long TTS_START_TIMEOUT_MS = 20000L;
 
     private WebView webView;
-    private boolean localBundleLoaded = true;
     private TextToSpeech tts;
     private MediaPlayer buddyPlayer;
     private AudioManager audioManager;
@@ -63,6 +65,8 @@ public class MainActivity extends Activity {
     private final CountDownLatch ttsInitLatch = new CountDownLatch(1);
     private final Handler main = new Handler(Looper.getMainLooper());
     private final AudioManager.OnAudioFocusChangeListener focusListener = focusChange -> {};
+    private SpeechRecognizer speechRecognizer;
+    private boolean nativeListening = false;
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
@@ -72,12 +76,15 @@ public class MainActivity extends Activity {
         WebSettings settings = webView.getSettings();
         settings.setJavaScriptEnabled(true);
         settings.setDomStorageEnabled(true);
-        settings.setCacheMode(WebSettings.LOAD_NO_CACHE);
+        settings.setCacheMode(WebSettings.LOAD_DEFAULT);
         settings.setMediaPlaybackRequiresUserGesture(false);
         settings.setAllowFileAccess(false);
+        settings.setAllowFileAccessFromFileURLs(false);
+        settings.setAllowUniversalAccessFromFileURLs(false);
         settings.setAllowContentAccess(false);
         settings.setUserAgentString(
                 settings.getUserAgentString() + " LittleRedsBigStudioAndroid/NativeVoice");
+        settings.setSupportMultipleWindows(false);
 
         webView.setWebChromeClient(new WebChromeClient() {
             @Override public void onPermissionRequest(final PermissionRequest request) {
@@ -100,33 +107,29 @@ public class MainActivity extends Activity {
             }
         });
 
-        final WebViewAssetLoader assetLoader = new WebViewAssetLoader.Builder()
-                .setDomain("little-reds-big-studio-f36b7ec4.gigglelootcoin.workers.dev")
-                .addPathHandler("/assets/", new WebViewAssetLoader.AssetsPathHandler(this))
-                .build();
-
+        webView.setBackgroundColor(android.graphics.Color.rgb(11, 5, 6));
         webView.setWebViewClient(new WebViewClient() {
-            @Override public WebResourceResponse shouldInterceptRequest(
-                    WebView view, WebResourceRequest request) {
-                WebResourceResponse local = assetLoader.shouldInterceptRequest(request.getUrl());
-                return local;
-            }
-
             @Override public boolean shouldOverrideUrlLoading(
                     WebView view, WebResourceRequest request) {
                 String url = request.getUrl().toString();
-                return !url.startsWith(REMOTE_ORIGIN);
-            }
-
-            @Override public void onPageStarted(WebView view, String url, android.graphics.Bitmap favicon) {
-                localBundleLoaded = url.contains("/assets/index.html");
+                return false;
             }
 
             @Override public void onReceivedError(
-                    WebView view, WebResourceRequest request, android.webkit.WebResourceError error) {
-                if (request.isForMainFrame() && localBundleLoaded) {
-                    localBundleLoaded = false;
-                    view.loadUrl(START_URL);
+                    WebView view, WebResourceRequest request,
+                    android.webkit.WebResourceError error) {
+                if (request.isForMainFrame()) {
+                    showBootError("Little Red's Big Studio could not load.\n\n" +
+                            "Check your internet connection, then tap Retry.");
+                }
+            }
+
+            @Override public void onReceivedHttpError(
+                    WebView view, WebResourceRequest request,
+                    android.webkit.WebResourceResponse errorResponse) {
+                if (request.isForMainFrame()) {
+                    showBootError("Little Red's Big Studio returned a loading error.\n\n" +
+                            "Tap Retry to try again.");
                 }
             }
         });
@@ -134,7 +137,122 @@ public class MainActivity extends Activity {
         webView.addJavascriptInterface(new BuddyVoiceBridge(), "AndroidBuddyVoice");
         setContentView(webView);
         initTts();
-        webView.loadUrl(LOCAL_START_URL);
+        // Load the real production Studio first. The previous APK attempted to
+        // boot a copied SPA shell from a synthetic /assets/ URL; that can render
+        // as a blank page when its generated module graph does not match the
+        // shell. Keeping the production origin here also preserves its exact
+        // routing, asset URLs, auth, and API behavior.
+        webView.loadUrl(START_URL);
+    }
+
+    private void showBootError(String message) {
+        if (webView == null) return;
+        String safe = message.replace("&", "&amp;").replace("<", "&lt;")
+                .replace(">", "&gt;").replace("\n", "<br>");
+        String html = "<!doctype html><html><body style='margin:0;background:#0b0506;color:#fff;font-family:sans-serif;display:flex;min-height:100vh;align-items:center;justify-content:center;text-align:center'>" +
+                "<div style='max-width:330px;padding:28px'><div style='font-size:54px'>●</div>" +
+                "<h1 style='margin:10px 0;color:#ff4d61'>Little Red's Big Studio</h1>" +
+                "<p style='line-height:1.5;color:#ddd'>" + safe + "</p>" +
+                "<button onclick='location.reload()' style='margin-top:12px;padding:13px 24px;border:0;border-radius:24px;background:#d71932;color:white;font-weight:700'>Retry</button>" +
+                "</div></body></html>";
+        webView.loadDataWithBaseURL(REMOTE_ORIGIN + "/", html, "text/html", "UTF-8", REMOTE_ORIGIN + "/");
+    }
+
+    private void ensureSpeechRecognizer() {
+        if (speechRecognizer != null) return;
+        if (!SpeechRecognizer.isRecognitionAvailable(this)) return;
+        speechRecognizer = SpeechRecognizer.createSpeechRecognizer(this);
+        speechRecognizer.setRecognitionListener(new RecognitionListener() {
+            @Override public void onReadyForSpeech(Bundle params) {
+                nativeListening = true;
+                notifyNativeSpeechState("ready");
+            }
+            @Override public void onBeginningOfSpeech() { notifyNativeSpeechState("listening"); }
+            @Override public void onRmsChanged(float rmsdB) {}
+            @Override public void onBufferReceived(byte[] buffer) {}
+            @Override public void onEndOfSpeech() {
+                nativeListening = false;
+                notifyNativeSpeechState("ended");
+            }
+            @Override public void onError(int error) {
+                nativeListening = false;
+                notifyNativeSpeechError(error);
+            }
+            @Override public void onResults(Bundle results) {
+                nativeListening = false;
+                ArrayList<String> matches = results == null
+                        ? null : results.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
+                String transcript = (matches != null && !matches.isEmpty()) ? matches.get(0) : "";
+                notifyNativeSpeechResult(transcript);
+            }
+            @Override public void onPartialResults(Bundle partialResults) {}
+            @Override public void onEvent(int eventType, Bundle params) {}
+        });
+    }
+
+    private boolean startNativeListening(String language) {
+        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, 4102);
+            return false;
+        }
+        if (!SpeechRecognizer.isRecognitionAvailable(this)) return false;
+        try {
+            ensureSpeechRecognizer();
+            if (speechRecognizer == null) return false;
+            if (nativeListening) {
+                try { speechRecognizer.stopListening(); } catch (Throwable ignored) {}
+            }
+            Intent intent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
+            intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
+            intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE,
+                    language == null || language.trim().isEmpty() ? "en-US" : language);
+            intent.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false);
+            intent.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3);
+            speechRecognizer.startListening(intent);
+            nativeListening = true;
+            return true;
+        } catch (Throwable error) {
+            nativeListening = false;
+            return false;
+        }
+    }
+
+    private void stopNativeListening() {
+        nativeListening = false;
+        if (speechRecognizer != null) {
+            try { speechRecognizer.stopListening(); } catch (Throwable ignored) {}
+            try { speechRecognizer.cancel(); } catch (Throwable ignored) {}
+        }
+    }
+
+    private void notifyNativeSpeechState(String state) {
+        main.post(() -> {
+            if (webView == null) return;
+            String safe = state == null ? "" : state.replace("\\", "\\\\").replace("'", "\\'");
+            webView.evaluateJavascript(
+                    "window.__buddyNativeSpeechState && window.__buddyNativeSpeechState('" + safe + "');",
+                    null);
+        });
+    }
+
+    private void notifyNativeSpeechResult(String transcript) {
+        main.post(() -> {
+            if (webView == null) return;
+            String safe = transcript == null ? "" : transcript
+                    .replace("\\", "\\\\").replace("'", "\\'").replace("\n", " ");
+            webView.evaluateJavascript(
+                    "window.__buddyNativeSpeechResult && window.__buddyNativeSpeechResult('" + safe + "');",
+                    null);
+        });
+    }
+
+    private void notifyNativeSpeechError(int error) {
+        main.post(() -> {
+            if (webView == null) return;
+            webView.evaluateJavascript(
+                    "window.__buddyNativeSpeechError && window.__buddyNativeSpeechError(" + error + ");",
+                    null);
+        });
     }
 
     private void initTts() {
@@ -501,6 +619,28 @@ public class MainActivity extends Activity {
     }
 
     public final class BuddyVoiceBridge {
+        @JavascriptInterface public boolean nativeSpeechAvailable() {
+            return SpeechRecognizer.isRecognitionAvailable(MainActivity.this);
+        }
+
+        @JavascriptInterface public boolean microphoneGranted() {
+            return checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED;
+        }
+
+        @JavascriptInterface public boolean requestMicrophone() {
+            if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) return true;
+            requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, 4102);
+            return false;
+        }
+
+        @JavascriptInterface public boolean startNativeListening(String language) {
+            return MainActivity.this.startNativeListening(language);
+        }
+
+        @JavascriptInterface public void stopNativeListening() {
+            MainActivity.this.stopNativeListening();
+        }
+
         @JavascriptInterface public boolean isAvailable() {
             return ttsReady && tts != null;
         }
@@ -592,6 +732,8 @@ public class MainActivity extends Activity {
     }
 
     @Override protected void onDestroy() {
+        stopNativeListening();
+        if (speechRecognizer != null) { try { speechRecognizer.destroy(); } catch (Throwable ignored) {} speechRecognizer = null; }
         if (tts != null) {
             try { tts.stop(); } catch (Throwable ignored) {}
             tts.shutdown();
