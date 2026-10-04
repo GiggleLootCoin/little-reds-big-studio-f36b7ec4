@@ -478,7 +478,7 @@ export async function runStudioJob(
               : prepared.capability === "chat"
                 ? 18000
                 : prepared.capability === "speech-to-text"
-                  ? 9000
+                  ? 30000
                   : 120000;
   for (const provider of providers) {
     try {
