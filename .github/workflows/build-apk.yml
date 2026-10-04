@@ -5,7 +5,7 @@ on:
   pull_request:
     branches: [main, "fix/studio-hardening-2026-10-03"]
   push:
-    branches: [main, "fix/android-buddy-voice-and-apk-2026-10-03"]
+    branches: [main, "fix/android-buddy-voice-and-apk-2026-10-03", "fix/android-webview-mic-camera-permissions-20261004"]
   workflow_dispatch:
 
 permissions:
@@ -109,7 +109,7 @@ jobs:
           compression-level: 9
 
       - name: Publish persistent GitHub Release
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/fix/android-webview-mic-camera-permissions-20261004')
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
