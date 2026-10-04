@@ -63,6 +63,7 @@ public class MainActivity extends Activity {
     private final CountDownLatch ttsInitLatch = new CountDownLatch(1);
     private final Handler main = new Handler(Looper.getMainLooper());
     private final AudioManager.OnAudioFocusChangeListener focusListener = focusChange -> {};
+    private PermissionRequest pendingWebPermissionRequest;
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
@@ -82,21 +83,43 @@ public class MainActivity extends Activity {
         webView.setWebChromeClient(new WebChromeClient() {
             @Override public void onPermissionRequest(final PermissionRequest request) {
                 runOnUiThread(() -> {
-                    boolean wantsAudio = false;
-                    for (String resource : request.getResources()) {
-                        if (PermissionRequest.RESOURCE_AUDIO_CAPTURE.equals(resource)) {
-                            wantsAudio = true;
-                            break;
-                        }
+                    String host = request.getOrigin() == null ? "" : request.getOrigin().getHost();
+                    if (!"little-reds-big-studio-f36b7ec4.gigglelootcoin.workers.dev".equalsIgnoreCase(host)) {
+                        request.deny();
+                        return;
                     }
+
+                    boolean wantsAudio = false;
+                    boolean wantsCamera = false;
+                    for (String resource : request.getResources()) {
+                        if (PermissionRequest.RESOURCE_AUDIO_CAPTURE.equals(resource)) wantsAudio = true;
+                        if (PermissionRequest.RESOURCE_VIDEO_CAPTURE.equals(resource)) wantsCamera = true;
+                    }
+
+                    List<String> missing = new ArrayList<>();
                     if (wantsAudio &&
                             checkSelfPermission(Manifest.permission.RECORD_AUDIO)
                                     != PackageManager.PERMISSION_GRANTED) {
-                        requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, 4101);
+                        missing.add(Manifest.permission.RECORD_AUDIO);
+                    }
+                    if (wantsCamera &&
+                            checkSelfPermission(Manifest.permission.CAMERA)
+                                    != PackageManager.PERMISSION_GRANTED) {
+                        missing.add(Manifest.permission.CAMERA);
+                    }
+
+                    if (!missing.isEmpty()) {
+                        pendingWebPermissionRequest = request;
+                        requestPermissions(missing.toArray(new String[0]), 4101);
                     } else {
                         request.grant(request.getResources());
                     }
                 });
+            }
+
+            @Override public void onPermissionRequestCanceled(PermissionRequest request) {
+                if (pendingWebPermissionRequest == request) pendingWebPermissionRequest = null;
+                request.deny();
             }
         });
 
@@ -135,6 +158,31 @@ public class MainActivity extends Activity {
         setContentView(webView);
         initTts();
         webView.loadUrl(LOCAL_START_URL);
+    }
+
+    @Override public void onRequestPermissionsResult(
+            int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode != 4101) return;
+
+        PermissionRequest request = pendingWebPermissionRequest;
+        pendingWebPermissionRequest = null;
+        if (request == null) return;
+
+        boolean allGranted = grantResults.length > 0;
+        for (int result : grantResults) {
+            if (result != PackageManager.PERMISSION_GRANTED) {
+                allGranted = false;
+                break;
+            }
+        }
+
+        try {
+            if (allGranted) request.grant(request.getResources());
+            else request.deny();
+        } catch (Throwable ignored) {
+            try { request.deny(); } catch (Throwable ignoredAgain) {}
+        }
     }
 
     private void initTts() {
