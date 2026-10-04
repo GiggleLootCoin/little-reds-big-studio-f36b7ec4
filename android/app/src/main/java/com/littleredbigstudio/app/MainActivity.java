@@ -12,6 +12,9 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.speech.SpeechRecognizer;
+import android.speech.RecognitionListener;
+import android.speech.RecognizerIntent;
 import android.speech.tts.TextToSpeech;
 import android.speech.tts.UtteranceProgressListener;
 import android.speech.tts.Voice;
@@ -30,6 +33,7 @@ import java.io.IOException;
 import java.io.FileOutputStream;
 import android.util.Base64;
 import java.util.ArrayList;
+import android.content.Intent;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
@@ -63,6 +67,8 @@ public class MainActivity extends Activity {
     private final CountDownLatch ttsInitLatch = new CountDownLatch(1);
     private final Handler main = new Handler(Looper.getMainLooper());
     private final AudioManager.OnAudioFocusChangeListener focusListener = focusChange -> {};
+    private SpeechRecognizer speechRecognizer;
+    private boolean nativeListening = false;
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
@@ -135,6 +141,111 @@ public class MainActivity extends Activity {
         setContentView(webView);
         initTts();
         webView.loadUrl(LOCAL_START_URL);
+    }
+
+    private void ensureSpeechRecognizer() {
+        if (speechRecognizer != null) return;
+        if (!SpeechRecognizer.isRecognitionAvailable(this)) return;
+        speechRecognizer = SpeechRecognizer.createSpeechRecognizer(this);
+        speechRecognizer.setRecognitionListener(new RecognitionListener() {
+            @Override public void onReadyForSpeech(Bundle params) {
+                nativeListening = true;
+                notifyNativeSpeechState("ready");
+            }
+            @Override public void onBeginningOfSpeech() { notifyNativeSpeechState("listening"); }
+            @Override public void onRmsChanged(float rmsdB) {}
+            @Override public void onBufferReceived(byte[] buffer) {}
+            @Override public void onEndOfSpeech() {
+                nativeListening = false;
+                notifyNativeSpeechState("ended");
+            }
+            @Override public void onError(int error) {
+                nativeListening = false;
+                notifyNativeSpeechError(error);
+            }
+            @Override public void onResults(Bundle results) {
+                nativeListening = false;
+                ArrayList<String> matches = results == null
+                        ? null : results.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
+                String transcript = (matches != null && !matches.isEmpty()) ? matches.get(0) : "";
+                notifyNativeSpeechResult(transcript);
+            }
+            @Override public void onPartialResults(Bundle partialResults) {}
+            @Override public void onEvent(int eventType, Bundle params) {}
+        });
+    }
+
+    private String nativeSpeechLanguage() {
+        String language = Locale.US.toLanguageTag();
+        try {
+            Object value = webView == null ? null : null;
+        } catch (Throwable ignored) {}
+        return language;
+    }
+
+    private boolean startNativeListening(String language) {
+        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, 4102);
+            return false;
+        }
+        if (!SpeechRecognizer.isRecognitionAvailable(this)) return false;
+        try {
+            ensureSpeechRecognizer();
+            if (speechRecognizer == null) return false;
+            if (nativeListening) {
+                try { speechRecognizer.stopListening(); } catch (Throwable ignored) {}
+            }
+            Intent intent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
+            intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
+            intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE,
+                    language == null || language.trim().isEmpty() ? "en-US" : language);
+            intent.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false);
+            intent.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3);
+            speechRecognizer.startListening(intent);
+            nativeListening = true;
+            return true;
+        } catch (Throwable error) {
+            nativeListening = false;
+            return false;
+        }
+    }
+
+    private void stopNativeListening() {
+        nativeListening = false;
+        if (speechRecognizer != null) {
+            try { speechRecognizer.stopListening(); } catch (Throwable ignored) {}
+            try { speechRecognizer.cancel(); } catch (Throwable ignored) {}
+        }
+    }
+
+    private void notifyNativeSpeechState(String state) {
+        main.post(() -> {
+            if (webView == null) return;
+            String safe = state == null ? "" : state.replace("\\", "\\\\").replace("'", "\\'");
+            webView.evaluateJavascript(
+                    "window.__buddyNativeSpeechState && window.__buddyNativeSpeechState('" + safe + "');",
+                    null);
+        });
+    }
+
+    private void notifyNativeSpeechResult(String transcript) {
+        main.post(() -> {
+            if (webView == null) return;
+            String safe = transcript == null ? "" : transcript
+                    .replace("\\", "\\\\").replace("'", "\\'").replace("\n", " ");
+            webView.evaluateJavascript(
+                    "window.__buddyNativeSpeechResult && window.__buddyNativeSpeechResult('" + safe + "');",
+                    null);
+        });
+    }
+
+    private void notifyNativeSpeechError(int error) {
+        main.post(() -> {
+            if (webView == null) return;
+            webView.evaluateJavascript(
+                    "window.__buddyNativeSpeechError && window.__buddyNativeSpeechError(" + error + ");",
+                    null);
+        });
     }
 
     private void initTts() {
@@ -501,6 +612,28 @@ public class MainActivity extends Activity {
     }
 
     public final class BuddyVoiceBridge {
+        @JavascriptInterface public boolean nativeSpeechAvailable() {
+            return SpeechRecognizer.isRecognitionAvailable(MainActivity.this);
+        }
+
+        @JavascriptInterface public boolean microphoneGranted() {
+            return checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED;
+        }
+
+        @JavascriptInterface public boolean requestMicrophone() {
+            if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) return true;
+            requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, 4102);
+            return false;
+        }
+
+        @JavascriptInterface public boolean startNativeListening(String language) {
+            return MainActivity.this.startNativeListening(language);
+        }
+
+        @JavascriptInterface public void stopNativeListening() {
+            MainActivity.this.stopNativeListening();
+        }
+
         @JavascriptInterface public boolean isAvailable() {
             return ttsReady && tts != null;
         }
@@ -592,6 +725,8 @@ public class MainActivity extends Activity {
     }
 
     @Override protected void onDestroy() {
+        stopNativeListening();
+        if (speechRecognizer != null) { try { speechRecognizer.destroy(); } catch (Throwable ignored) {} speechRecognizer = null; }
         if (tts != null) {
             try { tts.stop(); } catch (Throwable ignored) {}
             tts.shutdown();
