@@ -49,10 +49,18 @@ export async function requestMicrophone(deviceId?: string): Promise<MediaStream>
   if (deviceId && deviceId !== "default") constraints.deviceId = { exact: deviceId };
   try {
     return await navigator.mediaDevices.getUserMedia({ audio: constraints, video: false });
-  } catch (error) {
-    if (deviceId && deviceId !== "default")
-      return navigator.mediaDevices.getUserMedia({ audio: base, video: false });
-    throw error;
+  } catch (firstError) {
+    try {
+      if (deviceId && deviceId !== "default")
+        return await navigator.mediaDevices.getUserMedia({ audio: base, video: false });
+    } catch {}
+    try {
+      // Some Samsung WebView/Android microphone stacks reject advanced
+      // constraints even though plain microphone capture works.
+      return await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+    } catch {
+      throw firstError;
+    }
   }
 }
 

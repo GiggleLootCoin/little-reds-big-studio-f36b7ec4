@@ -23,11 +23,12 @@ test("Buddy sends a bounded recent conversation window to reduce prompt prefill 
 });
 
 
-test("voice capture uses on-device final speech transcript before remote transcription", () => {
-  assert.match(chat, /const fastTranscript = nativeTranscript\.current\.trim\(\)/);
-  assert.match(chat, /if \(fastTranscript\) \{ setTranscript\(fastTranscript\); void answer\(fastTranscript, true\)/);
-  assert.match(chat, /else if \(b\.size\) void stt\(b\)/);
-  assert.match(chat, /startNativeSpeech\(\); if \(isLive\) monitor\(s\)/);
+test("voice capture records microphone audio and uses remote transcription without requiring Android SpeechRecognition", () => {
+  assert.doesNotMatch(chat, /startNativeSpeech\(\)/);
+  assert.doesNotMatch(chat, /SpeechRecognition/);
+  assert.match(chat, /MediaRecorder/);
+  assert.match(chat, /const b = new Blob\(chunks\.current/);
+  assert.match(chat, /runStudioJob\("speech-to-text", \{ audio: blob \}/);
 });
 
 test("live and tap-to-talk gestures unlock audio before asynchronous microphone work", () => {

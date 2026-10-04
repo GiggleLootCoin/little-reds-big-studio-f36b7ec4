@@ -16,10 +16,12 @@ const [runtime, engine, gateway, picker, chat, voice, server, previews, routing,
   readFile("scripts/write-worker-wrapper.mjs", "utf8"),
 ]);
 
-test("tap-to-talk uses native Android speech recognition before the slower Whisper path", () => {
-  assert.match(chat, /const fastTranscript = nativeTranscript\.current\.trim\(\)/);
-  assert.match(chat, /startNativeSpeech\(\);\s*if \(isLive\) monitor\(s\)/);
-  assert.match(chat, /else if \(b\.size\)[\s\S]*?stt\(b\)/);
+test("tap-to-talk uses recorded microphone audio and server transcription without Android SpeechRecognition", () => {
+  assert.doesNotMatch(chat, /startNativeSpeech\(\)/);
+  assert.doesNotMatch(chat, /SpeechRecognition/);
+  assert.match(chat, /runStudioJob\("speech-to-text", \{ audio: blob \}/);
+  assert.match(chat, /MediaRecorder/);
+  assert.match(chat, /if \(isLive\) monitor\(s\)/);
 });
 
 test("Android never pre-empts the selected Red clone with generic native TTS", () => {
