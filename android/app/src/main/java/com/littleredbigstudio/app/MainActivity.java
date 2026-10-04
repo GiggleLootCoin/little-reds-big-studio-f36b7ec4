@@ -12,6 +12,9 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.speech.SpeechRecognizer;
+import android.speech.RecognitionListener;
+import android.speech.RecognizerIntent;
 import android.speech.tts.TextToSpeech;
 import android.speech.tts.UtteranceProgressListener;
 import android.speech.tts.Voice;
@@ -63,6 +66,7 @@ public class MainActivity extends Activity {
     private volatile String activeEngine = "";
     private volatile String activeVoice = "";
     private PermissionRequest pendingWebPermissionRequest;
+    private SpeechRecognizer speechRecognizer;
     private final CountDownLatch ttsInitLatch = new CountDownLatch(1);
     private final Handler main = new Handler(Looper.getMainLooper());
     private final AudioManager.OnAudioFocusChangeListener focusListener = focusChange -> {};
@@ -528,6 +532,77 @@ public class MainActivity extends Activity {
         });
     }
 
+    private String jsSafe(String value) {
+        if (value == null) return "";
+        return value.replace("\\", "\\\\").replace("'", "\\'").replace("\\n", "\\n").replace("\\r", "\\r");
+    }
+
+    private void sendNativeSpeechResult(String text) {
+        if (webView == null) return;
+        String safe = jsSafe(text);
+        main.post(() -> webView.evaluateJavascript(
+                "window.__buddyNativeSpeechResult && window.__buddyNativeSpeechResult('" + safe + "');", null));
+    }
+
+    private void sendNativeSpeechError(String message) {
+        if (webView == null) return;
+        String safe = jsSafe(message);
+        main.post(() -> webView.evaluateJavascript(
+                "window.__buddyNativeSpeechError && window.__buddyNativeSpeechError('" + safe + "');", null));
+    }
+
+    private void startNativeSpeechRecognition(String language) {
+        main.post(() -> {
+            if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+                sendNativeSpeechError("Android microphone permission is not granted.");
+                return;
+            }
+            if (!SpeechRecognizer.isRecognitionAvailable(this)) {
+                sendNativeSpeechError("No Android speech recognition service is available on this phone.");
+                return;
+            }
+            try {
+                stopNativeSpeechRecognition();
+                speechRecognizer = SpeechRecognizer.createSpeechRecognizer(this);
+                speechRecognizer.setRecognitionListener(new RecognitionListener() {
+                    @Override public void onReadyForSpeech(Bundle params) {}
+                    @Override public void onBeginningOfSpeech() {}
+                    @Override public void onRmsChanged(float rmsdB) {}
+                    @Override public void onBufferReceived(byte[] buffer) {}
+                    @Override public void onEndOfSpeech() {}
+                    @Override public void onPartialResults(Bundle partialResults) {}
+                    @Override public void onEvent(int eventType, Bundle params) {}
+                    @Override public void onError(int error) {
+                        sendNativeSpeechError("Android speech recognition error " + error + ".");
+                    }
+                    @Override public void onResults(Bundle results) {
+                        ArrayList<String> matches = results == null ? null :
+                                results.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
+                        if (matches != null && !matches.isEmpty()) sendNativeSpeechResult(matches.get(0));
+                        else sendNativeSpeechError("I didn't catch that. Try again.");
+                    }
+                });
+                Intent intent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
+                intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
+                intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE, language == null || language.trim().isEmpty() ? Locale.US.toLanguageTag() : language);
+                intent.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false);
+                intent.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1);
+                speechRecognizer.startListening(intent);
+            } catch (Throwable error) {
+                sendNativeSpeechError("Android speech recognition could not start.");
+            }
+        });
+    }
+
+    private void stopNativeSpeechRecognition() {
+        if (speechRecognizer != null) {
+            try { speechRecognizer.stopListening(); } catch (Throwable ignored) {}
+            try { speechRecognizer.cancel(); } catch (Throwable ignored) {}
+            try { speechRecognizer.destroy(); } catch (Throwable ignored) {}
+            speechRecognizer = null;
+        }
+    }
+
     public final class BuddyVoiceBridge {
         @JavascriptInterface public boolean isAvailable() {
             return ttsReady && tts != null;
@@ -546,6 +621,19 @@ public class MainActivity extends Activity {
             if (!awaitTtsReady()) return false;
             main.post(() -> speakNow(text));
             return true;
+        }
+
+        @JavascriptInterface public boolean isNativeSpeechAvailable() {
+            return checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+                    && SpeechRecognizer.isRecognitionAvailable(MainActivity.this);
+        }
+
+        @JavascriptInterface public void startNativeSpeech(String language) {
+            startNativeSpeechRecognition(language);
+        }
+
+        @JavascriptInterface public void stopNativeSpeech() {
+            main.post(() -> stopNativeSpeechRecognition());
         }
 
         @JavascriptInterface public void playBase64Async(String base64, String mimeType, String callbackId) {
@@ -648,6 +736,7 @@ public class MainActivity extends Activity {
             try { pendingWebPermissionRequest.deny(); } catch (Throwable ignored) {}
             pendingWebPermissionRequest = null;
         }
+        stopNativeSpeechRecognition();
         if (webView != null) {
             webView.removeJavascriptInterface("AndroidBuddyVoice");
             webView.destroy();
