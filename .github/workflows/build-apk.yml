@@ -1,6 +1,10 @@
 name: Build Little Red's Big Studio APK
 # Rebuild current main so the installable APK contains the latest Android Buddy voice fixes.\n# Direct-download publishing is performed after a successful branch build.
 
+concurrency:
+  group: little-reds-big-studio-apk-\${{ github.ref }}
+  cancel-in-progress: true
+
 on:
   pull_request:
     branches: [main, "fix/studio-hardening-2026-10-03"]
