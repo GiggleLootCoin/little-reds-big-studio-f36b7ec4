@@ -35,8 +35,13 @@ jobs:
         run: npm ci --no-audit --no-fund --legacy-peer-deps
 
       - name: Build the web UI bundle
-        continue-on-error: true
-        run: npx vite build
+        run: |
+          set -euo pipefail
+          rm -rf dist
+          npx vite build
+          test -s dist/client/_shell.html
+          test "$(find dist/client -type f | wc -l)" -gt 5
+          echo "Verified TanStack Start SPA shell and client asset graph."
 
       - name: Package the verified client bundle into the APK
         run: |
