@@ -5,7 +5,7 @@ on:
   pull_request:
     branches: [main, "fix/studio-hardening-2026-10-03"]
   push:
-    branches: [main, "fix/android-buddy-voice-and-apk-2026-10-03"]
+    branches: [main, "fix/final-android-release-and-gofile-20261005"]
   workflow_dispatch:
 
 permissions:
@@ -35,7 +35,6 @@ jobs:
         run: npm ci --no-audit --no-fund --legacy-peer-deps
 
       - name: Build the web UI bundle
-        continue-on-error: true
         run: npx vite build
 
       - name: Package the verified client bundle into the APK
@@ -95,7 +94,8 @@ jobs:
           set -euo pipefail
           APK="android/app/build/outputs/apk/release/app-release.apk"
           test -s "$APK"
-          "$SDK_ROOT/build-tools/35.0.0/apksigner" verify --verbose "$APK"
+          "$SDK_ROOT/build-tools/35.0.0/zipalign" -c -v 4 "$APK"
+          "$SDK_ROOT/build-tools/35.0.0/apksigner" verify --verbose --min-sdk-version 24 "$APK"
           sha256sum "$APK"
           stat -c '%s bytes' "$APK"
 
@@ -107,6 +107,27 @@ jobs:
           if-no-files-found: error
           retention-days: 30
           compression-level: 9
+
+      - name: Publish free Gofile download
+        env:
+          APK: android/app/build/outputs/apk/release/app-release.apk
+        run: |
+          set -euo pipefail
+          RESPONSE="$(curl --fail-with-body --retry 3 --retry-delay 2 -sS -F "file=@${APK}" https://upload.gofile.io/uploadfile)"
+          echo "$RESPONSE" > "$RUNNER_TEMP/gofile-response.json"
+          STATUS="$(jq -r '.status // empty' "$RUNNER_TEMP/gofile-response.json")"
+          test "$STATUS" = "ok"
+          DOWNLOAD_PAGE="$(jq -r '.data.downloadPage // empty' "$RUNNER_TEMP/gofile-response.json")"
+          test -n "$DOWNLOAD_PAGE"
+          {
+            echo "## Free Gofile APK download"
+            echo
+            echo "$DOWNLOAD_PAGE"
+            echo
+            echo "SHA-256:"
+            sha256sum "$APK"
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "Gofile download: $DOWNLOAD_PAGE"
 
       - name: Publish persistent GitHub Release
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
