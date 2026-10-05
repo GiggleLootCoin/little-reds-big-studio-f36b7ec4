@@ -131,6 +131,37 @@ public class MainActivity extends Activity {
                     view.loadUrl(START_URL);
                 }
             }
+
+            @Override public void onReceivedHttpError(
+                    WebView view, WebResourceRequest request, WebResourceResponse errorResponse) {
+                if (request.isForMainFrame() && localBundleLoaded &&
+                        errorResponse != null && errorResponse.getStatusCode() >= 400) {
+                    localBundleLoaded = false;
+                    view.loadUrl(START_URL);
+                }
+            }
+
+            @Override public void onPageFinished(WebView view, String url) {
+                super.onPageFinished(view, url);
+                if (!localBundleLoaded) return;
+                // The packaged TanStack shell can return HTTP 200 while a WebView
+                // JavaScript/module failure leaves a completely white page. Give
+                // the local bundle a short chance to render, then fall back to
+                // the live production route instead of trapping the user on blank.
+                main.postDelayed(() -> {
+                    if (!localBundleLoaded || webView != view) return;
+                    view.evaluateJavascript(
+                            "(function(){var b=document.body;return !!b && " +
+                            "((b.innerText||'').trim().length>0 || b.children.length>2);})()",
+                            value -> {
+                                if (localBundleLoaded &&
+                                        ("false".equals(value) || "null".equals(value))) {
+                                    localBundleLoaded = false;
+                                    view.loadUrl(START_URL);
+                                }
+                            });
+                }, 1200L);
+            }
         });
 
         webView.addJavascriptInterface(new BuddyVoiceBridge(), "AndroidBuddyVoice");
