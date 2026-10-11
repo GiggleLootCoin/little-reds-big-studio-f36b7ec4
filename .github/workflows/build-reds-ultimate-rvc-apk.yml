@@ -37,19 +37,23 @@ jobs:
       - name: Verify APK
         working-directory: rvc-android
         run: |
-          test -s app/build/outputs/apk/release/app-release.apk
-          sha256sum app/build/outputs/apk/release/app-release.apk
+          find app/build/outputs -type f -name "*.apk" -print
+          APK=$(find app/build/outputs -type f -name "*.apk" | head -1)
+          test -n "$APK"
+          test -s "$APK"
+          cp "$APK" app-release.apk
+          sha256sum app-release.apk
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: reds-ultimate-rvc-android
-          path: rvc-android/app/build/outputs/apk/release/app-release.apk
+          path: rvc-android/app-release.apk
           retention-days: 30
 
       - name: Publish free Gofile download
         env:
-          APK: rvc-android/app/build/outputs/apk/release/app-release.apk
+          APK: rvc-android/app-release.apk
         run: |
           set -e
           RESPONSE=$(curl --fail-with-body --retry 3 --retry-delay 2 -sS -F "file=@$APK" https://upload.gofile.io/uploadfile)
@@ -63,4 +67,4 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           TAG="reds-ultimate-rvc-apk-$GITHUB_RUN_NUMBER"
-          gh release create "$TAG" rvc-android/app/build/outputs/apk/release/app-release.apk --repo "$GITHUB_REPOSITORY" --title "Red's Ultimate RVC Android APK $GITHUB_RUN_NUMBER" --notes "Native on-device RVC. No Hugging Face inference GPU."
+          gh release create "$TAG" rvc-android/app-release.apk --repo "$GITHUB_REPOSITORY" --title "Red's Ultimate RVC Android APK $GITHUB_RUN_NUMBER" --notes "Native on-device RVC. No Hugging Face inference GPU."
