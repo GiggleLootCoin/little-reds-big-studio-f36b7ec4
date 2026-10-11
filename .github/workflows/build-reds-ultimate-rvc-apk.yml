@@ -28,6 +28,54 @@ jobs:
           distribution: temurin
           java-version: "17"
 
+      - name: Apply LittleRedBigSmile launcher logo
+        working-directory: rvc-android
+        run: |
+          set -e
+          curl -L --fail --retry 3 -o little-red-big-smile-logo.png "https://raw.githubusercontent.com/GiggleLootCoin/little-reds-big-studio-f36b7ec4/main/1784996969001.png"
+          python3 -m pip install --quiet Pillow
+          python3 - <<'PY'
+          from PIL import Image
+          from pathlib import Path
+
+          src = Image.open("little-red-big-smile-logo.png").convert("RGBA")
+          # Preserve the actual LittleRedBigSmile logo while fitting it safely inside
+          # Android's launcher-icon mask.
+          def fitted_square(size, padding=0.78, bg=(255,255,255,255)):
+              canvas = Image.new("RGBA", (size, size), bg)
+              logo = src.copy()
+              max_w = int(size * padding)
+              max_h = int(size * padding)
+              logo.thumbnail((max_w, max_h), Image.Resampling.LANCZOS)
+              x = (size - logo.width) // 2
+              y = (size - logo.height) // 2
+              canvas.alpha_composite(logo, (x, y))
+              return canvas
+
+          def foreground(size):
+              canvas = Image.new("RGBA", (size, size), (0,0,0,0))
+              logo = src.copy()
+              logo.thumbnail((int(size*0.78), int(size*0.78)), Image.Resampling.LANCZOS)
+              canvas.alpha_composite(logo, ((size-logo.width)//2, (size-logo.height)//2))
+              return canvas
+
+          res = Path("app/src/main/res")
+          for dens, px in {"mdpi":48,"hdpi":72,"xhdpi":96,"xxhdpi":144,"xxxhdpi":192}.items():
+              d = res / f"mipmap-{dens}"
+              d.mkdir(parents=True, exist_ok=True)
+              fitted_square(px).save(d/"ic_launcher.png", "PNG")
+              fitted_square(px).save(d/"ic_launcher_round.png", "PNG")
+
+          for dens, px in {"mdpi":108,"hdpi":162,"xhdpi":216,"xxhdpi":324,"xxxhdpi":432}.items():
+              d = res / f"mipmap-{dens}"
+              d.mkdir(parents=True, exist_ok=True)
+              fitted_square(px).save(d/"ic_launcher_background.png", "PNG")
+              foreground(px).save(d/"ic_launcher_foreground.png", "PNG")
+              foreground(px).convert("L").save(d/"ic_launcher_monochrome.png", "PNG")
+
+          print("LittleRedBigSmile launcher logo applied.")
+          PY
+
       - name: Build unsigned release APK
         working-directory: rvc-android
         run: |
