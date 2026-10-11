@@ -1,0 +1,129 @@
+name: Build Red's Ultimate RVC Android APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/build-reds-ultimate-rvc-apk.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  build-rvc-apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+
+    steps:
+      - name: Checkout builder repo
+        uses: actions/checkout@v4
+
+      - name: Clone proven native RVC Android engine
+        run: |
+          git clone --depth 1 https://github.com/ouor/RVC-Android.git rvc-android
+
+      - name: Brand the APK as Red's Ultimate RVC
+        working-directory: rvc-android
+        run: |
+          set -euo pipefail
+          sed -i 's/<string name="app_name">RVC Android<\\/string>/<string name="app_name">Red\x27s Ultimate RVC<\\/string>/' app/src/main/res/values/strings.xml
+          sed -i 's/title = { Text("RVC Android") }/title = { Text("Red\x27s Ultimate RVC") }/' app/src/main/java/com/ouor/rvcandroid/ui/ConversionScreen.kt
+          cat > app/src/main/java/com/ouor/rvcandroid/ui/theme/Theme.kt <<'EOF'
+package com.ouor.rvcandroid.ui.theme
+
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.darkColorScheme
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.graphics.Color
+
+private val RedDark = darkColorScheme(
+    primary = Color(0xFFFF4B57),
+    onPrimary = Color(0xFFFFFFFF),
+    primaryContainer = Color(0xFF7F1822),
+    onPrimaryContainer = Color(0xFFFFDAD9),
+    secondary = Color(0xFFFF8A91),
+    onSecondary = Color(0xFF4A0008),
+    secondaryContainer = Color(0xFF6B1D25),
+    onSecondaryContainer = Color(0xFFFFDADC),
+    background = Color(0xFF08090D),
+    onBackground = Color(0xFFF6F6F7),
+    surface = Color(0xFF101218),
+    onSurface = Color(0xFFF6F6F7),
+    surfaceVariant = Color(0xFF252831),
+    onSurfaceVariant = Color(0xFFC8C8D0),
+)
+
+@Composable
+fun RvcTheme(
+    darkTheme: Boolean = true,
+    content: @Composable () -> Unit,
+) {
+    MaterialTheme(
+        colorScheme = RedDark,
+        content = content,
+    )
+}
+EOF
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Build release APK
+        working-directory: rvc-android
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon --stacktrace assembleRelease
+
+      - name: Verify APK
+        working-directory: rvc-android
+        run: |
+          set -euo pipefail
+          APK="app/build/outputs/apk/release/app-release.apk"
+          test -s "$APK"
+          sha256sum "$APK"
+          stat -c '%s bytes' "$APK"
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: reds-ultimate-rvc-android
+          path: rvc-android/app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 9
+
+      - name: Publish free Gofile download
+        env:
+          APK: rvc-android/app/build/outputs/apk/release/app-release.apk
+        run: |
+          set -euo pipefail
+          RESPONSE="$(curl --fail-with-body --retry 3 --retry-delay 2 -sS -F "file=@${APK}" https://upload.gofile.io/uploadfile)"
+          echo "$RESPONSE" > "$RUNNER_TEMP/gofile-response.json"
+          STATUS="$(jq -r '.status // empty' "$RUNNER_TEMP/gofile-response.json")"
+          test "$STATUS" = "ok"
+          DOWNLOAD_PAGE="$(jq -r '.data.downloadPage // empty' "$RUNNER_TEMP/gofile-response.json")"
+          test -n "$DOWNLOAD_PAGE"
+          echo "Gofile download: $DOWNLOAD_PAGE"
+          {
+            echo "## Red's Ultimate RVC APK"
+            echo
+            echo "$DOWNLOAD_PAGE"
+            echo
+            echo "SHA-256:"
+            sha256sum "$APK"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG="reds-ultimate-rvc-apk-$GITHUB_RUN_NUMBER"
+          gh release create "$TAG" rvc-android/app/build/outputs/apk/release/app-release.apk \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Red's Ultimate RVC Android APK $GITHUB_RUN_NUMBER" \
+            --notes "Native on-device RVC build using the open RVC-Android engine. No Hugging Face inference GPU is used."
