@@ -63,8 +63,10 @@ jobs:
           for dens, px in {"mdpi":48,"hdpi":72,"xhdpi":96,"xxhdpi":144,"xxxhdpi":192}.items():
               d = res / f"mipmap-{dens}"
               d.mkdir(parents=True, exist_ok=True)
-              fitted_square(px).save(d/"ic_launcher.png", "PNG")
-              fitted_square(px).save(d/"ic_launcher_round.png", "PNG")
+              # Upstream already uses WebP for these resource names. Overwrite those
+              # files instead of adding PNGs with duplicate Android resource IDs.
+              fitted_square(px).convert("RGB").save(d/"ic_launcher.webp", "WEBP", lossless=True, quality=100)
+              fitted_square(px).convert("RGB").save(d/"ic_launcher_round.webp", "WEBP", lossless=True, quality=100)
 
           for dens, px in {"mdpi":108,"hdpi":162,"xhdpi":216,"xxhdpi":324,"xxxhdpi":432}.items():
               d = res / f"mipmap-{dens}"
