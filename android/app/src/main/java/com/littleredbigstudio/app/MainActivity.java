@@ -26,6 +26,7 @@ import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import androidx.webkit.WebViewAssetLoader;
 
 import java.io.File;
 import java.io.IOException;
@@ -67,6 +68,7 @@ public class MainActivity extends Activity {
     private final AudioManager.OnAudioFocusChangeListener focusListener = focusChange -> {};
     private SpeechRecognizer speechRecognizer;
     private boolean nativeListening = false;
+    private WebViewAssetLoader assetLoader;
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
@@ -108,7 +110,22 @@ public class MainActivity extends Activity {
         });
 
         webView.setBackgroundColor(android.graphics.Color.rgb(11, 5, 6));
+        assetLoader = new WebViewAssetLoader.Builder()
+                .addPathHandler("/assets/", new WebViewAssetLoader.AssetsPathHandler(this))
+                .addPathHandler("/", new WebViewAssetLoader.AssetsPathHandler(this))
+                .build();
         webView.setWebViewClient(new WebViewClient() {
+            @Override public WebResourceResponse shouldInterceptRequest(
+                    WebView view, WebResourceRequest request) {
+                WebResourceResponse local = assetLoader.shouldInterceptRequest(request.getUrl());
+                return local != null ? local : super.shouldInterceptRequest(view, request);
+            }
+
+            @Override public WebResourceResponse shouldInterceptRequest(
+                    WebView view, String url) {
+                WebResourceResponse local = assetLoader.shouldInterceptRequest(android.net.Uri.parse(url));
+                return local != null ? local : super.shouldInterceptRequest(view, url);
+            }
             @Override public boolean shouldOverrideUrlLoading(
                     WebView view, WebResourceRequest request) {
                 String url = request.getUrl().toString();
@@ -137,12 +154,12 @@ public class MainActivity extends Activity {
         webView.addJavascriptInterface(new BuddyVoiceBridge(), "AndroidBuddyVoice");
         setContentView(webView);
         initTts();
-        // Load the real production Studio first. The previous APK attempted to
-        // boot a copied SPA shell from a synthetic /assets/ URL; that can render
-        // as a blank page when its generated module graph does not match the
-        // shell. Keeping the production origin here also preserves its exact
-        // routing, asset URLs, auth, and API behavior.
-        webView.loadUrl(START_URL);
+        // Run the exact verified web bundle packaged inside this APK. The previous
+        // build depended on the live Cloudflare page at startup, so the APK could
+        // fail or appear blank when that service was unavailable. WebViewAssetLoader
+        // serves /assets/* and root files from android/app/src/main/assets while
+        // normal HTTPS requests continue to use the network for APIs and providers.
+        webView.loadUrl("https://appassets.androidplatform.net/assets/index.html");
     }
 
     private void showBootError(String message) {
