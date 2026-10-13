@@ -32,7 +32,8 @@ test("voice capture uses on-device final speech transcript before remote transcr
 
 test("live and tap-to-talk gestures unlock audio before asynchronous microphone work", () => {
   assert.match(chat, /void unlockBuddyAudio\(\); liveRef\.current = true/);
-  assert.match(chat, /void unlockBuddyAudio\(\);/);\n  assert.match(chat, /startNativeSpeech\(\);/);
+  assert.match(chat, /void unlockBuddyAudio\(\);/);
+  assert.match(chat, /startNativeSpeech\(\);/);
 });
 
 test("live capture has a single restart owner after the spoken response", () => {
