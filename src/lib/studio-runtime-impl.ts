@@ -231,56 +231,6 @@ function score(name: string, ep: Endpoint, capability: StudioCapability, input: 
     if (pick(p.parameter_name ?? p.label ?? "", input) !== undefined) s += 3;
   return s;
 }
-async function runCloudflare(
-  provider: FreeRunner,
-  input: StudioJobInput,
-  capability: StudioCapability,
-): Promise<StudioArtifact> {
-  const prompt = String(
-    input.prompt ?? input.text ?? input.target_text ?? input.lyrics ?? "",
-  ).trim();
-  const payload: Record<string, unknown> = {
-    capability,
-    prompt,
-    text: prompt,
-    language: input.language,
-    speaker: input.speaker,
-    messages: input.messages,
-    lyrics: input.lyrics,
-    description: input.description,
-    duration: input.duration,
-    instrumental: input.instrumental,
-    lyricsOptimizer: input.lyricsOptimizer,
-    image: input.image,
-    video: input.video,
-    aspectRatio: input.aspectRatio,
-    resolution: input.resolution,
-  };
-  const audio = input.audio ?? input.refAudio ?? input.referenceAudio;
-  if (audio instanceof Blob) {
-    const bytes = new Uint8Array(await audio.arrayBuffer());
-    let binary = "";
-    const chunkSize = 0x8000;
-    for (let i = 0; i < bytes.length; i += chunkSize)
-      binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
-    payload.audioBase64 = btoa(binary);
-  }
-  const response = await fetch(provider.url, {
-    method: "POST",
-    body: JSON.stringify(payload),
-    headers: { "content-type": "application/json" },
-  });
-  if (!response.ok) throw new Error(`${provider.name}: HTTP ${response.status}`);
-  const ct = response.headers.get("content-type") ?? "";
-  if (ct.startsWith("audio/") || ct.startsWith("image/") || ct.startsWith("video/")) {
-    const blob = await response.blob();
-    if (!blob.size) throw new Error(`${provider.name}: empty result`);
-    return { capability, value: blob, url: URL.createObjectURL(blob), provider: provider.name };
-  }
-  const value = await response.json();
-  if (!output(value)) throw new Error(`${provider.name}: empty result`);
-  return { capability, value, url: artifactUrl(value), provider: provider.name };
-}
 async function runQwen(
   cl: Client,
   input: StudioJobInput,
