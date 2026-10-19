@@ -32,7 +32,7 @@ export function BuddyLiveChat() {
   }
   function stopNativeSpeech() {
     const bridge = androidBridge();
-    try { bridge?.stopNativeListening?.(); } catch {}
+    try { if (bridge?.stopNativeListening) bridge.stopNativeListening(); } catch {}
     const current = nativeSpeech.current;
     nativeSpeech.current = null;
     if (current) { try { current.stop(); } catch {} }
@@ -99,7 +99,7 @@ export function BuddyLiveChat() {
       const timer = window.setTimeout(() => { w.__buddyLocalBrainResult = oldResult; w.__buddyLocalBrainError = oldError; reject(new Error("Local Buddy brain timed out.")); }, 90000);
       w.__buddyLocalBrainResult = (text) => { window.clearTimeout(timer); w.__buddyLocalBrainResult = oldResult; w.__buddyLocalBrainError = oldError; const clean = String(text || "").trim(); clean ? resolve(clean) : reject(new Error("Local Buddy brain returned an empty response.")); };
       w.__buddyLocalBrainError = (message) => { window.clearTimeout(timer); w.__buddyLocalBrainResult = oldResult; w.__buddyLocalBrainError = oldError; reject(new Error(String(message || "Local Buddy brain failed."))); };
-      try { bridge.localBrainChat?.(prompt, systemPrompt, 250); } catch (error) { window.clearTimeout(timer); w.__buddyLocalBrainResult = oldResult; w.__buddyLocalBrainError = oldError; reject(error instanceof Error ? error : new Error(String(error))); }
+      try { if (bridge.localBrainChat) bridge.localBrainChat(prompt, systemPrompt, 250); } catch (error) { window.clearTimeout(timer); w.__buddyLocalBrainResult = oldResult; w.__buddyLocalBrainError = oldError; reject(error instanceof Error ? error : new Error(String(error))); }
     });
   }
   function installLocalBrain() {
@@ -202,7 +202,7 @@ export function BuddyLiveChat() {
     // getUserMedia can fail without ever lighting the microphone indicator.
     if (forceBrowser && bridge?.microphoneGranted && !bridge.microphoneGranted()) {
       try {
-        bridge.requestMicrophone?.();
+        if (bridge.requestMicrophone) bridge.requestMicrophone();
         setStatus("Allow microphone access for Buddy in the Android prompt.");
         for (let attempt = 0; attempt < 40; attempt += 1) {
           await new Promise((resolve) => window.setTimeout(resolve, 250));
@@ -504,7 +504,7 @@ export function BuddyLiveChat() {
         const callbacks = ((window as typeof window & { __buddyAndroidTtsCallbacks?: Record<string, (ok: boolean) => void> }).__buddyAndroidTtsCallbacks ??= {});
         callbacks[callbackId] = finish;
         (window as typeof window & { __buddyAndroidTtsResult?: (id: string, ok: boolean) => void }).__buddyAndroidTtsResult ??= (id, ok) => { (window as typeof window & { __buddyAndroidTtsCallbacks?: Record<string, (ok: boolean) => void> }).__buddyAndroidTtsCallbacks?.[id]?.(ok); };
-        bridge.playBase64Async?.(base64, blob.type || "audio/mpeg", callbackId);
+        if (bridge.playBase64Async) bridge.playBase64Async(base64, blob.type || "audio/mpeg", callbackId);
       });
     } catch { return false; }
   }
