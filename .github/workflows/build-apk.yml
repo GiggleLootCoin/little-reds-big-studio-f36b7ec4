@@ -34,8 +34,16 @@ jobs:
       - name: Install Node dependencies
         run: npm ci --no-audit --no-fund --legacy-peer-deps
 
-      - name: Build the web UI bundle
-        run: npx vite build
+      - name: Verify Studio source
+        run: |
+          npm run typecheck
+          npm run lint
+          npm run test:voice
+          npm run verify:local-voice
+          npm run verify:browser-bundle
+
+      - name: Build the complete production bundle
+        run: npm run build
 
       - name: Package the verified client bundle into the APK
         run: |
@@ -49,6 +57,9 @@ jobs:
           cp -a "$CLIENT_DIR"/. android/app/src/main/assets/
           cp "$CLIENT_DIR/_shell.html" android/app/src/main/assets/index.html
           test -s android/app/src/main/assets/index.html
+          test "$(find android/app/src/main/assets -type f | wc -l)" -gt 3
+          grep -q '<script' android/app/src/main/assets/index.html
+          grep -q 'assets/' android/app/src/main/assets/index.html
 
       - name: Prepare Android SDK and signing
         env:
@@ -98,6 +109,9 @@ jobs:
           "$SDK_ROOT/build-tools/35.0.0/apksigner" verify --verbose --min-sdk-version 24 "$APK"
           sha256sum "$APK"
           stat -c '%s bytes' "$APK"
+          "$SDK_ROOT/build-tools/35.0.0/aapt" dump badging "$APK" | tee "$RUNNER_TEMP/apk-badging.txt"
+          grep -q "package: name='com.littleredbigstudio.app'" "$RUNNER_TEMP/apk-badging.txt"
+          grep -q "Little Red's Big Studio" "$RUNNER_TEMP/apk-badging.txt" || true
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
@@ -128,6 +142,8 @@ jobs:
             sha256sum "$APK"
           } >> "$GITHUB_STEP_SUMMARY"
           echo "Gofile download: $DOWNLOAD_PAGE"
+          echo "GOFILE_DOWNLOAD_PAGE=$DOWNLOAD_PAGE" >> "$GITHUB_ENV"
+          printf '%s\n' "$DOWNLOAD_PAGE" > "$RUNNER_TEMP/gofile-download-page.txt"
 
       - name: Publish persistent GitHub Release
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -136,7 +152,18 @@ jobs:
         run: |
           set -euo pipefail
           TAG="apk-native-$GITHUB_RUN_NUMBER"
+          NOTES_FILE="$RUNNER_TEMP/release-notes.md"
+          {
+            echo "Native Android build from main commit $GITHUB_SHA."
+            echo
+            echo "**Free Gofile download:** $GOFILE_DOWNLOAD_PAGE"
+            echo
+            echo "**APK SHA-256:**"
+            sha256sum android/app/build/outputs/apk/release/app-release.apk
+            echo
+            echo "The APK contains the verified Studio web bundle and native Android Buddy voice/microphone bridge."
+          } > "$NOTES_FILE"
           gh release create "$TAG" android/app/build/outputs/apk/release/app-release.apk \
             --repo "$GITHUB_REPOSITORY" \
             --title "Little Red's Big Studio Native APK $GITHUB_RUN_NUMBER" \
-            --notes "Native Android WebView build from main commit $GITHUB_SHA; includes Android Text-to-Speech fallback for Buddy voice responses."
+            --notes-file "$NOTES_FILE"
