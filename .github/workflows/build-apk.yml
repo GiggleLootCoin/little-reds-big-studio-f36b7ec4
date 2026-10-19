@@ -194,35 +194,22 @@ jobs:
           compression-level: 9
 
       - name: Publish free Gofile download
-        env:
-          APK: android/app/build/outputs/apk/release/app-release.apk
         run: |
           set -euo pipefail
-          RESPONSE=""
+          APK="android/app/build/outputs/apk/release/app-release.apk"
           for ENDPOINT in "https://upload.gofile.io/uploadfile" "https://upload-na-nyc.gofile.io/uploadfile" "https://upload.gofile.is/uploadfile"; do
             if RESPONSE="$(curl --fail-with-body --retry 5 --retry-delay 3 -sS -F "file=@${APK}" "$ENDPOINT")"; then
               echo "$RESPONSE" > "$RUNNER_TEMP/gofile-response.json"
-              STATUS="$(jq -r '.status // empty' "$RUNNER_TEMP/gofile-response.json")"
-              if [ "$STATUS" = "ok" ]; then break; fi
+              DOWNLOAD_PAGE="$(jq -r '.data.downloadPage // empty' "$RUNNER_TEMP/gofile-response.json")"
+              test -n "$DOWNLOAD_PAGE"
+              echo "Gofile download: $DOWNLOAD_PAGE"
+              echo "GOFILE_DOWNLOAD_PAGE=$DOWNLOAD_PAGE" >> "$GITHUB_ENV"
+              printf '%s\n' "$DOWNLOAD_PAGE" > "$RUNNER_TEMP/gofile-download-page.txt"
+              exit 0
             fi
-            RESPONSE=""
           done
-          test -n "$RESPONSE"
-          STATUS="$(jq -r '.status // empty' "$RUNNER_TEMP/gofile-response.json")"
-          test "$STATUS" = "ok"
-          DOWNLOAD_PAGE="$(jq -r '.data.downloadPage // empty' "$RUNNER_TEMP/gofile-response.json")"
-          test -n "$DOWNLOAD_PAGE"
-          {
-            echo "## Free Gofile APK download"
-            echo
-            echo "$DOWNLOAD_PAGE"
-            echo
-            echo "SHA-256:"
-            sha256sum "$APK"
-          } >> "$GITHUB_STEP_SUMMARY"
-          echo "Gofile download: $DOWNLOAD_PAGE"
-          echo "GOFILE_DOWNLOAD_PAGE=$DOWNLOAD_PAGE" >> "$GITHUB_ENV"
-          printf '%s\n' "$DOWNLOAD_PAGE" > "$RUNNER_TEMP/gofile-download-page.txt"
+          echo "Gofile upload failed at every endpoint."
+          exit 1
 
       - name: Publish persistent GitHub Release
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
