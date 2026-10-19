@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unused-expressions */
 import { useEffect, useRef, useState } from "react";
 import { Camera, Mic, MicOff, MonitorUp, Paperclip, Phone, Send, Sparkles, Volume2, VolumeX } from "lucide-react";
 import { artifactText, runStudioJob } from "@/lib/studio-runtime";
