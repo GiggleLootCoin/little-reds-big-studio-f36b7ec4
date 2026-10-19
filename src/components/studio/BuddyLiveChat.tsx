@@ -88,6 +88,8 @@ export function BuddyLiveChat() {
       return false;
     }
   }
+  const independentLocalFirst = true;
+
   function localBrainChat(prompt: string, systemPrompt: string): Promise<string> {
     const bridge = androidBridge();
     if (!bridge?.localBrainChat) return Promise.reject(new Error("Local Buddy brain is not available in this APK."));
