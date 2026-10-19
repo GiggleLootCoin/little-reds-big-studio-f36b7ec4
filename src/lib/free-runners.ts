@@ -12,6 +12,16 @@ export type FreeRunner = {
 /** Free/no-key routes. Runtime validates live API and actual media artifacts. */
 export const FREE_RUNNERS: FreeRunner[] = [
   {
+    id: "hf-whisper-large-v3",
+    name: "Whisper Large V3 — Free ZeroGPU",
+    kind: "gpu",
+    description: "OpenAI Whisper Large V3 speech recognition through a fixed Hugging Face Space endpoint.",
+    capabilities: ["speech-to-text", "transcription"],
+    url: "https://huggingface.co/spaces/openai/whisper",
+    notes: "Uses the Space's verified /transcribe endpoint. ZeroGPU availability is reported as a provider condition.",
+    priority: 1000,
+  },
+  {
     id: "buddy-web-search",
     name: "Buddy Live Web Search",
     kind: "public",
