@@ -49,7 +49,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 public class MainActivity extends Activity {
     private static final String REMOTE_ORIGIN = "https://appassets.androidplatform.net";
-    private static final String START_URL = REMOTE_ORIGIN + "/assets/android.html";
+    private static final String START_URL = REMOTE_ORIGIN + "/assets/index.html";
     // The APK carries the complete UI bundle and uses the Android app-assets HTTPS origin.
     // No Cloudflare/worker host is required for the Studio shell.
     private static final String LOCAL_START_URL = START_URL;
