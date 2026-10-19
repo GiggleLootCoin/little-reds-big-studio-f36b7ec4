@@ -95,8 +95,12 @@ public class MainActivity extends Activity {
         webView.setWebChromeClient(new WebChromeClient() {
             @Override public void onPermissionRequest(final PermissionRequest request) {
                 runOnUiThread(() -> {
-                    if (request == null || request.getOrigin() == null ||
-                            !REMOTE_ORIGIN.equals(request.getOrigin().toString().replaceAll("/$", ""))) {
+                    if (request == null || request.getOrigin() == null) {
+                        try { if (request != null) request.deny(); } catch (Throwable ignored) {}
+                        return;
+                    }
+                    String requestHost = request.getOrigin().getHost();
+                    if (requestHost == null || !BUNDLED_ASSET_HOST.equalsIgnoreCase(requestHost)) {
                         try { request.deny(); } catch (Throwable ignored) {}
                         return;
                     }
