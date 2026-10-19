@@ -267,7 +267,7 @@ export function BuddyLiveChat() {
       return await new Promise<boolean>((resolve) => {
         let settled = false;
         const finish = (ok: boolean) => { if (settled) return; settled = true; window.clearTimeout(timer); delete (window as typeof window & { __buddyAndroidTtsCallbacks?: Record<string, (ok: boolean) => void> }).__buddyAndroidTtsCallbacks?.[callbackId]; resolve(ok); };
-        const timer = window.setTimeout(() => finish(false), 12000);
+        const timer = window.setTimeout(() => finish(false), 30000);
         const callbacks = ((window as typeof window & { __buddyAndroidTtsCallbacks?: Record<string, (ok: boolean) => void> }).__buddyAndroidTtsCallbacks ??= {});
         callbacks[callbackId] = finish;
         (window as typeof window & { __buddyAndroidTtsResult?: (id: string, ok: boolean) => void }).__buddyAndroidTtsResult ??= (id, ok) => { (window as typeof window & { __buddyAndroidTtsCallbacks?: Record<string, (ok: boolean) => void> }).__buddyAndroidTtsCallbacks?.[id]?.(ok); };
