@@ -106,6 +106,12 @@ jobs:
           cp -a "$CLIENT_DIR"/. android/app/src/main/assets/
           mkdir -p android/app/src/main/assets/assets
           cp -a dist/assets/. android/app/src/main/assets/assets/
+          # Vite emits the Android entry chunk at /assets/<entry>.js, while
+          # relative dynamic imports resolve beneath /assets/assets/. The
+          # WebView asset loader maps /assets/ to the APK asset root, so the
+          # entry chunk must also exist at that root.
+          find dist/assets -maxdepth 1 -type f -name "android-*.js" -exec cp {} android/app/src/main/assets/ \;
+          test -n "$(find android/app/src/main/assets -maxdepth 1 -type f -name 'android-*.js' -print -quit)"
           test -s dist/android.html
           cp dist/android.html android/app/src/main/assets/index.html
           cp dist/android.html android/app/src/main/assets/android.html
