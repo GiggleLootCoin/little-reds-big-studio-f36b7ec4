@@ -50,8 +50,19 @@ export async function requestMicrophone(deviceId?: string): Promise<MediaStream>
   try {
     return await navigator.mediaDevices.getUserMedia({ audio: constraints, video: false });
   } catch (error) {
-    if (deviceId && deviceId !== "default")
-      return navigator.mediaDevices.getUserMedia({ audio: base, video: false });
+    // Some Android WebView microphone drivers reject one or more optional
+    // processing constraints even though the physical microphone itself works.
+    // Retry with progressively simpler constraints before reporting failure.
+    try {
+      if (deviceId && deviceId !== "default")
+        return await navigator.mediaDevices.getUserMedia({ audio: base, video: false });
+    } catch {}
+    try {
+      return await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1 }, video: false });
+    } catch {}
+    try {
+      return await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+    } catch {}
     throw error;
   }
 }
