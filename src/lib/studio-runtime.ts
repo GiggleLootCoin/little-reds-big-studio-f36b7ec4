@@ -88,38 +88,87 @@ async function runProductionRedClone(
     refText: refText.trim(),
     modelSize,
   });
-  let response = await fetch("/api/ai/voice-clone", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(makeBody()),
-  });
-  if (response.status === 428) {
-    onStatus?.("Refreshing Buddy's voice reference…");
-    cachedRedReferenceBase64 = await blobToBase64(sample);
-    cachedRedReferenceId = referenceId;
+  let response: Response | null = null;
+  let primaryError: unknown = null;
+  try {
     response = await fetch("/api/ai/voice-clone", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(makeBody()),
     });
+    if (response.status === 428) {
+      onStatus?.("Refreshing Buddy's voice reference…");
+      cachedRedReferenceBase64 = await blobToBase64(sample);
+      cachedRedReferenceId = referenceId;
+      response = await fetch("/api/ai/voice-clone", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(makeBody()),
+      });
+    }
+    if (!response.ok) {
+      const detail = (await response.text().catch(() => "")).slice(0, 300);
+      throw new Error(`Red voice generation failed (${response.status}). ${detail}`.trim());
+    }
+    const blob = await response.blob();
+    if (!blob.size) throw new Error("Red voice generation returned empty audio.");
+    const normalized = await normalizeAndVerifyBrowserAudio(blob);
+    if (normalized.stats.duration <= 0 || normalized.stats.peak <= 0 || normalized.stats.rms <= 0)
+      throw new Error("Red voice generation returned silent or unusable audio.");
+    return {
+      url: normalized.url,
+      provider: response.headers.get("x-clone-provider") || "Production Red reference clone",
+      verification: "Production Red reference clone + browser audio decode + non-silent verification",
+      duration: normalized.stats.duration,
+      peak: normalized.stats.peak,
+      rms: normalized.stats.rms,
+    };
+  } catch (error) {
+    primaryError = error;
   }
-  if (!response.ok) {
-    const detail = (await response.text().catch(() => "")).slice(0, 300);
-    throw new Error(`Red voice generation failed (${response.status}). ${detail}`.trim());
+
+  // The Worker route is preferred, but it must never be the only path. On
+  // Android especially, a public GPU Space can be reachable even when the
+  // production Worker route is unavailable or its queue is exhausted. Try the
+  // independent free/open clone pool before reporting a voice failure.
+  onStatus?.("Red voice route is unavailable; trying the independent free voice engine…");
+  try {
+    const fallback = await runStudioJobImpl(
+      "voice-clone",
+      {
+        refAudio: sample,
+        referenceAudio: sample,
+        audio: sample,
+        refText,
+        referenceTranscript: refText,
+        target_text: text,
+        text,
+        language,
+      },
+      onStatus,
+    );
+    if (!fallback.url) throw new Error("The free Red voice fallback returned no playable audio.");
+    const fallbackBlob = await fetch(fallback.url).then((res) => {
+      if (!res.ok) throw new Error(`Free Red voice audio download failed (${res.status}).`);
+      return res.blob();
+    });
+    if (!fallbackBlob.size) throw new Error("The free Red voice fallback returned empty audio.");
+    const normalized = await normalizeAndVerifyBrowserAudio(fallbackBlob);
+    if (normalized.stats.duration <= 0 || normalized.stats.peak <= 0 || normalized.stats.rms <= 0)
+      throw new Error("The free Red voice fallback returned silent or unusable audio.");
+    return {
+      url: normalized.url,
+      provider: fallback.provider,
+      verification: `Free fallback ${fallback.provider} + browser audio decode + non-silent verification`,
+      duration: normalized.stats.duration,
+      peak: normalized.stats.peak,
+      rms: normalized.stats.rms,
+    };
+  } catch (fallbackError) {
+    throw new Error(
+      `Red voice generation failed on the production and independent free routes. Primary: ${primaryError instanceof Error ? primaryError.message : String(primaryError)}. Fallback: ${fallbackError instanceof Error ? fallbackError.message : String(fallbackError)}`,
+    );
   }
-  const blob = await response.blob();
-  if (!blob.size) throw new Error("Red voice generation returned empty audio.");
-  const normalized = await normalizeAndVerifyBrowserAudio(blob);
-  if (normalized.stats.duration <= 0 || normalized.stats.peak <= 0 || normalized.stats.rms <= 0)
-    throw new Error("Red voice generation returned silent or unusable audio.");
-  return {
-    url: normalized.url,
-    provider: response.headers.get("x-clone-provider") || "Production Red reference clone",
-    verification: "Production Red reference clone + browser audio decode + non-silent verification",
-    duration: normalized.stats.duration,
-    peak: normalized.stats.peak,
-    rms: normalized.stats.rms,
-  };
 }
 async function runVerifiedClone(
   sample: Blob,
