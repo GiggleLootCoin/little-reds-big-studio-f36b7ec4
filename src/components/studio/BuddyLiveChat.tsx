@@ -42,7 +42,7 @@ export function BuddyLiveChat() {
     nativeTranscript.current = "";
     const bridge = androidBridge();
     const language = String(getBuddyVoiceProfile().language || "en-US").replace("English", "en-US");
-    if (!forceBrowser && bridge?.nativeSpeechAvailable?.()) {
+    if (bridge?.nativeSpeechAvailable?.()) {
       nativeSpeechAvailable.current = true;
       try {
         const started = bridge.startNativeListening?.(language);
@@ -144,7 +144,7 @@ export function BuddyLiveChat() {
   async function refreshMics() { try { setMics(await listMicrophones()); } catch { setMics([]); } }
   async function openMic(forceBrowser = false) {
     const bridge = androidBridge();
-    if (bridge?.nativeSpeechAvailable?.()) {
+    if (!forceBrowser && bridge?.nativeSpeechAvailable?.()) {
       try {
         if (bridge.microphoneGranted?.()) {
           setMicPermission("granted");
