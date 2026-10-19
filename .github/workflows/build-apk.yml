@@ -116,7 +116,7 @@ jobs:
             cp -a dist/assets/. android/app/src/main/assets/
           fi
           test -n "$(find android/app/src/main/assets -maxdepth 1 -type f -name 'android-*.js' -print -quit)"
-          test -n "$(find android/app/src/main/assets -maxdepth 1 -type f -name 'BuddyLiveChat-*.css' -print -quit)"
+          test -n "$(find android/app/src/main/assets -maxdepth 1 -type f \( -name 'BuddyLiveChat-*.css' -o -name 'android-*.css' \) -print -quit)"
           test -s dist/android.html
           cp dist/android.html android/app/src/main/assets/index.html
           cp dist/android.html android/app/src/main/assets/android.html
