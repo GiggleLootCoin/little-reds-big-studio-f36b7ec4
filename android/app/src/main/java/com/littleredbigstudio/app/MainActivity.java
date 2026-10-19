@@ -50,7 +50,7 @@ public class MainActivity extends Activity {
     private static final String REMOTE_ORIGIN = "https://appassets.androidplatform.net";
     private static final String START_URL = REMOTE_ORIGIN + "/assets/index.html";
     // The APK carries the complete UI bundle and uses the Android app-assets HTTPS origin.
-    // No Cloudflare/worker host is required for the Studio shell.
+    // No remote host is required for the Studio shell.
     private static final String LOCAL_START_URL = START_URL;
 
     private static final String GOOGLE_TTS = "com.google.android.tts";
@@ -173,7 +173,7 @@ public class MainActivity extends Activity {
         setContentView(webView);
         initTts();
         // The Studio shell is local and HTTPS-backed. AI providers are called directly
-        // from the web runtime, so the APK no longer depends on a Cloudflare worker.
+        // from the web runtime, while the local GGUF brain can run entirely on-device.
         webView.loadUrl(START_URL);
     }
 
