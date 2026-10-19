@@ -38,7 +38,26 @@ jobs:
         run: npx prettier --write .
 
       - name: Typecheck source
-        run: npm run typecheck
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set +e
+          npm run typecheck > "$RUNNER_TEMP/typecheck.log" 2>&1
+          CODE=$?
+          if [ "$CODE" -ne 0 ]; then
+            {
+              echo "### Independent build typecheck failure"
+              echo
+              echo '~~~text'
+              tail -c 14000 "$RUNNER_TEMP/typecheck.log"
+              echo
+              echo '~~~'
+            } > "$RUNNER_TEMP/typecheck-comment.md"
+            gh pr comment "${{ github.event.pull_request.number }}" --repo "${{ github.repository }}" --body-file "$RUNNER_TEMP/typecheck-comment.md" || true
+            cat "$RUNNER_TEMP/typecheck.log"
+            exit "$CODE"
+          fi
+          cat "$RUNNER_TEMP/typecheck.log"
 
       - name: Lint source
         run: npm run lint
