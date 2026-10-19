@@ -40,10 +40,12 @@ jobs:
           npm run lint
           npm run test:voice
           npm run verify:local-voice
-          npm run verify:browser-bundle
 
       - name: Build the complete production bundle
         run: npm run build
+
+      - name: Verify emitted browser bundle
+        run: npm run verify:browser-bundle
 
       - name: Package the verified client bundle into the APK
         run: |
