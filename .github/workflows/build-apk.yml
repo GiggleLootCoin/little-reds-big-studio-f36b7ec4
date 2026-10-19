@@ -5,7 +5,7 @@ on:
   pull_request:
     branches: [main, "fix/studio-hardening-2026-10-03"]
   push:
-    branches: [main, "fix/final-android-release-and-gofile-20261005"]
+    branches: [main, "fix/final-android-release-and-gofile-20261005", "independent-studio-build-20261019"]
   workflow_dispatch:
 
 permissions:
