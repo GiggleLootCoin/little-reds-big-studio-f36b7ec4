@@ -18,9 +18,9 @@ export const FREE_RUNNERS: FreeRunner[] = [
     description:
       "Server-side live internet search for current facts, research, models, tools, prices, and references.",
     capabilities: ["web-search", "research", "internet-search"],
-    url: "/api/ai/web-search",
+    url: "https://api.duckduckgo.com/",
     notes:
-      "No-key search route. Results are fetched server-side and returned with titles, URLs, and snippets.",
+      "Free no-key DuckDuckGo Instant Answer route. It provides topic summaries/definitions/related topics, not a full ranked web index.",
     priority: 1200,
   },
   {
