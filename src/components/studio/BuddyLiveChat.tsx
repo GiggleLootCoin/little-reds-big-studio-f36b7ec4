@@ -10,7 +10,6 @@ import { buildPresetTtsRequest } from "@/lib/buddy-preset-voice-routing";
 import { getBuiltInRedVoiceSample } from "@/lib/red-default-voice";
 import { captureBuddyCameraFrame, captureBuddyScreenFrame, getBuddyAwarenessCapabilities } from "@/lib/buddy-awareness";
 import { playBuddyAudio, unlockBuddyAudio } from "@/lib/buddy-audio-unlock";
-import { speakBuddyLocally } from "@/lib/speech/buddy-voice-engine";
 import buddyReference from "../../../file_0000000070e8824391d24367b5f22d59.png";
 import "./BuddyVisual.css";
 
@@ -317,9 +316,11 @@ export function BuddyLiveChat() {
         else sample = await getBuiltInRedVoiceSample();
         if (!sample) throw Error("The Red voice reference is unavailable right now.");
 
-        // Red clone remains the preferred voice, but do not make the user wait
-        // on a congested Qwen queue. Start a real audio fallback after 3.5s.
-        const remoteTts = runStudioJob("tts", {
+        // Red is the selected voice, so every recovery path must still be Red.
+        // Never substitute a generic Aura/phone voice merely because cloning is
+        // slower than a few seconds. The production route now falls through to
+        // the independent free/open clone pool when its primary route fails.
+        r = await runStudioJob("tts", {
           refAudio: sample, referenceAudio: sample, audio: sample,
           referenceTranscript: v.referenceTranscript || "",
           refText: v.referenceTranscript || "",
@@ -329,41 +330,7 @@ export function BuddyLiveChat() {
           tone: v.tone || "conversational",
           use_xvector_only: !v.referenceTranscript,
           model_size: "0.6B",
-        }, setStatus) as unknown as Promise<{ url: string; provider?: string }>;
-
-        let fallbackTimer: number | undefined;
-        const auraFallback = new Promise<{ url: string; provider: string }>((resolve, reject) => {
-          fallbackTimer = window.setTimeout(async () => {
-            try {
-              setStatus("Red voice is taking too long; starting the fast audio backup…");
-              const response = await fetch("/api/ai/tts", {
-                method: "POST",
-                headers: { "content-type": "application/json" },
-                body: JSON.stringify({
-                  capability: "tts",
-                  text: text.slice(0, 900),
-                  target_text: text.slice(0, 900),
-                  language: "English",
-                  speaker: "luna",
-                }),
-              });
-              if (!response.ok) throw new Error(`Fast audio backup failed (${response.status}).`);
-              const blob = await response.blob();
-              if (!blob.size) throw new Error("Fast audio backup returned empty audio.");
-              resolve({ url: URL.createObjectURL(blob), provider: "Cloudflare Aura-2 fallback" });
-            } catch (error) {
-              reject(error instanceof Error ? error : new Error("Fast audio backup failed."));
-            }
-          }, 3500);
-        });
-        remoteTts.then(() => { if (fallbackTimer) window.clearTimeout(fallbackTimer); }, () => { /* fallback stays armed */ });
-        r = await Promise.any([
-          Promise.race([
-            remoteTts,
-            new Promise<never>((_, reject) => window.setTimeout(() => reject(new Error("Red voice generation timed out.")), 5000)),
-          ]),
-          auraFallback,
-        ]);
+        }, setStatus) as unknown as { url: string; provider?: string };
       } else {
         const preset = buildPresetTtsRequest(v, text);
         setStatus(`Speaking with ${preset.speaker}…`);
@@ -386,18 +353,9 @@ export function BuddyLiveChat() {
       if (r.url.startsWith("blob:")) URL.revokeObjectURL(r.url);
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
-      // Native Android is the final local recovery path. Do not let Web Speech hide a production audio failure.
-      // Native TTS is a last-resort emergency voice only. It must never
-      // silently replace the user's selected Red clone during normal routing.
-      if (typeof window !== "undefined" &&
-          (window as typeof window & { AndroidBuddyVoice?: { isAvailable?: () => boolean } })
-            .AndroidBuddyVoice?.isAvailable?.()) {
-        const fallbackStarted = await speakBuddyLocally(text, "browser-en-us");
-        if (fallbackStarted) {
-          setStatus("Buddy is speaking with the phone's validated native voice.");
-          return;
-        }
-      }
+      // Do not silently substitute the phone's generic voice for a selected
+      // Red clone. That would make the UI look successful while the requested
+      // voice is actually broken.
       const playbackError = new Error(
         `Buddy audio failed. ${detail || "No usable audio playback path is available."}`,
       );
