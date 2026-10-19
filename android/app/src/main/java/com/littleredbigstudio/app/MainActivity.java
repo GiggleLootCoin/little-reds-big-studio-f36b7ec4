@@ -69,6 +69,7 @@ public class MainActivity extends Activity {
     private final AudioManager.OnAudioFocusChangeListener focusListener = focusChange -> {};
     private SpeechRecognizer speechRecognizer;
     private boolean nativeListening = false;
+    private PermissionRequest pendingWebPermissionRequest;
     private static final String BUNDLED_ASSET_HOST =
             "little-reds-big-studio-f36b7ec4.gigglelootcoin.workers.dev";
 
@@ -93,17 +94,28 @@ public class MainActivity extends Activity {
         webView.setWebChromeClient(new WebChromeClient() {
             @Override public void onPermissionRequest(final PermissionRequest request) {
                 runOnUiThread(() -> {
-                    boolean wantsAudio = false;
-                    for (String resource : request.getResources()) {
-                        if (PermissionRequest.RESOURCE_AUDIO_CAPTURE.equals(resource)) {
-                            wantsAudio = true;
-                            break;
-                        }
+                    if (request == null || request.getOrigin() == null ||
+                            !REMOTE_ORIGIN.equals(request.getOrigin().toString().replaceAll("/$", ""))) {
+                        try { request.deny(); } catch (Throwable ignored) {}
+                        return;
                     }
-                    if (wantsAudio &&
-                            checkSelfPermission(Manifest.permission.RECORD_AUDIO)
-                                    != PackageManager.PERMISSION_GRANTED) {
-                        requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, 4101);
+                    boolean wantsAudio = false;
+                    boolean wantsVideo = false;
+                    for (String resource : request.getResources()) {
+                        if (PermissionRequest.RESOURCE_AUDIO_CAPTURE.equals(resource)) wantsAudio = true;
+                        if (PermissionRequest.RESOURCE_VIDEO_CAPTURE.equals(resource)) wantsVideo = true;
+                    }
+                    ArrayList<String> missing = new ArrayList<>();
+                    if (wantsAudio && checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED)
+                        missing.add(Manifest.permission.RECORD_AUDIO);
+                    if (wantsVideo && checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED)
+                        missing.add(Manifest.permission.CAMERA);
+                    if (!missing.isEmpty()) {
+                        if (pendingWebPermissionRequest != null) {
+                            try { pendingWebPermissionRequest.deny(); } catch (Throwable ignored) {}
+                        }
+                        pendingWebPermissionRequest = request;
+                        requestPermissions(missing.toArray(new String[0]), 4101);
                     } else {
                         request.grant(request.getResources());
                     }
@@ -218,6 +230,25 @@ public class MainActivity extends Activity {
                 "<button onclick='location.reload()' style='margin-top:12px;padding:13px 24px;border:0;border-radius:24px;background:#d71932;color:white;font-weight:700'>Retry</button>" +
                 "</div></body></html>";
         webView.loadDataWithBaseURL(REMOTE_ORIGIN + "/", html, "text/html", "UTF-8", REMOTE_ORIGIN + "/");
+    }
+
+    @Override public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode != 4101) return;
+        PermissionRequest request = pendingWebPermissionRequest;
+        pendingWebPermissionRequest = null;
+        if (request == null) return;
+        boolean audioGranted = checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED;
+        boolean cameraGranted = checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED;
+        ArrayList<String> allowed = new ArrayList<>();
+        for (String resource : request.getResources()) {
+            if (PermissionRequest.RESOURCE_AUDIO_CAPTURE.equals(resource) && audioGranted) allowed.add(resource);
+            if (PermissionRequest.RESOURCE_VIDEO_CAPTURE.equals(resource) && cameraGranted) allowed.add(resource);
+        }
+        try {
+            if (allowed.size() == request.getResources().length) request.grant(allowed.toArray(new String[0]));
+            else request.deny();
+        } catch (Throwable ignored) {}
     }
 
     private void ensureSpeechRecognizer() {
