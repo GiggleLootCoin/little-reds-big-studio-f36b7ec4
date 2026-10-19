@@ -54,7 +54,7 @@ public class MainActivity extends Activity {
 
     private static final String GOOGLE_TTS = "com.google.android.tts";
     private static final String SAMSUNG_TTS = "com.samsung.SMT";
-    private static final long TTS_START_TIMEOUT_MS = 20000L;
+    private static final long TTS_START_TIMEOUT_MS = 60000L;
 
     private WebView webView;
     private TextToSpeech tts;
@@ -587,7 +587,7 @@ public class MainActivity extends Activity {
 
             main.postDelayed(() -> {
                 if (!settled.get()) failTtsPlayback(callbackId, settled, output);
-            }, Math.max(TTS_START_TIMEOUT_MS, 20000L));
+            }, TTS_START_TIMEOUT_MS);
         } catch (Throwable error) {
             failTtsPlayback(callbackId, settled, output);
         }
