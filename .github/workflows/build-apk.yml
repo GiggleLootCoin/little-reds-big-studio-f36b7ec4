@@ -114,7 +114,7 @@ jobs:
           stat -c '%s bytes' "$APK"
           "$SDK_ROOT/build-tools/35.0.0/aapt" dump badging "$APK" | tee "$RUNNER_TEMP/apk-badging.txt"
           grep -q "package: name='com.littleredbigstudio.app'" "$RUNNER_TEMP/apk-badging.txt"
-          grep -q "application-label:'Little Red's Big Studio'" "$RUNNER_TEMP/apk-badging.txt"
+          grep -q "application-label:'Little Red’s Big Studio'" "$RUNNER_TEMP/apk-badging.txt"
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
