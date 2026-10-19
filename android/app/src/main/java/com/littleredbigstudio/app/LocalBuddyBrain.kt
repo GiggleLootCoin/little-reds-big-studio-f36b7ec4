@@ -41,9 +41,11 @@ object LocalBuddyBrain {
     fun modelFile(context: Context): File =
         File(File(context.filesDir, "models").apply { mkdirs() }, MODEL_FILE)
 
+    @JvmStatic
     fun isInstalled(context: Context): Boolean =
         modelFile(context).let { it.exists() && it.length() > 100_000_000L }
 
+    @JvmStatic
     fun download(context: Context, callback: DownloadCallback) {
         scope.launch(Dispatchers.IO) {
             val target = modelFile(context)
@@ -87,6 +89,7 @@ object LocalBuddyBrain {
         }
     }
 
+    @JvmStatic
     fun chat(
         context: Context,
         prompt: String,
@@ -133,6 +136,7 @@ object LocalBuddyBrain {
         }
     }
 
+    @JvmStatic
     fun release() {
         loadedModel?.let { Llama.releaseModel(it) }
         loadedModel = null

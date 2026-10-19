@@ -1,15 +1,16 @@
-name: Build Little Red's Big Studio APK
+name: Build Little Red's Big Studio — Independent APK
 # Rebuild current main so the installable APK contains the latest Android Buddy voice fixes.
 
 on:
   pull_request:
     branches: [main, "fix/studio-hardening-2026-10-03"]
   push:
-    branches: [main, "fix/final-android-release-and-gofile-20261005"]
+    branches: [main, "fix/final-android-release-and-gofile-20261005", "independent-studio-build-20261019"]
   workflow_dispatch:
 
 permissions:
   contents: write
+  pull-requests: write
 
 jobs:
   build-apk:
@@ -34,13 +35,58 @@ jobs:
       - name: Install Node dependencies
         run: npm ci --no-audit --no-fund --legacy-peer-deps
 
-      - name: Verify Studio source
+      - name: Format source
+        run: npx prettier --write .
+
+      - name: Typecheck source
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          npx prettier --write .
-          npm run typecheck
-          npm run lint
-          npm run test:voice
-          npm run verify:local-voice
+          set +e
+          npm run typecheck > "$RUNNER_TEMP/typecheck.log" 2>&1
+          CODE=$?
+          if [ "$CODE" -ne 0 ]; then
+            {
+              echo "### Independent build typecheck failure"
+              echo
+              echo '~~~text'
+              tail -c 14000 "$RUNNER_TEMP/typecheck.log"
+              echo
+              echo '~~~'
+            } > "$RUNNER_TEMP/typecheck-comment.md"
+            gh api "repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments" --method POST --field body="$(cat "$RUNNER_TEMP/typecheck-comment.md")" || true
+            cat "$RUNNER_TEMP/typecheck.log"
+            exit "$CODE"
+          fi
+          cat "$RUNNER_TEMP/typecheck.log"
+
+      - name: Lint source
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set +e
+          npm run lint > "$RUNNER_TEMP/lint.log" 2>&1
+          CODE=$?
+          if [ "$CODE" -ne 0 ]; then
+            {
+              echo "### Independent build lint failure"
+              echo
+              echo '~~~text'
+              tail -c 14000 "$RUNNER_TEMP/lint.log"
+              echo
+              echo '~~~'
+            } > "$RUNNER_TEMP/lint-comment.md"
+            gh api "repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments" --method POST --field body="$(cat "$RUNNER_TEMP/lint-comment.md")" || true
+            cat "$RUNNER_TEMP/lint.log"
+            exit "$CODE"
+          fi
+          cat "$RUNNER_TEMP/lint.log"
+
+      - name: Run Buddy voice tests
+        run: npm run test:voice
+
+      - name: Verify local voice path
+        run: npm run verify:local-voice
 
       - name: Build the complete production bundle
         run: npm run build
@@ -58,13 +104,29 @@ jobs:
           rm -rf android/app/src/main/assets
           mkdir -p android/app/src/main/assets
           cp -a "$CLIENT_DIR"/. android/app/src/main/assets/
-          cp "$CLIENT_DIR/_shell.html" android/app/src/main/assets/index.html
+          # Android WebView requests Vite assets as /assets/<filename>.
+          # WebViewAssetLoader maps that URL to the APK assets directory.
+          # Flatten both client and Android build assets into that directory;
+          # the previous build left BuddyLiveChat-*.css under assets/assets/,
+          # causing a CSS 404 and the visible Buddy startup error.
+          if [ -d "$CLIENT_DIR/assets" ]; then
+            cp -a "$CLIENT_DIR/assets"/. android/app/src/main/assets/
+          fi
+          if [ -d dist/assets ]; then
+            cp -a dist/assets/. android/app/src/main/assets/
+          fi
+          test -n "$(find android/app/src/main/assets -maxdepth 1 -type f -name 'android-*.js' -print -quit)"
+          test -n "$(find android/app/src/main/assets -maxdepth 1 -type f \( -name 'BuddyLiveChat-*.css' -o -name 'android-*.css' \) -print -quit)"
+          test -s dist/android.html
+          cp dist/android.html android/app/src/main/assets/index.html
+          cp dist/android.html android/app/src/main/assets/android.html
           mkdir -p android/app/src/main/res/drawable-nodpi
           cp 1784996969001.png android/app/src/main/res/drawable-nodpi/studio_launcher.png
           test -s android/app/src/main/res/drawable-nodpi/studio_launcher.png
           test -s android/app/src/main/assets/index.html
+          test -s android/app/src/main/assets/android.html
           test "$(find android/app/src/main/assets -type f | wc -l)" -gt 3
-          grep -q '<script' android/app/src/main/assets/index.html
+          grep -q '<script type="module"' android/app/src/main/assets/index.html
           grep -q 'assets/' android/app/src/main/assets/index.html
 
       - name: Prepare Android SDK and signing
@@ -102,9 +164,28 @@ jobs:
           ANDROID_SDK_ROOT: ${{ env.SDK_ROOT }}
           TWA_SIGNING_KEY_PASSWORD: ${{ secrets.TWA_SIGNING_KEY_PASSWORD || 'android' }}
           TWA_SIGNING_KEY_STORE_PASSWORD: ${{ secrets.TWA_SIGNING_KEY_STORE_PASSWORD || 'android' }}
+          GH_TOKEN: ${{ github.token }}
         run: |
-          set -euo pipefail
-          gradle --no-daemon --stacktrace -p android assembleRelease
+          set +e
+          gradle --no-daemon --stacktrace -p android assembleRelease > "$RUNNER_TEMP/gradle.log" 2>&1
+          CODE=$?
+          if [ "$CODE" -ne 0 ]; then
+            {
+              echo "### Independent Android build failure"
+              echo
+              echo '~~~text'
+              echo "---- beginning ----"
+              head -n 220 "$RUNNER_TEMP/gradle.log"
+              echo "---- end ----"
+              tail -n 220 "$RUNNER_TEMP/gradle.log"
+              echo
+              echo '~~~'
+            } > "$RUNNER_TEMP/gradle-comment.md"
+            gh api "repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments" --method POST --field body="$(cat "$RUNNER_TEMP/gradle-comment.md")" || true
+            cat "$RUNNER_TEMP/gradle.log"
+            exit "$CODE"
+          fi
+          cat "$RUNNER_TEMP/gradle.log"
 
       - name: Verify APK
         run: |
@@ -116,68 +197,58 @@ jobs:
           sha256sum "$APK"
           stat -c '%s bytes' "$APK"
           "$SDK_ROOT/build-tools/35.0.0/aapt" dump badging "$APK" | tee "$RUNNER_TEMP/apk-badging.txt"
-          grep -q "package: name='com.littleredbigstudio.app'" "$RUNNER_TEMP/apk-badging.txt"
-          grep -q "application-label:'Little Red’s Big Studio'" "$RUNNER_TEMP/apk-badging.txt"
+          grep -q "package: name='com.littleredbigstudio.independent'" "$RUNNER_TEMP/apk-badging.txt"
+          grep -q "application-label:'Little Red’s Big Studio — Independent'" "$RUNNER_TEMP/apk-badging.txt"
+          unzip -l "$APK" | grep -q "assets/index.html"
+          unzip -l "$APK" | grep -q "assets/android.html"
+          unzip -l "$APK" | grep -q "assets/BuddyLiveChat-.*\.css"
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: little-reds-big-studio-apk-native
+          name: little-reds-big-studio-independent-apk
           path: android/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
           retention-days: 30
           compression-level: 9
 
       - name: Publish free Gofile download
-        env:
-          APK: android/app/build/outputs/apk/release/app-release.apk
         run: |
           set -euo pipefail
-          RESPONSE=""
-          for ENDPOINT in "https://upload.gofile.io/uploadfile" "https://upload-na-nyc.gofile.io/uploadfile" "https://upload.gofile.is/uploadfile"; do
+          APK="android/app/build/outputs/apk/release/app-release.apk"
+          for ENDPOINT in "https://upload.gofile.io/uploadfile" "https://upload-eu-par.gofile.io/uploadfile" "https://upload-na-nyc.gofile.io/uploadfile" "https://upload-na-phx.gofile.io/uploadfile" "https://upload-ap-sgp.gofile.io/uploadfile" "https://upload-ap-hkg.gofile.io/uploadfile" "https://upload-ap-tyo.gofile.io/uploadfile" "https://upload-ap-syd.gofile.io/uploadfile" "https://upload-sa-sao.gofile.io/uploadfile"; do
             if RESPONSE="$(curl --fail-with-body --retry 5 --retry-delay 3 -sS -F "file=@${APK}" "$ENDPOINT")"; then
               echo "$RESPONSE" > "$RUNNER_TEMP/gofile-response.json"
-              STATUS="$(jq -r '.status // empty' "$RUNNER_TEMP/gofile-response.json")"
-              if [ "$STATUS" = "ok" ]; then break; fi
+              DOWNLOAD_PAGE="$(jq -r '.data.downloadPage // empty' "$RUNNER_TEMP/gofile-response.json")"
+              test -n "$DOWNLOAD_PAGE"
+              echo "Gofile download: $DOWNLOAD_PAGE"
+              echo "GOFILE_DOWNLOAD_PAGE=$DOWNLOAD_PAGE" >> "$GITHUB_ENV"
+              printf '%s\n' "$DOWNLOAD_PAGE" > "$RUNNER_TEMP/gofile-download-page.txt"
+              exit 0
             fi
-            RESPONSE=""
           done
-          test -n "$RESPONSE"
-          STATUS="$(jq -r '.status // empty' "$RUNNER_TEMP/gofile-response.json")"
-          test "$STATUS" = "ok"
-          DOWNLOAD_PAGE="$(jq -r '.data.downloadPage // empty' "$RUNNER_TEMP/gofile-response.json")"
-          test -n "$DOWNLOAD_PAGE"
-          {
-            echo "## Free Gofile APK download"
-            echo
-            echo "$DOWNLOAD_PAGE"
-            echo
-            echo "SHA-256:"
-            sha256sum "$APK"
-          } >> "$GITHUB_STEP_SUMMARY"
-          echo "Gofile download: $DOWNLOAD_PAGE"
-          echo "GOFILE_DOWNLOAD_PAGE=$DOWNLOAD_PAGE" >> "$GITHUB_ENV"
-          printf '%s\n' "$DOWNLOAD_PAGE" > "$RUNNER_TEMP/gofile-download-page.txt"
+          echo "Gofile upload failed at every endpoint."
+          exit 1
 
       - name: Publish persistent GitHub Release
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: always() && success()
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          TAG="apk-native-$GITHUB_RUN_NUMBER"
+          TAG="apk-independent-$GITHUB_RUN_NUMBER"
           NOTES_FILE="$RUNNER_TEMP/release-notes.md"
           {
-            echo "Native Android build from main commit $GITHUB_SHA."
+            echo "Native Android build from $GITHUB_REF commit $GITHUB_SHA."
             echo
             echo "**Free Gofile download:** $GOFILE_DOWNLOAD_PAGE"
             echo
             echo "**APK SHA-256:**"
             sha256sum android/app/build/outputs/apk/release/app-release.apk
             echo
-            echo "The APK contains the verified Studio web bundle and native Android Buddy voice/microphone bridge."
+            echo "The APK contains the verified Studio web bundle and native Android Buddy voice/microphone bridge."\n            echo\n            echo "This release is the persistent fallback download when Gofile is unavailable."
           } > "$NOTES_FILE"
           gh release create "$TAG" android/app/build/outputs/apk/release/app-release.apk \
             --repo "$GITHUB_REPOSITORY" \
-            --title "Little Red's Big Studio Native APK $GITHUB_RUN_NUMBER" \
+            --title "Little Red's Big Studio Independent APK $GITHUB_RUN_NUMBER" \
             --notes-file "$NOTES_FILE"

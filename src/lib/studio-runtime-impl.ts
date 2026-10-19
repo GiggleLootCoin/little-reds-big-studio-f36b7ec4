@@ -46,7 +46,7 @@ function spaceId(space: string) {
 }
 function spaceOrigin(space: string) {
   const id = spaceId(space);
-  return "https://" + id.replace(/\\//g, "-").replace(/[^a-zA-Z0-9-]/g, "-") + ".hf.space";
+  return "https://" + id.replace(/\//g, "-").replace(/[^a-zA-Z0-9-]/g, "-") + ".hf.space";
 }
 function endpoints(api: Api) {
   return { ...(api.named_endpoints ?? {}), ...(api.unnamed_endpoints ?? {}) };

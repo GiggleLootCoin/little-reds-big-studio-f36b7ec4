@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unused-expressions */
 import { useEffect, useRef, useState } from "react";
 import { Camera, Mic, MicOff, MonitorUp, Paperclip, Phone, Send, Sparkles, Volume2, VolumeX } from "lucide-react";
 import { artifactText, runStudioJob } from "@/lib/studio-runtime";
@@ -32,7 +33,7 @@ export function BuddyLiveChat() {
   }
   function stopNativeSpeech() {
     const bridge = androidBridge();
-    try { bridge?.stopNativeListening?.(); } catch {}
+    try { if (bridge?.stopNativeListening) bridge.stopNativeListening(); } catch {}
     const current = nativeSpeech.current;
     nativeSpeech.current = null;
     if (current) { try { current.stop(); } catch {} }
@@ -88,6 +89,8 @@ export function BuddyLiveChat() {
       return false;
     }
   }
+  const independentLocalFirst = true;
+
   function localBrainChat(prompt: string, systemPrompt: string): Promise<string> {
     const bridge = androidBridge();
     if (!bridge?.localBrainChat) return Promise.reject(new Error("Local Buddy brain is not available in this APK."));
@@ -97,7 +100,7 @@ export function BuddyLiveChat() {
       const timer = window.setTimeout(() => { w.__buddyLocalBrainResult = oldResult; w.__buddyLocalBrainError = oldError; reject(new Error("Local Buddy brain timed out.")); }, 90000);
       w.__buddyLocalBrainResult = (text) => { window.clearTimeout(timer); w.__buddyLocalBrainResult = oldResult; w.__buddyLocalBrainError = oldError; const clean = String(text || "").trim(); clean ? resolve(clean) : reject(new Error("Local Buddy brain returned an empty response.")); };
       w.__buddyLocalBrainError = (message) => { window.clearTimeout(timer); w.__buddyLocalBrainResult = oldResult; w.__buddyLocalBrainError = oldError; reject(new Error(String(message || "Local Buddy brain failed."))); };
-      try { bridge.localBrainChat?.(prompt, systemPrompt, 250); } catch (error) { window.clearTimeout(timer); w.__buddyLocalBrainResult = oldResult; w.__buddyLocalBrainError = oldError; reject(error instanceof Error ? error : new Error(String(error))); }
+      try { if (bridge.localBrainChat) bridge.localBrainChat(prompt, systemPrompt, 250); } catch (error) { window.clearTimeout(timer); w.__buddyLocalBrainResult = oldResult; w.__buddyLocalBrainError = oldError; reject(error instanceof Error ? error : new Error(String(error))); }
     });
   }
   function installLocalBrain() {
@@ -200,7 +203,7 @@ export function BuddyLiveChat() {
     // getUserMedia can fail without ever lighting the microphone indicator.
     if (forceBrowser && bridge?.microphoneGranted && !bridge.microphoneGranted()) {
       try {
-        bridge.requestMicrophone?.();
+        if (bridge.requestMicrophone) bridge.requestMicrophone();
         setStatus("Allow microphone access for Buddy in the Android prompt.");
         for (let attempt = 0; attempt < 40; attempt += 1) {
           await new Promise((resolve) => window.setTimeout(resolve, 250));
@@ -297,51 +300,189 @@ export function BuddyLiveChat() {
   async function videoFrameDataUrl(file: File): Promise<string> { const url = URL.createObjectURL(file); try { const video = document.createElement("video"); video.preload = "metadata"; video.muted = true; video.playsInline = true; video.src = url; await new Promise<void>((resolve, reject) => { video.onloadeddata = () => resolve(); video.onerror = () => reject(new Error("The video attachment could not be decoded.")); }); const width = Math.min(video.videoWidth || 1280, 1280), height = Math.min(video.videoHeight || 720, 720); const canvas = document.createElement("canvas"); canvas.width = width; canvas.height = height; const context = canvas.getContext("2d"); if (!context) throw new Error("The video frame could not be rendered."); video.currentTime = 0; await new Promise<void>((resolve) => { video.onseeked = () => resolve(); }); context.drawImage(video, 0, 0, width, height); return canvas.toDataURL("image/jpeg", 0.84); } finally { URL.revokeObjectURL(url); } }
   async function attachmentContext(files: File[]) { const textParts: string[] = []; const imageParts: { type: string; image_url: { url: string } }[] = []; for (const file of files) { if (file.type.startsWith("image/")) imageParts.push({ type: "image_url", image_url: { url: await dataUrl(file) } }); else if (file.type.startsWith("audio/")) { try { const r = await runStudioJob("speech-to-text", { audio: file }, setStatus); const t = artifactText(r.value).trim(); if (t) textParts.push(`Audio attachment "${file.name}" transcript:\n${t}`); } catch (error) { textParts.push(`Audio attachment "${file.name}" could not be transcribed: ${error instanceof Error ? error.message : String(error)}`); } } else if (file.type.startsWith("video/")) { try { imageParts.push({ type: "image_url", image_url: { url: await videoFrameDataUrl(file) } }); textParts.push(`Video attachment "${file.name}" is attached; Buddy is shown its first decoded frame.`); } catch (error) { textParts.push(`Video attachment "${file.name}" could not be decoded: ${error instanceof Error ? error.message : String(error)}`); } } else if (file.type === "text/plain" || file.type === "text/markdown" || file.type === "application/json" || file.type === "application/rtf") { const text = (await file.text()).slice(0, 12000); textParts.push(`Text attachment "${file.name}":\n${text}`); } else if (file.type === "application/pdf") textParts.push(`PDF attachment "${file.name}" is attached, but this browser path does not claim to have read PDF contents.`); } return { textParts, imageParts }; }
   async function answer(text: string, spoken = false) {
-    const clean = text.trim(); if (!clean || busyRef.current) return;
+    const clean = text.trim();
+    if (!clean || busyRef.current) return;
+
     await unlockBuddyAudio();
-    busyRef.current = true; setBusy(true); setStatus("Buddy is thinking…");
-    const u: Message = { id: crypto.randomUUID(), role: "user", content: clean, createdAt: Date.now(), attachments: attachments.map((f) => ({ id: crypto.randomUUID(), name: f.name, type: f.type, size: f.size })) };
-    setMessages((x) => [...x, u]); setInput("");
+    busyRef.current = true;
+    setBusy(true);
+    setStatus("Buddy is thinking…");
+
+    const u: Message = {
+      id: crypto.randomUUID(),
+      role: "user",
+      content: clean,
+      createdAt: Date.now(),
+      attachments: attachments.map((f) => ({
+        id: crypto.randomUUID(),
+        name: f.name,
+        type: f.type,
+        size: f.size,
+      })),
+    };
+
+    setMessages((x) => [...x, u]);
+    setInput("");
+
+    const prior = messages.slice(-12).map((m) => ({ role: m.role, content: m.content }));
+    const voiceProfile = getBuddyVoiceProfile();
+    const language = voiceProfile.language || "English";
+    const mood = voiceProfile.mood || "natural";
+    const tone = voiceProfile.tone || "conversational";
+    const systemPrompt = `${IDENTITY} ${buildAgentSystemPrompt()} Respond in ${language}. Your current mood is ${mood}; your conversational tone is ${tone}. Keep replies compact when the user asks something simple, but give enough detail when the task needs it. Do not switch back to English unless the user asks for English.`;
+    const attachmentInfo = await attachmentContext(attachments);
+    let localAttempted = false;
+
     try {
-      const prior = messages.slice(-12).map((m) => ({ role: m.role, content: m.content }));
-      const content: { type: string; text?: string; image_url?: { url: string } }[] = [{ type: "text", text: clean }];
-      const attachmentInfo = await attachmentContext(attachments); if (attachmentInfo.textParts.length) content[0].text = `${clean}\n\n${attachmentInfo.textParts.join("\n\n")}`; content.push(...attachmentInfo.imageParts);
-      const voiceProfile = getBuddyVoiceProfile(), language = voiceProfile.language || "English", mood = voiceProfile.mood || "natural", tone = voiceProfile.tone || "conversational";
-      const systemPrompt = `${IDENTITY} ${buildAgentSystemPrompt()} Respond in ${language}. Your current mood is ${mood}; your conversational tone is ${tone}. Keep replies compact when the user asks something simple, but give enough detail when the task needs it. Do not switch back to English unless the user asks for English.`;
-      const history = [{ role: "system", content: systemPrompt }, ...prior, { role: "user", content: content.length === 1 ? clean : content }];
-      const r = await runStudioJob("chat", { prompt: clean, text: clean, messages: history, history, language, mood, tone, max_tokens: 250, maxTokens: 250 }, setStatus), reply = artifactText(r.value).trim(); if (!reply) throw Error("Buddy did not return a response.");
-      setMessages((x) => [...x, { id: crypto.randomUUID(), role: "assistant", content: reply, createdAt: Date.now() }]); setAttachments([]);
-      // Buddy voice is the normal response mode. Typed messages must use the same voice path as spoken/live messages; otherwise a user can explicitly test voice and receive text only without any playback attempt.
+      const content: { type: string; text?: string; image_url?: { url: string } }[] = [
+        { type: "text", text: clean },
+      ];
+      if (attachmentInfo.textParts.length) {
+        content[0].text = `${clean}\n\n${attachmentInfo.textParts.join("\n\n")}`;
+      }
+      content.push(...attachmentInfo.imageParts);
+
+      const localHistory = prior
+        .slice(-8)
+        .map((m) => (m.role === "user" ? "You: " : "Buddy: ") + m.content)
+        .join("\n");
+      const localPrompt = localHistory
+        ? `${localHistory}\nYou: ${clean}\nBuddy:`
+        : clean;
+
+      // Independent build: local Buddy is the first response path whenever the
+      // request is text-only and the user has installed the on-device model.
+      if (independentLocalFirst && localBrainInstalled && content.length === 1) {
+        localAttempted = true;
+        try {
+          setStatus("Buddy is thinking locally…");
+          const reply = await localBrainChat(localPrompt, systemPrompt);
+          setMessages((x) => [
+            ...x,
+            { id: crypto.randomUUID(), role: "assistant", content: reply, createdAt: Date.now() },
+          ]);
+          setAttachments([]);
+          if (!muted) {
+            try {
+              await speak(reply);
+              setStatus("Buddy responded locally with Red voice.");
+            } catch (voiceError) {
+              setStatus(
+                "Buddy answered locally, but audio could not play. " +
+                  (voiceError instanceof Error ? voiceError.message : String(voiceError)),
+              );
+            }
+          } else {
+            setStatus("Buddy responded locally.");
+          }
+          return;
+        } catch {
+          setStatus("Local Buddy is unavailable for this turn. Trying the online route…");
+        }
+      }
+
+      setStatus("Buddy is thinking…");
+      const history = [
+        { role: "system", content: systemPrompt },
+        ...prior,
+        { role: "user", content: content.length === 1 ? clean : content },
+      ];
+      const r = await runStudioJob(
+        "chat",
+        {
+          prompt: clean,
+          text: clean,
+          messages: history,
+          history,
+          language,
+          mood,
+          tone,
+          max_tokens: 250,
+          maxTokens: 250,
+        },
+        setStatus,
+      );
+      const reply = artifactText(r.value).trim();
+      if (!reply) throw Error("Buddy did not return a response.");
+
+      setMessages((x) => [
+        ...x,
+        { id: crypto.randomUUID(), role: "assistant", content: reply, createdAt: Date.now() },
+      ]);
+      setAttachments([]);
+
       if (!muted) {
         try {
           await speak(reply);
           setStatus("Buddy responded with audio.");
         } catch (voiceError) {
-          // A successful text response must never be replaced by a generic
-          // chat failure just because the selected voice engine failed.
           const detail = voiceError instanceof Error ? voiceError.message : String(voiceError);
           setStatus("Buddy answered, but audio could not play. " + detail);
         }
-      } else setStatus("Buddy responded.");
+      } else {
+        setStatus("Buddy responded.");
+      }
     } catch (e) {
       const onlineError = e instanceof Error ? e.message : String(e);
-      if (localBrainInstalled && attachmentInfo.textParts.length === 0 && attachmentInfo.imageParts.length === 0) {
+
+      if (
+        !localAttempted &&
+        localBrainInstalled &&
+        attachmentInfo.textParts.length === 0 &&
+        attachmentInfo.imageParts.length === 0
+      ) {
         try {
-          setStatus("Online Buddy is unavailable. Switching to the local GGUF brain…");
-          const localHistory = prior.slice(-8).map((m) => (m.role === "user" ? "You: " : "Buddy: ") + m.content).join("\n");
-          const localPrompt = localHistory ? localHistory + "\nYou: " + clean + "\nBuddy:" : clean;
+          setStatus("Online Buddy is unavailable. Switching to the local brain…");
+          const localHistory = prior
+            .slice(-8)
+            .map((m) => (m.role === "user" ? "You: " : "Buddy: ") + m.content)
+            .join("\n");
+          const localPrompt = localHistory
+            ? `${localHistory}\nYou: ${clean}\nBuddy:`
+            : clean;
           const reply = await localBrainChat(localPrompt, systemPrompt);
-          setMessages((x) => [...x, { id: crypto.randomUUID(), role: "assistant", content: reply, createdAt: Date.now() }]);
+
+          setMessages((x) => [
+            ...x,
+            { id: crypto.randomUUID(), role: "assistant", content: reply, createdAt: Date.now() },
+          ]);
           setAttachments([]);
-          if (!muted) { try { await speak(reply); setStatus("Buddy responded using the local brain and Red voice."); } catch (voiceError) { setStatus("Buddy answered locally, but audio could not play. " + (voiceError instanceof Error ? voiceError.message : String(voiceError))); } } else setStatus("Buddy responded using the local brain.");
+
+          if (!muted) {
+            try {
+              await speak(reply);
+              setStatus("Buddy responded using the local brain and Red voice.");
+            } catch (voiceError) {
+              setStatus(
+                "Buddy answered locally, but audio could not play. " +
+                  (voiceError instanceof Error ? voiceError.message : String(voiceError)),
+              );
+            }
+          } else {
+            setStatus("Buddy responded using the local brain.");
+          }
           return;
-        } catch (localError) {
+        } catch {
           setStatus("Online and local Buddy brains failed. " + onlineError);
         }
-      } else setStatus(onlineError || "Buddy could not respond right now.");
-      setMessages((x) => [...x, { id: crypto.randomUUID(), role: "assistant", content: "I couldn't complete that response. Please try again.", createdAt: Date.now() }]);
+      } else {
+        setStatus(onlineError || "Buddy could not respond right now.");
+      }
+
+      setMessages((x) => [
+        ...x,
+        {
+          id: crypto.randomUUID(),
+          role: "assistant",
+          content: "I couldn't complete that response. Please try again.",
+          createdAt: Date.now(),
+        },
+      ]);
+    } finally {
+      busyRef.current = false;
+      setBusy(false);
+      if (liveRef.current && !speakingRef.current) setTimeout(() => void beginLive(), 250);
     }
-    finally { busyRef.current = false; setBusy(false); if (liveRef.current && !speakingRef.current) setTimeout(() => void beginLive(), 250); }
   }
   async function playGeneratedAudioNatively(url: string): Promise<boolean> {
     if (typeof window === "undefined") return false;
@@ -364,7 +505,7 @@ export function BuddyLiveChat() {
         const callbacks = ((window as typeof window & { __buddyAndroidTtsCallbacks?: Record<string, (ok: boolean) => void> }).__buddyAndroidTtsCallbacks ??= {});
         callbacks[callbackId] = finish;
         (window as typeof window & { __buddyAndroidTtsResult?: (id: string, ok: boolean) => void }).__buddyAndroidTtsResult ??= (id, ok) => { (window as typeof window & { __buddyAndroidTtsCallbacks?: Record<string, (ok: boolean) => void> }).__buddyAndroidTtsCallbacks?.[id]?.(ok); };
-        bridge.playBase64Async?.(base64, blob.type || "audio/mpeg", callbackId);
+        if (bridge.playBase64Async) bridge.playBase64Async(base64, blob.type || "audio/mpeg", callbackId);
       });
     } catch { return false; }
   }

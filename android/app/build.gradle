@@ -12,8 +12,16 @@ android {
     namespace 'com.littleredbigstudio.app'
     compileSdk 36
 
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    kotlinOptions {
+        jvmTarget = "17"
+    }
+
     defaultConfig {
-        applicationId 'com.littleredbigstudio.app'
+        applicationId 'com.littleredbigstudio.independent'
         minSdk 24
         targetSdk 35
         versionCode Integer.parseInt(System.getenv("GITHUB_RUN_NUMBER") ?: "1")

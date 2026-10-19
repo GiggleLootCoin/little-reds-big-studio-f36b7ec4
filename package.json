@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite dev",
-    "build": "vite build && node scripts/write-worker-wrapper.mjs",
+    "build": "vite build && vite build --config vite.android.config.ts && node scripts/write-worker-wrapper.mjs",
     "build:dev": "vite build --mode development && node scripts/write-worker-wrapper.mjs",
     "test:voice": "node --test tests/buddy-voice-path.test.mjs",
     "verify:local-voice": "node scripts/verify-local-voice-path.mjs",
