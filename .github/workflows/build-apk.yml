@@ -104,13 +104,14 @@ jobs:
           rm -rf android/app/src/main/assets
           mkdir -p android/app/src/main/assets
           cp -a "$CLIENT_DIR"/. android/app/src/main/assets/
-          cp "$CLIENT_DIR/_shell.html" android/app/src/main/assets/index.html
+          test -s dist/android.html
+          cp dist/android.html android/app/src/main/assets/index.html
           mkdir -p android/app/src/main/res/drawable-nodpi
           cp 1784996969001.png android/app/src/main/res/drawable-nodpi/studio_launcher.png
           test -s android/app/src/main/res/drawable-nodpi/studio_launcher.png
           test -s android/app/src/main/assets/index.html
           test "$(find android/app/src/main/assets -type f | wc -l)" -gt 3
-          grep -q '<script' android/app/src/main/assets/index.html
+          grep -q '<script type="module"' android/app/src/main/assets/index.html
           grep -q 'assets/' android/app/src/main/assets/index.html
 
       - name: Prepare Android SDK and signing
