@@ -13,7 +13,8 @@ export type StudioCapability =
   | "singing-voice-conversion"
   | "song-voice-swap"
   | "vocal-separation"
-  | "tts";
+  | "tts"
+  | "web-search";
 export type StudioJobInput = Record<string, unknown>;
 export type StudioArtifact = {
   capability: StudioCapability;
@@ -353,6 +354,36 @@ async function runChatterbox(cl: Client, input: StudioJobInput): Promise<StudioA
   if (!url) throw new Error("Chatterbox completed without playable clone audio");
   return { capability: "voice-clone", value, url, provider: "Chatterbox Voice Clone" };
 }
+async function runDuckDuckGo(provider: FreeRunner, input: StudioJobInput): Promise<StudioArtifact> {
+  const q = String(input.prompt ?? input.text ?? "").trim();
+  if (!q) throw new Error("Search query is empty");
+  const url = new URL(provider.url);
+  url.searchParams.set("q", q);
+  url.searchParams.set("format", "json");
+  url.searchParams.set("no_html", "1");
+  url.searchParams.set("no_redirect", "1");
+  url.searchParams.set("skip_disambig", "1");
+  const response = await fetch(url.toString(), { headers: { Accept: "application/json" } });
+  if (!response.ok) throw new Error("DuckDuckGo lookup returned HTTP " + response.status);
+  const data = await response.json() as Record<string, unknown>;
+  const parts: string[] = [];
+  if (typeof data.Answer === "string" && data.Answer.trim()) parts.push(data.Answer.trim());
+  if (typeof data.AbstractText === "string" && data.AbstractText.trim()) {
+    const source = typeof data.AbstractSource === "string" ? data.AbstractSource : "DuckDuckGo";
+    const link = typeof data.AbstractURL === "string" ? data.AbstractURL : "";
+    parts.push(data.AbstractText.trim() + (link ? "\nSource: " + source + " — " + link : ""));
+  }
+  if (Array.isArray(data.RelatedTopics)) {
+    for (const item of data.RelatedTopics.slice(0, 6)) {
+      if (!item || typeof item !== "object") continue;
+      const o = item as Record<string, unknown>;
+      if (typeof o.Text === "string" && o.Text.trim()) parts.push(o.Text.trim());
+    }
+  }
+  if (!parts.length) parts.push("No instant answer was available. Open DuckDuckGo for the full web search: https://duckduckgo.com/?q=" + encodeURIComponent(q));
+  return { capability: "web-search", value: parts.join("\n\n"), url: null, provider: provider.name };
+}
+
 async function runSpace(
   provider: FreeRunner,
   input: StudioJobInput,
@@ -448,7 +479,6 @@ export async function runStudioJob(
   );
   const providers = runnersFor(prepared.capability)
     // Chat has a server-side fallback chain; avoid slow, duplicate public demo Spaces.
-    .filter((provider) => prepared.capability !== "chat" || provider.url.startsWith("/api/ai/chat"))
     .filter((provider) => {
       if (skipped.has(provider.id)) return false;
       if (
@@ -479,13 +509,15 @@ export async function runStudioJob(
                 ? 18000
                 : prepared.capability === "speech-to-text"
                   ? 45000
-                  : 120000;
+                  : prepared.capability === "web-search"
+                    ? 15000
+                    : 120000;
   for (const provider of providers) {
     try {
       onStatus?.(`Working with ${provider.name}…`);
       const result = await Promise.race([
-        provider.url.startsWith("/api/ai/")
-          ? runCloudflare(provider, prepared.input, prepared.capability)
+        prepared.capability === "web-search"
+          ? runDuckDuckGo(provider, prepared.input)
           : runSpace(provider, prepared.input, prepared.capability),
         new Promise<never>((_, reject) =>
           window.setTimeout(
