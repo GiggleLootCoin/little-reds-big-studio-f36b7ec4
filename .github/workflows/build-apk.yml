@@ -36,6 +36,7 @@ jobs:
 
       - name: Verify Studio source
         run: |
+          npx prettier --write .
           npm run typecheck
           npm run lint
           npm run test:voice
