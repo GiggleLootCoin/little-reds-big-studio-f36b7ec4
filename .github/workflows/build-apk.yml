@@ -34,13 +34,20 @@ jobs:
       - name: Install Node dependencies
         run: npm ci --no-audit --no-fund --legacy-peer-deps
 
-      - name: Verify Studio source
-        run: |
-          npx prettier --write .
-          npm run typecheck
-          npm run lint
-          npm run test:voice
-          npm run verify:local-voice
+      - name: Format source
+        run: npx prettier --write .
+
+      - name: Typecheck source
+        run: npm run typecheck
+
+      - name: Lint source
+        run: npm run lint
+
+      - name: Run Buddy voice tests
+        run: npm run test:voice
+
+      - name: Verify local voice path
+        run: npm run verify:local-voice
 
       - name: Build the complete production bundle
         run: npm run build
