@@ -70,6 +70,7 @@ public class MainActivity extends Activity {
     private SpeechRecognizer speechRecognizer;
     private boolean nativeListening = false;
     private PermissionRequest pendingWebPermissionRequest;
+    private String pendingNativeSpeechLanguage;
     private static final String BUNDLED_ASSET_HOST =
             "little-reds-big-studio-f36b7ec4.gigglelootcoin.workers.dev";
 
@@ -234,6 +235,17 @@ public class MainActivity extends Activity {
 
     @Override public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == 4102) {
+            if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED && pendingNativeSpeechLanguage != null) {
+                String language = pendingNativeSpeechLanguage;
+                pendingNativeSpeechLanguage = null;
+                main.post(() -> startNativeListening(language));
+            } else {
+                pendingNativeSpeechLanguage = null;
+                notifyNativeSpeechError(android.speech.SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS);
+            }
+            return;
+        }
         if (requestCode != 4101) return;
         PermissionRequest request = pendingWebPermissionRequest;
         pendingWebPermissionRequest = null;
@@ -285,6 +297,7 @@ public class MainActivity extends Activity {
 
     private boolean startNativeListening(String language) {
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            pendingNativeSpeechLanguage = language == null || language.trim().isEmpty() ? "en-US" : language;
             requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, 4102);
             return false;
         }
