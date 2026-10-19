@@ -37,7 +37,7 @@ export function BuddyLiveChat() {
     nativeSpeech.current = null;
     if (current) { try { current.stop(); } catch {} }
   }
-  function startNativeSpeech() {
+  function startNativeSpeech(): boolean {
     stopNativeSpeech();
     nativeTranscript.current = "";
     const bridge = androidBridge();
@@ -59,7 +59,7 @@ export function BuddyLiveChat() {
     }
     const Constructor = browserSpeechConstructor();
     nativeSpeechAvailable.current = Boolean(Constructor);
-    if (!Constructor) return;
+    if (!Constructor) return false;
     try {
       const recognition = new Constructor();
       recognition.continuous = true;
@@ -85,9 +85,11 @@ export function BuddyLiveChat() {
       };
       nativeSpeech.current = recognition;
       recognition.start();
+      return true;
     } catch {
       nativeSpeech.current = null;
       nativeSpeechAvailable.current = false;
+      return false;
     }
   }
   useEffect(() => {
@@ -187,6 +189,7 @@ export function BuddyLiveChat() {
   async function beginLive() {
     if (!liveRef.current || busyRef.current || speakingRef.current) return;
     const bridge = androidBridge();
+    if (rec.current) return;
     if (bridge?.nativeSpeechAvailable?.()) {
       if (!bridge.microphoneGranted?.()) {
         await openMic();
@@ -194,10 +197,12 @@ export function BuddyLiveChat() {
       }
       setRecording(true);
       setMicPermission("granted");
-      startNativeSpeech();
-      return;
+      if (startNativeSpeech()) return;
+      // Native SpeechRecognizer exists but could not actually start. Fall through
+      // to the browser MediaRecorder + server STT path so the physical microphone
+      // still opens and the conversation remains usable.
+      setRecording(false);
     }
-    if (rec.current) return;
     const s = stream.current?.active ? stream.current : await openMic();
     if (s) try {
       start(s, true);
@@ -226,8 +231,8 @@ export function BuddyLiveChat() {
       setMicPermission("granted");
       setRecording(true);
       setStatus("Listening… speak to Buddy.");
-      startNativeSpeech();
-      return;
+      if (startNativeSpeech()) return;
+      setRecording(false);
     }
     const s = await openMic();
     if (s) try { start(s, false); } catch (e) { setStatus(e instanceof Error ? e.message : "Microphone capture failed."); }
