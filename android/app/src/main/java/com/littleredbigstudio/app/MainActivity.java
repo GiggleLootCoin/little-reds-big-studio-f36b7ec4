@@ -47,13 +47,11 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public class MainActivity extends Activity {
-    private static final String REMOTE_ORIGIN =
-            "https://little-reds-big-studio-f36b7ec4.gigglelootcoin.workers.dev";
-    private static final String START_URL = REMOTE_ORIGIN + "/";
-    // The APK carries the complete UI bundle. WebViewAssetLoader serves it from
-    // the app while requests outside /assets/ fall through to the remote API.
-    private static final String LOCAL_START_URL =
-            "https://little-reds-big-studio-f36b7ec4.gigglelootcoin.workers.dev/assets/index.html";
+    private static final String REMOTE_ORIGIN = "https://appassets.androidplatform.net";
+    private static final String START_URL = REMOTE_ORIGIN + "/assets/index.html";
+    // The APK carries the complete UI bundle and uses the Android app-assets HTTPS origin.
+    // No Cloudflare/worker host is required for the Studio shell.
+    private static final String LOCAL_START_URL = START_URL;
 
     private static final String GOOGLE_TTS = "com.google.android.tts";
     private static final String SAMSUNG_TTS = "com.samsung.SMT";
@@ -77,8 +75,7 @@ public class MainActivity extends Activity {
     private boolean nativeListening = false;
     private PermissionRequest pendingWebPermissionRequest;
     private String pendingNativeSpeechLanguage;
-    private static final String BUNDLED_ASSET_HOST =
-            "little-reds-big-studio-f36b7ec4.gigglelootcoin.workers.dev";
+    private static final String BUNDLED_ASSET_HOST = "appassets.androidplatform.net";
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
@@ -175,10 +172,8 @@ public class MainActivity extends Activity {
         webView.addJavascriptInterface(new BuddyVoiceBridge(), "AndroidBuddyVoice");
         setContentView(webView);
         initTts();
-        // Keep the real Studio origin so its relative API calls, cookies, routing,
-        // and provider requests remain same-origin. The HTML and static assets are
-        // intercepted from the APK before the network is consulted, so the app can
-        // boot even when the hosted page is unavailable.
+        // The Studio shell is local and HTTPS-backed. AI providers are called directly
+        // from the web runtime, so the APK no longer depends on a Cloudflare worker.
         webView.loadUrl(START_URL);
     }
 
