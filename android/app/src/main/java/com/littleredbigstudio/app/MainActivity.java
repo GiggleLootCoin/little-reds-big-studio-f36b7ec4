@@ -832,8 +832,8 @@ public class MainActivity extends Activity {
         main.post(() -> {
             if (webView == null) return;
             String safe = text == null ? "" : text
-                    .replace("\\\\", "\\\\\\\\")
-                    .replace("'", "\\\\'")
+                    .replace("\\", "\\\\")
+                    .replace("'", "\\'")
                     .replace("\n", " ");
             webView.evaluateJavascript(
                     "window.__buddyLocalBrainResult && window.__buddyLocalBrainResult('" + safe + "');",
