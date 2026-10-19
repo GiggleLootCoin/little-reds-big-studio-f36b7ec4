@@ -10,6 +10,7 @@ on:
 
 permissions:
   contents: write
+  pull-requests: write
 
 jobs:
   build-apk:
@@ -53,7 +54,7 @@ jobs:
               echo
               echo '~~~'
             } > "$RUNNER_TEMP/typecheck-comment.md"
-            gh pr comment "${{ github.event.pull_request.number }}" --repo "${{ github.repository }}" --body-file "$RUNNER_TEMP/typecheck-comment.md" || true
+            gh api "repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments" --method POST --field body="$(cat "$RUNNER_TEMP/typecheck-comment.md")" || true
             cat "$RUNNER_TEMP/typecheck.log"
             exit "$CODE"
           fi
