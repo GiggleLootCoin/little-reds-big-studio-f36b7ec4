@@ -29,6 +29,7 @@ import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import androidx.webkit.WebViewAssetLoader;
 import java.io.InputStream;
 import java.io.ByteArrayOutputStream;
 
@@ -58,6 +59,7 @@ public class MainActivity extends Activity {
     private static final long TTS_START_TIMEOUT_MS = 60000L;
 
     private WebView webView;
+    private WebViewAssetLoader assetLoader;
     private TextToSpeech tts;
     private MediaPlayer buddyPlayer;
     private AudioManager audioManager;
@@ -80,6 +82,10 @@ public class MainActivity extends Activity {
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
         audioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
+
+        assetLoader = new WebViewAssetLoader.Builder()
+                .addPathHandler("/assets/", new WebViewAssetLoader.AssetsPathHandler(this))
+                .build();
 
         webView = new WebView(this);
         WebSettings settings = webView.getSettings();
@@ -135,13 +141,13 @@ public class MainActivity extends Activity {
         webView.setWebViewClient(new WebViewClient() {
             @Override public WebResourceResponse shouldInterceptRequest(
                     WebView view, WebResourceRequest request) {
-                WebResourceResponse local = serveBundledStudioAsset(request.getUrl());
+                WebResourceResponse local = assetLoader.shouldInterceptRequest(request.getUrl());
                 return local != null ? local : super.shouldInterceptRequest(view, request);
             }
 
             @Override public WebResourceResponse shouldInterceptRequest(
                     WebView view, String url) {
-                WebResourceResponse local = serveBundledStudioAsset(android.net.Uri.parse(url));
+                WebResourceResponse local = assetLoader.shouldInterceptRequest(android.net.Uri.parse(url));
                 return local != null ? local : super.shouldInterceptRequest(view, url);
             }
             @Override public boolean shouldOverrideUrlLoading(
@@ -175,54 +181,6 @@ public class MainActivity extends Activity {
         // The Studio shell is local and HTTPS-backed. AI providers are called directly
         // from the web runtime, so the APK no longer depends on a Cloudflare worker.
         webView.loadUrl(START_URL);
-    }
-
-    private WebResourceResponse serveBundledStudioAsset(android.net.Uri uri) {
-        if (uri == null || !BUNDLED_ASSET_HOST.equalsIgnoreCase(uri.getHost())) return null;
-        String path = uri.getPath();
-        if (path == null || path.isEmpty()) path = "/";
-
-        // API/provider calls must stay on the real worker and are deliberately not
-        // intercepted. Only the packaged HTML/JS/CSS/images are served locally.
-        if (path.startsWith("/api/") || path.startsWith("/auth/") || path.startsWith("/provider/")) {
-            return null;
-        }
-
-        String assetPath;
-        if (path.equals("/") || !path.substring(path.lastIndexOf('/') + 1).contains(".")) {
-            assetPath = "assets/index.html";
-        } else if (path.startsWith("/assets/")) {
-            assetPath = "assets/" + path.substring("/assets/".length());
-        } else {
-            // TanStack SPA routes and other extensionless paths use the bundled shell.
-            assetPath = "assets/index.html";
-        }
-
-        try {
-            InputStream input = getAssets().open(assetPath);
-            String mime = mimeTypeFor(assetPath);
-            return new WebResourceResponse(mime, "UTF-8", input);
-        } catch (IOException ignored) {
-            return null;
-        }
-    }
-
-    private String mimeTypeFor(String path) {
-        String lower = path.toLowerCase(Locale.US);
-        if (lower.endsWith(".html")) return "text/html";
-        if (lower.endsWith(".js") || lower.endsWith(".mjs")) return "application/javascript";
-        if (lower.endsWith(".css")) return "text/css";
-        if (lower.endsWith(".json")) return "application/json";
-        if (lower.endsWith(".svg")) return "image/svg+xml";
-        if (lower.endsWith(".png")) return "image/png";
-        if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image/jpeg";
-        if (lower.endsWith(".webp")) return "image/webp";
-        if (lower.endsWith(".gif")) return "image/gif";
-        if (lower.endsWith(".ico")) return "image/x-icon";
-        if (lower.endsWith(".woff2")) return "font/woff2";
-        if (lower.endsWith(".woff")) return "font/woff";
-        if (lower.endsWith(".ttf")) return "font/ttf";
-        return "application/octet-stream";
     }
 
     private void showBootError(String message) {
