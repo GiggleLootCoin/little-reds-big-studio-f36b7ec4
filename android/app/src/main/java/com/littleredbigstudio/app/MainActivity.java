@@ -5,6 +5,9 @@ import android.app.Activity;
 import android.content.Context;
 import android.content.pm.PackageManager;
 import android.media.AudioAttributes;
+import android.media.AudioFormat;
+import android.media.AudioRecord;
+import android.media.MediaRecorder;
 import android.media.AudioFocusRequest;
 import android.media.AudioManager;
 import android.media.MediaPlayer;
@@ -68,6 +71,9 @@ public class MainActivity extends Activity {
     private final Handler main = new Handler(Looper.getMainLooper());
     private final AudioManager.OnAudioFocusChangeListener focusListener = focusChange -> {};
     private SpeechRecognizer speechRecognizer;
+    private AudioRecord nativeRecorder;
+    private volatile boolean nativeRecording = false;
+    private Thread nativeRecordingThread;
     private boolean nativeListening = false;
     private PermissionRequest pendingWebPermissionRequest;
     private String pendingNativeSpeechLanguage;
@@ -715,6 +721,118 @@ public class MainActivity extends Activity {
         }
     }
 
+    private boolean startNativeAudioCapture() {
+        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, 4103);
+            return false;
+        }
+        if (nativeRecording) return true;
+        final int sampleRate = 16000;
+        final int channelConfig = AudioFormat.CHANNEL_IN_MONO;
+        final int encoding = AudioFormat.ENCODING_PCM_16BIT;
+        int min = AudioRecord.getMinBufferSize(sampleRate, channelConfig, encoding);
+        if (min <= 0) return false;
+        int bufferSize = Math.max(min * 2, sampleRate / 2);
+        try {
+            // CAMCORDER source is intentionally preferred on this device family:
+            // it has proven more reliable than the generic MIC source on Android WebView.
+            nativeRecorder = new AudioRecord(
+                    MediaRecorder.AudioSource.CAMCORDER,
+                    sampleRate, channelConfig, encoding, bufferSize);
+            if (nativeRecorder.getState() != AudioRecord.STATE_INITIALIZED) {
+                nativeRecorder.release();
+                nativeRecorder = null;
+                return false;
+            }
+            nativeRecording = true;
+            nativeRecorder.startRecording();
+            final AudioRecord recorder = nativeRecorder;
+            nativeRecordingThread = new Thread(() -> {
+                ByteArrayOutputStream pcm = new ByteArrayOutputStream();
+                byte[] buffer = new byte[bufferSize];
+                boolean speechStarted = false;
+                long lastSpeech = System.currentTimeMillis();
+                long startedAt = System.currentTimeMillis();
+                try {
+                    while (nativeRecording && System.currentTimeMillis() - startedAt < 20000L) {
+                        int n = recorder.read(buffer, 0, buffer.length);
+                        if (n <= 0) continue;
+                        pcm.write(buffer, 0, n);
+                        double sum = 0;
+                        int samples = n / 2;
+                        for (int i = 0; i + 1 < n; i += 2) {
+                            int sample = (short)((buffer[i] & 0xff) | (buffer[i + 1] << 8));
+                            double normalized = sample / 32768.0;
+                            sum += normalized * normalized;
+                        }
+                        double rms = samples == 0 ? 0 : Math.sqrt(sum / samples);
+                        if (rms > 0.018) {
+                            speechStarted = true;
+                            lastSpeech = System.currentTimeMillis();
+                        } else if (speechStarted && System.currentTimeMillis() - lastSpeech >= 1200L) {
+                            break;
+                        }
+                    }
+                } catch (Throwable ignored) {
+                } finally {
+                    nativeRecording = false;
+                    try { recorder.stop(); } catch (Throwable ignored) {}
+                    try { recorder.release(); } catch (Throwable ignored) {}
+                    if (nativeRecorder == recorder) nativeRecorder = null;
+                    byte[] audio = makeWav(sampleRate, pcm.toByteArray());
+                    String encoded = Base64.encodeToString(audio, Base64.NO_WRAP);
+                    main.post(() -> notifyNativeAudioResult(encoded, "audio/wav"));
+                }
+            }, "buddy-native-audio");
+            nativeRecordingThread.start();
+            return true;
+        } catch (Throwable error) {
+            nativeRecording = false;
+            if (nativeRecorder != null) {
+                try { nativeRecorder.release(); } catch (Throwable ignored) {}
+                nativeRecorder = null;
+            }
+            return false;
+        }
+    }
+
+    private void stopNativeAudioCapture() {
+        nativeRecording = false;
+        AudioRecord recorder = nativeRecorder;
+        if (recorder != null) {
+            try { recorder.stop(); } catch (Throwable ignored) {}
+        }
+    }
+
+    private byte[] makeWav(int sampleRate, byte[] pcm) {
+        int dataLength = pcm == null ? 0 : pcm.length;
+        byte[] wav = new byte[44 + dataLength];
+        java.nio.ByteBuffer b = java.nio.ByteBuffer.wrap(wav).order(java.nio.ByteOrder.LITTLE_ENDIAN);
+        b.put(new byte[]{'R','I','F','F'});
+        b.putInt(36 + dataLength);
+        b.put(new byte[]{'W','A','V','E','f','m','t',' '});
+        b.putInt(16);
+        b.putShort((short)1);
+        b.putShort((short)1);
+        b.putInt(sampleRate);
+        b.putInt(sampleRate * 2);
+        b.putShort((short)2);
+        b.putShort((short)16);
+        b.put(new byte[]{'d','a','t','a'});
+        b.putInt(dataLength);
+        if (dataLength > 0) b.put(pcm);
+        return wav;
+    }
+
+    private void notifyNativeAudioResult(String base64, String mimeType) {
+        if (webView == null) return;
+        String safe = base64 == null ? "" : base64.replace("\\\\", "\\\\\\\\").replace("'", "\\\\'");
+        String mime = mimeType == null ? "audio/wav" : mimeType.replace("'", "\\\\'");
+        webView.evaluateJavascript(
+                "window.__buddyNativeAudioResult && window.__buddyNativeAudioResult('" +
+                safe + "','" + mime + "');", null);
+    }
+
     private void notifyTtsResult(String callbackId, boolean started) {
         if (callbackId == null || callbackId.isEmpty()) return;
         main.post(() -> {
@@ -742,6 +860,10 @@ public class MainActivity extends Activity {
             requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, 4102);
             return false;
         }
+
+        @JavascriptInterface public boolean startNativeAudioCapture() { return MainActivity.this.startNativeAudioCapture(); }
+
+        @JavascriptInterface public void stopNativeAudioCapture() { MainActivity.this.stopNativeAudioCapture(); }
 
         @JavascriptInterface public boolean startNativeListening(String language) {
             return MainActivity.this.startNativeListening(language);
@@ -843,6 +965,7 @@ public class MainActivity extends Activity {
 
     @Override protected void onDestroy() {
         stopNativeListening();
+        stopNativeAudioCapture();
         if (speechRecognizer != null) { try { speechRecognizer.destroy(); } catch (Throwable ignored) {} speechRecognizer = null; }
         if (tts != null) {
             try { tts.stop(); } catch (Throwable ignored) {}
