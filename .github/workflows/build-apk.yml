@@ -133,8 +133,16 @@ jobs:
           APK: android/app/build/outputs/apk/release/app-release.apk
         run: |
           set -euo pipefail
-          RESPONSE="$(curl --fail-with-body --retry 3 --retry-delay 2 -sS -F "file=@${APK}" https://upload.gofile.io/uploadfile)"
-          echo "$RESPONSE" > "$RUNNER_TEMP/gofile-response.json"
+          RESPONSE=""
+          for ENDPOINT in "https://upload.gofile.io/uploadfile" "https://upload-na-nyc.gofile.io/uploadfile" "https://upload.gofile.is/uploadfile"; do
+            if RESPONSE="$(curl --fail-with-body --retry 5 --retry-delay 3 -sS -F "file=@${APK}" "$ENDPOINT")"; then
+              echo "$RESPONSE" > "$RUNNER_TEMP/gofile-response.json"
+              STATUS="$(jq -r '.status // empty' "$RUNNER_TEMP/gofile-response.json")"
+              if [ "$STATUS" = "ok" ]; then break; fi
+            fi
+            RESPONSE=""
+          done
+          test -n "$RESPONSE"
           STATUS="$(jq -r '.status // empty' "$RUNNER_TEMP/gofile-response.json")"
           test "$STATUS" = "ok"
           DOWNLOAD_PAGE="$(jq -r '.data.downloadPage // empty' "$RUNNER_TEMP/gofile-response.json")"
