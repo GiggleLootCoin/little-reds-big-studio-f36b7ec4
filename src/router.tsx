@@ -10,7 +10,10 @@ export const getRouter = () => {
 
   const router = createRouter({
     routeTree,
-    basepath: "/little-reds-big-studio-611db058",
+    // The production Worker is served at the origin root. Keeping a stale
+    // project-specific basepath here makes the bundled Android shell fail to
+    // resolve the `/` route on a clean WebView.
+    basepath: "/",
     context: { queryClient },
     scrollRestoration: true,
     defaultPreloadStaleTime: 0,
