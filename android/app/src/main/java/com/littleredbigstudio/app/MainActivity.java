@@ -828,6 +828,41 @@ public class MainActivity extends Activity {
                 safe + "','" + mime + "');", null);
     }
 
+    private void notifyLocalBrainResult(String text) {
+        main.post(() -> {
+            if (webView == null) return;
+            String safe = text == null ? "" : text
+                    .replace("\\\\", "\\\\\\\\")
+                    .replace("'", "\\\\'")
+                    .replace("\n", " ");
+            webView.evaluateJavascript(
+                    "window.__buddyLocalBrainResult && window.__buddyLocalBrainResult('" + safe + "');",
+                    null);
+        });
+    }
+
+    private void notifyLocalBrainError(String message) {
+        main.post(() -> {
+            if (webView == null) return;
+            String safe = message == null ? "" : message
+                    .replace("\\\\", "\\\\\\\\")
+                    .replace("'", "\\\\'")
+                    .replace("\n", " ");
+            webView.evaluateJavascript(
+                    "window.__buddyLocalBrainError && window.__buddyLocalBrainError('" + safe + "');",
+                    null);
+        });
+    }
+
+    private void notifyLocalBrainProgress(int percent, long downloaded, long total) {
+        main.post(() -> {
+            if (webView == null) return;
+            webView.evaluateJavascript(
+                    "window.__buddyLocalBrainProgress && window.__buddyLocalBrainProgress(" +
+                    percent + "," + downloaded + "," + total + ");", null);
+        });
+    }
+
     private void notifyTtsResult(String callbackId, boolean started) {
         if (callbackId == null || callbackId.isEmpty()) return;
         main.post(() -> {
@@ -928,6 +963,51 @@ public class MainActivity extends Activity {
                         "window.__buddyAndroidTtsResult('" + safe + "'," + started + ");",
                         null);
             });
+        }
+
+        @JavascriptInterface public boolean localBrainInstalled() {
+            return LocalBuddyBrain.isInstalled(MainActivity.this);
+        }
+
+        @JavascriptInterface public String localBrainModelName() {
+            return LocalBuddyBrain.MODEL_FILE;
+        }
+
+        @JavascriptInterface public void downloadLocalBrain() {
+            LocalBuddyBrain.download(MainActivity.this, new LocalBuddyBrain.DownloadCallback() {
+                @Override public void onProgress(int percent, long downloaded, long total) {
+                    notifyLocalBrainProgress(percent, downloaded, total);
+                }
+                @Override public void onComplete() {
+                    main.post(() -> {
+                        if (webView != null) {
+                            webView.evaluateJavascript(
+                                    "window.__buddyLocalBrainInstalled && window.__buddyLocalBrainInstalled();", null);
+                        }
+                    });
+                }
+                @Override public void onError(String message) {
+                    notifyLocalBrainError(message);
+                }
+            });
+        }
+
+        @JavascriptInterface public void localBrainChat(String prompt, String systemPrompt, int maxTokens) {
+            LocalBuddyBrain.chat(MainActivity.this, prompt == null ? "" : prompt,
+                    systemPrompt == null ? "" : systemPrompt,
+                    maxTokens,
+                    new LocalBuddyBrain.Callback() {
+                        @Override public void onResult(String text) {
+                            notifyLocalBrainResult(text);
+                        }
+                        @Override public void onError(String message) {
+                            notifyLocalBrainError(message);
+                        }
+                    });
+        }
+
+        @JavascriptInterface public void releaseLocalBrain() {
+            LocalBuddyBrain.release();
         }
 
         @JavascriptInterface public void stop() {
