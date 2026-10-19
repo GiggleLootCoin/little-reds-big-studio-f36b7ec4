@@ -148,9 +148,25 @@ jobs:
           ANDROID_SDK_ROOT: ${{ env.SDK_ROOT }}
           TWA_SIGNING_KEY_PASSWORD: ${{ secrets.TWA_SIGNING_KEY_PASSWORD || 'android' }}
           TWA_SIGNING_KEY_STORE_PASSWORD: ${{ secrets.TWA_SIGNING_KEY_STORE_PASSWORD || 'android' }}
+          GH_TOKEN: ${{ github.token }}
         run: |
-          set -euo pipefail
-          gradle --no-daemon --stacktrace -p android assembleRelease
+          set +e
+          gradle --no-daemon --stacktrace -p android assembleRelease > "$RUNNER_TEMP/gradle.log" 2>&1
+          CODE=$?
+          if [ "$CODE" -ne 0 ]; then
+            {
+              echo "### Independent Android build failure"
+              echo
+              echo '~~~text'
+              tail -c 18000 "$RUNNER_TEMP/gradle.log"
+              echo
+              echo '~~~'
+            } > "$RUNNER_TEMP/gradle-comment.md"
+            gh api "repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments" --method POST --field body="$(cat "$RUNNER_TEMP/gradle-comment.md")" || true
+            cat "$RUNNER_TEMP/gradle.log"
+            exit "$CODE"
+          fi
+          cat "$RUNNER_TEMP/gradle.log"
 
       - name: Verify APK
         run: |
