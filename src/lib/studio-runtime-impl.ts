@@ -345,6 +345,15 @@ async function runSpace(
     return runChatterbox(cl, input);
   if (space === "Qwen/Qwen3-TTS" && (capability === "tts" || capability === "voice-clone"))
     return runQwen(cl, input, capability);
+  if (space === "openai/whisper" && capability === "speech-to-text") {
+    const sample = input.audio;
+    if (!(sample instanceof Blob) || !sample.size) throw new Error("Speech audio is missing");
+    const r = await cl.predict("/transcribe", [await handle_file(sample), "transcribe"]);
+    const value = Array.isArray(r) ? r : ((r as { data?: unknown[] }).data ?? r);
+    const textValue = artifactText(value).trim();
+    if (!textValue) throw new Error("Whisper returned an empty transcript");
+    return { capability, value: textValue, url: null, provider: provider.name };
+  }
   if (space === "Upsampler/minimax-music3" && capability === "music") {
     const description = String(input.prompt ?? input.text ?? input.description ?? "instrumental music").trim();
     const duration = Math.max(10, Math.min(300, Number(input.duration ?? 30)));
