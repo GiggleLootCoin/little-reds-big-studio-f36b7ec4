@@ -199,7 +199,7 @@ export function BuddyLiveChat() {
       // still opens and the conversation remains usable.
       setRecording(false);
     }
-    const s = stream.current?.active ? stream.current : await openMic();
+    const s = stream.current?.active ? stream.current : await openMic(true);
     if (s) try {
       start(s, true);
       liveWatchdog.current = window.setTimeout(() => {
