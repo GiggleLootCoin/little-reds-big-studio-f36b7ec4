@@ -1,1 +1,2 @@
-Rebuild after microphone test correction.
+Rebuild for fresh Gofile APK delivery.
+Build timestamp: 2026-10-19T18:00Z
