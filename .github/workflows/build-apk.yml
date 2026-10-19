@@ -1,4 +1,4 @@
-name: Build Little Red's Big Studio APK
+name: Build Little Red's Big Studio — Independent APK
 # Rebuild current main so the installable APK contains the latest Android Buddy voice fixes.
 
 on:
@@ -116,13 +116,13 @@ jobs:
           sha256sum "$APK"
           stat -c '%s bytes' "$APK"
           "$SDK_ROOT/build-tools/35.0.0/aapt" dump badging "$APK" | tee "$RUNNER_TEMP/apk-badging.txt"
-          grep -q "package: name='com.littleredbigstudio.app'" "$RUNNER_TEMP/apk-badging.txt"
-          grep -q "application-label:'Little Red’s Big Studio'" "$RUNNER_TEMP/apk-badging.txt"
+          grep -q "package: name='com.littleredbigstudio.independent'" "$RUNNER_TEMP/apk-badging.txt"
+          grep -q "application-label:'Little Red’s Big Studio — Independent'" "$RUNNER_TEMP/apk-badging.txt"
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: little-reds-big-studio-apk-native
+          name: little-reds-big-studio-independent-apk
           path: android/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
           retention-days: 30
@@ -165,7 +165,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          TAG="apk-native-$GITHUB_RUN_NUMBER"
+          TAG="apk-independent-$GITHUB_RUN_NUMBER"
           NOTES_FILE="$RUNNER_TEMP/release-notes.md"
           {
             echo "Native Android build from main commit $GITHUB_SHA."
@@ -179,5 +179,5 @@ jobs:
           } > "$NOTES_FILE"
           gh release create "$TAG" android/app/build/outputs/apk/release/app-release.apk \
             --repo "$GITHUB_REPOSITORY" \
-            --title "Little Red's Big Studio Native APK $GITHUB_RUN_NUMBER" \
+            --title "Little Red's Big Studio Independent APK $GITHUB_RUN_NUMBER" \
             --notes-file "$NOTES_FILE"
