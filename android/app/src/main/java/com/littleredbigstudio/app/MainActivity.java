@@ -26,7 +26,8 @@ import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
-import androidx.webkit.WebViewAssetLoader;
+import java.io.InputStream;
+import java.io.ByteArrayOutputStream;
 
 import java.io.File;
 import java.io.IOException;
@@ -68,7 +69,8 @@ public class MainActivity extends Activity {
     private final AudioManager.OnAudioFocusChangeListener focusListener = focusChange -> {};
     private SpeechRecognizer speechRecognizer;
     private boolean nativeListening = false;
-    private WebViewAssetLoader assetLoader;
+    private static final String BUNDLED_ASSET_HOST =
+            "little-reds-big-studio-f36b7ec4.gigglelootcoin.workers.dev";
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
@@ -110,20 +112,16 @@ public class MainActivity extends Activity {
         });
 
         webView.setBackgroundColor(android.graphics.Color.rgb(11, 5, 6));
-        assetLoader = new WebViewAssetLoader.Builder()
-                .addPathHandler("/assets/", new WebViewAssetLoader.AssetsPathHandler(this))
-                .addPathHandler("/", new WebViewAssetLoader.AssetsPathHandler(this))
-                .build();
         webView.setWebViewClient(new WebViewClient() {
             @Override public WebResourceResponse shouldInterceptRequest(
                     WebView view, WebResourceRequest request) {
-                WebResourceResponse local = assetLoader.shouldInterceptRequest(request.getUrl());
+                WebResourceResponse local = serveBundledStudioAsset(request.getUrl());
                 return local != null ? local : super.shouldInterceptRequest(view, request);
             }
 
             @Override public WebResourceResponse shouldInterceptRequest(
                     WebView view, String url) {
-                WebResourceResponse local = assetLoader.shouldInterceptRequest(android.net.Uri.parse(url));
+                WebResourceResponse local = serveBundledStudioAsset(android.net.Uri.parse(url));
                 return local != null ? local : super.shouldInterceptRequest(view, url);
             }
             @Override public boolean shouldOverrideUrlLoading(
@@ -154,12 +152,59 @@ public class MainActivity extends Activity {
         webView.addJavascriptInterface(new BuddyVoiceBridge(), "AndroidBuddyVoice");
         setContentView(webView);
         initTts();
-        // Run the exact verified web bundle packaged inside this APK. The previous
-        // build depended on the live Cloudflare page at startup, so the APK could
-        // fail or appear blank when that service was unavailable. WebViewAssetLoader
-        // serves /assets/* and root files from android/app/src/main/assets while
-        // normal HTTPS requests continue to use the network for APIs and providers.
-        webView.loadUrl("https://appassets.androidplatform.net/assets/index.html");
+        // Keep the real Studio origin so its relative API calls, cookies, routing,
+        // and provider requests remain same-origin. The HTML and static assets are
+        // intercepted from the APK before the network is consulted, so the app can
+        // boot even when the hosted page is unavailable.
+        webView.loadUrl(START_URL);
+    }
+
+    private WebResourceResponse serveBundledStudioAsset(android.net.Uri uri) {
+        if (uri == null || !BUNDLED_ASSET_HOST.equalsIgnoreCase(uri.getHost())) return null;
+        String path = uri.getPath();
+        if (path == null || path.isEmpty()) path = "/";
+
+        // API/provider calls must stay on the real worker and are deliberately not
+        // intercepted. Only the packaged HTML/JS/CSS/images are served locally.
+        if (path.startsWith("/api/") || path.startsWith("/auth/") || path.startsWith("/provider/")) {
+            return null;
+        }
+
+        String assetPath;
+        if (path.equals("/") || !path.substring(path.lastIndexOf('/') + 1).contains(".")) {
+            assetPath = "assets/index.html";
+        } else if (path.startsWith("/assets/")) {
+            assetPath = "assets/" + path.substring("/assets/".length());
+        } else {
+            // TanStack SPA routes and other extensionless paths use the bundled shell.
+            assetPath = "assets/index.html";
+        }
+
+        try {
+            InputStream input = getAssets().open(assetPath);
+            String mime = mimeTypeFor(assetPath);
+            return new WebResourceResponse(mime, "UTF-8", input);
+        } catch (IOException ignored) {
+            return null;
+        }
+    }
+
+    private String mimeTypeFor(String path) {
+        String lower = path.toLowerCase(Locale.US);
+        if (lower.endsWith(".html")) return "text/html";
+        if (lower.endsWith(".js") || lower.endsWith(".mjs")) return "application/javascript";
+        if (lower.endsWith(".css")) return "text/css";
+        if (lower.endsWith(".json")) return "application/json";
+        if (lower.endsWith(".svg")) return "image/svg+xml";
+        if (lower.endsWith(".png")) return "image/png";
+        if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image/jpeg";
+        if (lower.endsWith(".webp")) return "image/webp";
+        if (lower.endsWith(".gif")) return "image/gif";
+        if (lower.endsWith(".ico")) return "image/x-icon";
+        if (lower.endsWith(".woff2")) return "font/woff2";
+        if (lower.endsWith(".woff")) return "font/woff";
+        if (lower.endsWith(".ttf")) return "font/ttf";
+        return "application/octet-stream";
     }
 
     private void showBootError(String message) {
