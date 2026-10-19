@@ -104,14 +104,19 @@ jobs:
           rm -rf android/app/src/main/assets
           mkdir -p android/app/src/main/assets
           cp -a "$CLIENT_DIR"/. android/app/src/main/assets/
-          mkdir -p android/app/src/main/assets/assets
-          cp -a dist/assets/. android/app/src/main/assets/assets/
-          # Vite emits the Android entry chunk at /assets/<entry>.js, while
-          # relative dynamic imports resolve beneath /assets/assets/. The
-          # WebView asset loader maps /assets/ to the APK asset root, so the
-          # entry chunk must also exist at that root.
-          find dist/assets -maxdepth 1 -type f -name "android-*.js" -exec cp {} android/app/src/main/assets/ \;
+          # Android WebView requests Vite assets as /assets/<filename>.
+          # WebViewAssetLoader maps that URL to the APK assets directory.
+          # Flatten both client and Android build assets into that directory;
+          # the previous build left BuddyLiveChat-*.css under assets/assets/,
+          # causing a CSS 404 and the visible Buddy startup error.
+          if [ -d "$CLIENT_DIR/assets" ]; then
+            cp -a "$CLIENT_DIR/assets"/. android/app/src/main/assets/
+          fi
+          if [ -d dist/assets ]; then
+            cp -a dist/assets/. android/app/src/main/assets/
+          fi
           test -n "$(find android/app/src/main/assets -maxdepth 1 -type f -name 'android-*.js' -print -quit)"
+          test -n "$(find android/app/src/main/assets -maxdepth 1 -type f -name 'BuddyLiveChat-*.css' -print -quit)"
           test -s dist/android.html
           cp dist/android.html android/app/src/main/assets/index.html
           cp dist/android.html android/app/src/main/assets/android.html
@@ -196,6 +201,7 @@ jobs:
           grep -q "application-label:'Little Red’s Big Studio — Independent'" "$RUNNER_TEMP/apk-badging.txt"
           unzip -l "$APK" | grep -q "assets/index.html"
           unzip -l "$APK" | grep -q "assets/android.html"
+          unzip -l "$APK" | grep -q "assets/BuddyLiveChat-.*\.css"
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
