@@ -48,8 +48,8 @@
     "@radix-ui/react-tooltip": "^1.2.8",
     "@tailwindcss/vite": "^4.2.1",
     "@tanstack/react-query": "^5.101.1",
-    "@tanstack/react-router": "^1.170.16",
-    "@tanstack/react-start": "^1.168.26",
+    "@tanstack/react-router": "^1.170.38",
+    "@tanstack/react-start": "^1.169.3",
     "@tanstack/router-plugin": "^1.168.18",
     "@vitejs/plugin-react": "^5.0.4",
     "class-variance-authority": "^0.7.1",
@@ -91,15 +91,17 @@
     "prettier": "^3.7.3",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.56.1",
-    "wrangler": "^4.122.0",
+    "wrangler": "^4.151.1",
     "vite": "^8.2.1"
   },
   "overrides": {
     "onnxruntime-node": "1.30.0",
     "adm-zip": "0.6.1",
-    "sharp": "0.35.4",
+    "sharp": "0.35.5",
     "js-yaml": "4.3.2",
     "brace-expansion": "1.1.21",
-    "undici": "7.30.0"
+    "undici": "7.30.0",
+    "seroval": "1.6.11",
+    "source-map-js": "1.2.2"
   }
 }
