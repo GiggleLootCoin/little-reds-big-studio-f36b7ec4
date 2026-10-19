@@ -1,7 +1,11 @@
-plugins { id 'com.android.application' }
+plugins {
+    id 'com.android.application'
+    id 'org.jetbrains.kotlin.android'
+}
 
 dependencies {
     implementation "androidx.webkit:webkit:1.17.1"
+    implementation "dev.ffmpegkit-maintained:llama-android:0.1.1"
 }
 
 android {
