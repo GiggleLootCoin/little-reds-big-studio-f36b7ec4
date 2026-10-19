@@ -42,7 +42,7 @@ export function BuddyLiveChat() {
     nativeTranscript.current = "";
     const bridge = androidBridge();
     const language = String(getBuddyVoiceProfile().language || "en-US").replace("English", "en-US");
-    if (bridge?.nativeSpeechAvailable?.()) {
+    if (!forceBrowser && bridge?.nativeSpeechAvailable?.()) {
       nativeSpeechAvailable.current = true;
       try {
         const started = bridge.startNativeListening?.(language);
@@ -142,7 +142,7 @@ export function BuddyLiveChat() {
   }, []);
   useEffect(() => { try { localStorage.setItem(KEY, JSON.stringify(messages.slice(-50))); } catch {} }, [messages]);
   async function refreshMics() { try { setMics(await listMicrophones()); } catch { setMics([]); } }
-  async function openMic() {
+  async function openMic(forceBrowser = false) {
     const bridge = androidBridge();
     if (bridge?.nativeSpeechAvailable?.()) {
       try {
@@ -234,7 +234,7 @@ export function BuddyLiveChat() {
       if (startNativeSpeech()) return;
       setRecording(false);
     }
-    const s = await openMic();
+    const s = await openMic(true);
     if (s) try { start(s, false); } catch (e) { setStatus(e instanceof Error ? e.message : "Microphone capture failed."); }
   }
   async function captureAwareness(kind: "camera" | "screen") { if (busyRef.current) return; try { setStatus(kind === "camera" ? "Opening the camera…" : "Opening screen sharing…"); const file = kind === "camera" ? await captureBuddyCameraFrame() : await captureBuddyScreenFrame(); setAttachments((current) => [...current, file].slice(-6)); setStatus(kind === "camera" ? "Camera frame captured. Ask Buddy what you want it to inspect." : "Screen frame captured. Ask Buddy what you want it to inspect."); } catch (error) { setStatus(error instanceof Error ? error.message : `${kind} awareness could not be captured.`); } }
