@@ -26,7 +26,7 @@ jobs:
           cache: npm
 
       - name: Install exactly from lockfile
-        run: npm ci --ignore-scripts --legacy-peer-deps
+        run: npm install --no-audit --no-fund --legacy-peer-deps
 
       - name: Create flow contract tests
         run: node --test tests/create-flow-contract.test.mjs
