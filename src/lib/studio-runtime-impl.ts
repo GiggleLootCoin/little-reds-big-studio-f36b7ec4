@@ -395,6 +395,42 @@ async function runSpace(
     return runChatterbox(cl, input);
   if (space === "Qwen/Qwen3-TTS" && (capability === "tts" || capability === "voice-clone"))
     return runQwen(cl, input, capability);
+  if (space === "Upsampler/minimax-music3" && capability === "music") {
+    const description = String(input.prompt ?? input.text ?? input.description ?? "instrumental music").trim();
+    const duration = Math.max(10, Math.min(300, Number(input.duration ?? 30)));
+    const seed = Number.isFinite(Number(input.seed)) ? Number(input.seed) : 0;
+    const instrumental = input.instrumental !== false;
+    const lyrics = String(input.lyrics ?? "").trim();
+    const r = await cl.predict("/generate_music", [description, duration, seed, instrumental, lyrics]);
+    const value = Array.isArray(r) ? r : ((r as { data?: unknown[] }).data ?? r);
+    const url = artifactUrl(value);
+    if (!url) throw new Error("MiniMax Music 3 returned no playable audio");
+    return { capability, value, url, provider: provider.name };
+  }
+  if (space === "mrfakename/Z-Image-Turbo" && capability === "image") {
+    const prompt = String(input.prompt ?? input.text ?? "").trim();
+    if (!prompt) throw new Error("Image prompt is empty");
+    const width = Math.max(256, Math.min(1536, Number(input.width ?? 1024)));
+    const height = Math.max(256, Math.min(1536, Number(input.height ?? 1024)));
+    const steps = Math.max(4, Math.min(20, Number(input.steps ?? 9)));
+    const seed = Number.isFinite(Number(input.seed)) ? Number(input.seed) : -1;
+    const r = await cl.predict("/generate_image", [prompt, height, width, steps, seed, seed < 0]);
+    const value = Array.isArray(r) ? r : ((r as { data?: unknown[] }).data ?? r);
+    const url = artifactUrl(value);
+    if (!url) throw new Error("Z-Image returned no playable image");
+    return { capability, value, url, provider: provider.name };
+  }
+  if (space === "owiedotch/demucs-stem-separation" && capability === "vocal-separation") {
+    const sample = input.audio;
+    if (!(sample instanceof Blob) || !sample.size) throw new Error("Audio input is missing");
+    const r = await cl.predict("/inference", [
+      await handle_file(sample), "htdemucs_ft", true, true, true, true, false, 320
+    ]);
+    const value = Array.isArray(r) ? r : ((r as { data?: unknown[] }).data ?? r);
+    const url = artifactUrl(value);
+    if (!output(value)) throw new Error("Demucs returned no stems");
+    return { capability, value, url, provider: provider.name };
+  }
   const api = endpoints(await getApi(space));
   const candidates = Object.entries(api)
     .map(([name, ep]) => ({ name, ep, score: score(name, ep, capability, input) }))
