@@ -158,7 +158,10 @@ jobs:
               echo "### Independent Android build failure"
               echo
               echo '~~~text'
-              tail -c 18000 "$RUNNER_TEMP/gradle.log"
+              echo "---- beginning ----"
+              head -n 220 "$RUNNER_TEMP/gradle.log"
+              echo "---- end ----"
+              tail -n 220 "$RUNNER_TEMP/gradle.log"
               echo
               echo '~~~'
             } > "$RUNNER_TEMP/gradle-comment.md"
