@@ -13,7 +13,7 @@ android {
     compileSdk 36
 
     defaultConfig {
-        applicationId 'com.littleredbigstudio.app'
+        applicationId 'com.littleredbigstudio.independent'
         minSdk 24
         targetSdk 35
         versionCode Integer.parseInt(System.getenv("GITHUB_RUN_NUMBER") ?: "1")
