@@ -106,10 +106,12 @@ jobs:
           cp -a "$CLIENT_DIR"/. android/app/src/main/assets/
           test -s dist/android.html
           cp dist/android.html android/app/src/main/assets/index.html
+          cp dist/android.html android/app/src/main/assets/android.html
           mkdir -p android/app/src/main/res/drawable-nodpi
           cp 1784996969001.png android/app/src/main/res/drawable-nodpi/studio_launcher.png
           test -s android/app/src/main/res/drawable-nodpi/studio_launcher.png
           test -s android/app/src/main/assets/index.html
+          test -s android/app/src/main/assets/android.html
           test "$(find android/app/src/main/assets -type f | wc -l)" -gt 3
           grep -q '<script type="module"' android/app/src/main/assets/index.html
           grep -q 'assets/' android/app/src/main/assets/index.html
@@ -184,6 +186,8 @@ jobs:
           "$SDK_ROOT/build-tools/35.0.0/aapt" dump badging "$APK" | tee "$RUNNER_TEMP/apk-badging.txt"
           grep -q "package: name='com.littleredbigstudio.independent'" "$RUNNER_TEMP/apk-badging.txt"
           grep -q "application-label:'Little Red’s Big Studio — Independent'" "$RUNNER_TEMP/apk-badging.txt"
+          unzip -l "$APK" | grep -q "assets/index.html"
+          unzip -l "$APK" | grep -q "assets/android.html"
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
