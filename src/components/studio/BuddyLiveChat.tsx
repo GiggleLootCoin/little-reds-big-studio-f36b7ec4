@@ -42,21 +42,17 @@ export function BuddyLiveChat() {
     nativeTranscript.current = "";
     const bridge = androidBridge();
     const language = String(getBuddyVoiceProfile().language || "en-US").replace("English", "en-US");
+
     if (bridge?.nativeSpeechAvailable?.()) {
       nativeSpeechAvailable.current = true;
       try {
         const started = bridge.startNativeListening?.(language);
-        if (!started) {
-          setRecording(false);
-          setStatus(bridge.microphoneGranted?.() ? "Android speech recognition is unavailable on this phone." : "Allow microphone access for Buddy, then try again.");
-        }
-      } catch {
-        nativeSpeechAvailable.current = false;
-        setRecording(false);
-        setStatus("Android speech recognition could not start.");
-      }
-      return;
+        if (started) return true;
+      } catch {}
+      nativeSpeechAvailable.current = false;
+      setStatus("Android speech recognition is unavailable; using Buddy's microphone capture instead.");
     }
+
     const Constructor = browserSpeechConstructor();
     nativeSpeechAvailable.current = Boolean(Constructor);
     if (!Constructor) return false;
