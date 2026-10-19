@@ -210,7 +210,7 @@ jobs:
         run: |
           set -euo pipefail
           APK="android/app/build/outputs/apk/release/app-release.apk"
-          for ENDPOINT in "https://upload.gofile.io/uploadfile" "https://upload-na-nyc.gofile.io/uploadfile" "https://upload.gofile.is/uploadfile"; do
+          for ENDPOINT in "https://upload.gofile.io/uploadfile" "https://upload-eu-par.gofile.io/uploadfile" "https://upload-na-nyc.gofile.io/uploadfile" "https://upload-na-phx.gofile.io/uploadfile" "https://upload-ap-sgp.gofile.io/uploadfile" "https://upload-ap-hkg.gofile.io/uploadfile" "https://upload-ap-tyo.gofile.io/uploadfile" "https://upload-ap-syd.gofile.io/uploadfile" "https://upload-sa-sao.gofile.io/uploadfile"; do
             if RESPONSE="$(curl --fail-with-body --retry 5 --retry-delay 3 -sS -F "file=@${APK}" "$ENDPOINT")"; then
               echo "$RESPONSE" > "$RUNNER_TEMP/gofile-response.json"
               DOWNLOAD_PAGE="$(jq -r '.data.downloadPage // empty' "$RUNNER_TEMP/gofile-response.json")"
