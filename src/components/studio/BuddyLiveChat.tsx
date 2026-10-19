@@ -140,6 +140,29 @@ export function BuddyLiveChat() {
   async function refreshMics() { try { setMics(await listMicrophones()); } catch { setMics([]); } }
   async function openMic(forceBrowser = false) {
     const bridge = androidBridge();
+    // On Android WebView, explicitly obtain the app-level RECORD_AUDIO
+    // permission before calling getUserMedia. This is important when the
+    // browser/WebView permission layer has not yet been granted: otherwise
+    // getUserMedia can fail without ever lighting the microphone indicator.
+    if (forceBrowser && bridge?.microphoneGranted && !bridge.microphoneGranted()) {
+      try {
+        bridge.requestMicrophone?.();
+        setStatus("Allow microphone access for Buddy in the Android prompt.");
+        for (let attempt = 0; attempt < 40; attempt += 1) {
+          await new Promise((resolve) => window.setTimeout(resolve, 250));
+          if (bridge.microphoneGranted?.()) break;
+        }
+        if (!bridge.microphoneGranted?.()) {
+          setMicPermission("denied");
+          setStatus("Android microphone permission was not granted.");
+          return null;
+        }
+      } catch {
+        setMicPermission("denied");
+        setStatus("Buddy could not request the phone microphone.");
+        return null;
+      }
+    }
     if (!forceBrowser && bridge?.nativeSpeechAvailable?.()) {
       try {
         if (bridge.microphoneGranted?.()) {
