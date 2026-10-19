@@ -44,8 +44,9 @@ const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
 function spaceId(space: string) {
   return space.replace(/^https?:\/\/huggingface\.co\/spaces\//, "").replace(/\/$/, "");
 }
-function proxyOrigin(space: string) {
-  return `${window.location.origin}/api/hf-space/${encodeURIComponent(spaceId(space))}`;
+function spaceOrigin(space: string) {
+  const id = spaceId(space);
+  return "https://" + id.replace(/\\//g, "-").replace(/[^a-zA-Z0-9-]/g, "-") + ".hf.space";
 }
 function endpoints(api: Api) {
   return { ...(api.named_endpoints ?? {}), ...(api.unnamed_endpoints ?? {}) };
@@ -170,7 +171,7 @@ async function connect(space: string) {
   const id = spaceId(space);
   const existing = clients.get(id);
   if (existing) return existing;
-  const sources = typeof window === "undefined" ? [id] : [id, proxyOrigin(id)];
+  const sources = [id];
   const promise = (async () => {
     let last: unknown;
     for (const source of sources)
@@ -424,7 +425,7 @@ async function runSpace(
       return {
         capability,
         value,
-        url: url?.startsWith("/") ? `${proxyOrigin(space)}${url}` : url,
+        url: url?.startsWith("/") ? `${spaceOrigin(space)}${url}` : url,
         provider: provider.name,
       };
     } catch (e) {
