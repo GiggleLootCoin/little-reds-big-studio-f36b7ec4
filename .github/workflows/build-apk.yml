@@ -212,7 +212,7 @@ jobs:
           exit 1
 
       - name: Publish persistent GitHub Release
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: always() && success()
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -220,14 +220,14 @@ jobs:
           TAG="apk-independent-$GITHUB_RUN_NUMBER"
           NOTES_FILE="$RUNNER_TEMP/release-notes.md"
           {
-            echo "Native Android build from main commit $GITHUB_SHA."
+            echo "Native Android build from $GITHUB_REF commit $GITHUB_SHA."
             echo
             echo "**Free Gofile download:** $GOFILE_DOWNLOAD_PAGE"
             echo
             echo "**APK SHA-256:**"
             sha256sum android/app/build/outputs/apk/release/app-release.apk
             echo
-            echo "The APK contains the verified Studio web bundle and native Android Buddy voice/microphone bridge."
+            echo "The APK contains the verified Studio web bundle and native Android Buddy voice/microphone bridge."\n            echo\n            echo "This release is the persistent fallback download when Gofile is unavailable."
           } > "$NOTES_FILE"
           gh release create "$TAG" android/app/build/outputs/apk/release/app-release.apk \
             --repo "$GITHUB_REPOSITORY" \
