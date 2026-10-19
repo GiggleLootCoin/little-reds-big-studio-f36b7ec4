@@ -301,6 +301,8 @@ export function BuddyLiveChat() {
     setBuddyStatus("working", { message: "Buddy is speaking…" });
     const v = getBuddyVoiceProfile();
     const isRedClone = v.mode === "clone" || (v.mode === "preset" && v.speaker === "Red");
+    // AndroidBuddyVoice is used by playGeneratedAudioNatively so generated
+    // clone audio reaches the phone speaker through the native MediaPlayer path.
     try {
       // IMPORTANT: a saved Red clone must never be pre-empted by Android's
       // generic system TTS. The previous implementation did exactly that:
