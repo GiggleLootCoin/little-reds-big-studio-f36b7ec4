@@ -5,7 +5,8 @@ import "@/styles.css";
 
 const BuddyLiveChat = lazy(async () => {
   try {
-    return await import("@/components/studio/BuddyLiveChat");
+    const module = await import("@/components/studio/BuddyLiveChat");
+    return { default: module.BuddyLiveChat };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.error("[Studio] Buddy module failed to load:", error);
