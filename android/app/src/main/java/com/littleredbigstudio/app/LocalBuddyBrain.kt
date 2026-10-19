@@ -20,8 +20,8 @@ import java.net.URL
  */
 object LocalBuddyBrain {
     const val MODEL_URL =
-        "https://huggingface.co/bartowski/Qwen_Qwen3.5-0.8B-GGUF/resolve/main/Qwen3.5-0.8B-Q4_K_M.gguf"
-    const val MODEL_FILE = "buddy-qwen3.5-0.8b-q4_k_m.gguf"
+        "https://huggingface.co/QuantFactory/Qwen3-0.6B-GGUF/resolve/main/Qwen3-0.6B.Q4_K_M.gguf"
+    const val MODEL_FILE = "buddy-qwen3-0.6b-q4_k_m.gguf"
 
     interface Callback {
         fun onResult(text: String)
