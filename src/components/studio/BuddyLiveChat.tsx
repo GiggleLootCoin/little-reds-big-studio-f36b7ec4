@@ -181,24 +181,13 @@ export function BuddyLiveChat() {
   function stopMonitor() { if (silenceTimer.current) clearTimeout(silenceTimer.current); silenceTimer.current = null; if (raf.current) cancelAnimationFrame(raf.current); raf.current = null; try { void ctx.current?.close(); } catch {} ctx.current = null; }
   function monitor(s: MediaStream) { try { const c = new AudioContext(), a = c.createAnalyser(), src = c.createMediaStreamSource(s); ctx.current = c; a.fftSize = 2048; src.connect(a); const d = new Uint8Array(a.fftSize); const tick = () => { if (!liveRef.current || rec.current?.state !== "recording") return; a.getByteTimeDomainData(d); let sum = 0; for (const v of d) { const n = (v - 128) / 128; sum += n * n; } const rms = Math.sqrt(sum / d.length); if (rms > 0.018) { speech.current = true; if (silenceTimer.current) clearTimeout(silenceTimer.current); silenceTimer.current = null; } else if (speech.current && !silenceTimer.current) silenceTimer.current = window.setTimeout(() => { silenceTimer.current = null; if (rec.current?.state === "recording") rec.current.stop(); }, 1200); raf.current = requestAnimationFrame(tick); }; raf.current = requestAnimationFrame(tick); } catch { setStatus("Live microphone is active. Tap End Buddy when you finish speaking."); } }
   async function stt(blob: Blob) { if (!blob.size) throw Error("I didn't catch any audio. Try again."); setStatus("Transcribing what you said…"); try { const r = await runStudioJob("speech-to-text", { audio: blob }, setStatus); const t = artifactText(r.value).trim(); if (!t) throw Error("I couldn't understand that. Try again."); return t; } catch (error) { const browserText = nativeTranscript.current.trim(); if (browserText) { setStatus("Speech service is busy; using your phone's speech recognition."); return browserText; } throw error; } }
-  function start(s: MediaStream, isLive: boolean) { if (typeof MediaRecorder === "undefined") throw Error("This browser cannot capture microphone audio."); const type = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/ogg"].find((x) => MediaRecorder.isTypeSupported(x)); const r = type ? new MediaRecorder(s, { mimeType: type }) : new MediaRecorder(s); chunks.current = []; speech.current = false; r.ondataavailable = (e) => { if (e.data.size) chunks.current.push(e.data); }; r.onstop = () => { stopMonitor(); const fastTranscript = nativeTranscript.current.trim(); stopNativeSpeech(); const b = new Blob(chunks.current, { type: r.mimeType || "audio/webm" }); chunks.current = []; rec.current = null; setRecording(false); if (fastTranscript) { setTranscript(fastTranscript); void answer(fastTranscript, true).catch((e) => setStatus(e instanceof Error ? e.message : "Buddy could not respond.")); } else if (b.size) void stt(b).then((t) => { setTranscript(t); return answer(t, true); }).catch((e) => setStatus(e instanceof Error ? e.message : "Speech recognition failed.")); }; rec.current = r; r.start(250); setRecording(true); setBuddyStatus("listening", { message: "Buddy is listening…" }); setStatus(isLive ? "Listening… pause naturally or tap End Buddy." : "Recording… tap Stop & Send when you're finished."); startNativeSpeech(); if (isLive) monitor(s); }
+  function start(s: MediaStream, isLive: boolean) { if (typeof MediaRecorder === "undefined") throw Error("This browser cannot capture microphone audio."); const type = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/ogg"].find((x) => MediaRecorder.isTypeSupported(x)); const r = type ? new MediaRecorder(s, { mimeType: type }) : new MediaRecorder(s); chunks.current = []; speech.current = false; r.ondataavailable = (e) => { if (e.data.size) chunks.current.push(e.data); }; r.onstop = () => { stopMonitor(); const fastTranscript = nativeTranscript.current.trim(); stopNativeSpeech(); const b = new Blob(chunks.current, { type: r.mimeType || "audio/webm" }); chunks.current = []; rec.current = null; setRecording(false); if (fastTranscript) { setTranscript(fastTranscript); void answer(fastTranscript, true).catch((e) => setStatus(e instanceof Error ? e.message : "Buddy could not respond.")); } else if (b.size) void stt(b).then((t) => { setTranscript(t); return answer(t, true); }).catch((e) => setStatus(e instanceof Error ? e.message : "Speech recognition failed.")); }; rec.current = r; r.start(250); setRecording(true); setBuddyStatus("listening", { message: "Buddy is listening…" }); setStatus(isLive ? "Listening… pause naturally or tap End Buddy." : "Recording… tap Stop & Send when you're finished."); if (isLive) monitor(s); }
   async function beginLive() {
     if (!liveRef.current || busyRef.current || speakingRef.current) return;
-    const bridge = androidBridge();
     if (rec.current) return;
-    if (bridge?.nativeSpeechAvailable?.()) {
-      if (!bridge.microphoneGranted?.()) {
-        await openMic();
-        if (!bridge.microphoneGranted?.()) return;
-      }
-      setRecording(true);
-      setMicPermission("granted");
-      if (startNativeSpeech()) return;
-      // Native SpeechRecognizer exists but could not actually start. Fall through
-      // to the browser MediaRecorder + server STT path so the physical microphone
-      // still opens and the conversation remains usable.
-      setRecording(false);
-    }
+    // Always open the real Android microphone first. Android's built-in
+    // SpeechRecognizer is optional and can report availability even when its
+    // recognition service cannot actually start. MediaRecorder + server STT is the reliable path.
     const s = stream.current?.active ? stream.current : await openMic(true);
     if (s) try {
       start(s, true);
@@ -218,18 +207,9 @@ export function BuddyLiveChat() {
       return;
     }
     void unlockBuddyAudio();
-    const bridge = androidBridge();
-    if (bridge?.nativeSpeechAvailable?.()) {
-      if (!bridge.microphoneGranted?.()) {
-        await openMic();
-        if (!bridge.microphoneGranted?.()) return;
-      }
-      setMicPermission("granted");
-      setRecording(true);
-      setStatus("Listening… speak to Buddy.");
-      if (startNativeSpeech()) return;
-      setRecording(false);
-    }
+    // Use the actual phone microphone capture path. The recorded audio is sent
+    // to the free server-side STT chain, avoiding Android SpeechRecognizer
+    // services that may be installed but unavailable/offline.
     const s = await openMic(true);
     if (s) try { start(s, false); } catch (e) { setStatus(e instanceof Error ? e.message : "Microphone capture failed."); }
   }
