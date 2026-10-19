@@ -351,7 +351,7 @@ async function runSpace(
     if (!(sample instanceof Blob) || !sample.size) throw new Error("Speech audio is missing");
     const r = await cl.predict("/transcribe", [await handle_file(sample), "transcribe"]);
     const value = Array.isArray(r) ? r : ((r as { data?: unknown[] }).data ?? r);
-    const textValue = artifactText(value).trim();
+    const textValue = (typeof value === "string" ? value : JSON.stringify(value ?? "")).trim();
     if (!textValue) throw new Error("Whisper returned an empty transcript");
     return { capability, value: textValue, url: null, provider: provider.name };
   }
