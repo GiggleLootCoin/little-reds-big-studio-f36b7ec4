@@ -1,0 +1,45 @@
+name: Build Fresh Standalone Android APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [from-scratch-free-ai-2026-10-03]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - name: Install Android SDK
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+      - name: Install Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Generate Gradle wrapper
+        run: gradle -p fresh-android wrapper --gradle-version 8.9
+      - name: Build release APK
+        run: fresh-android/gradlew -p fresh-android :app:assembleRelease --no-daemon
+      - name: Verify APK
+        run: |
+          APK=fresh-android/app/build/outputs/apk/release/app-release.apk
+          test -s "$APK"
+          unzip -tq "$APK"
+          $ANDROID_HOME/build-tools/35.0.0/apksigner verify --verbose "$APK"
+          sha256sum "$APK"
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: little-reds-big-studio-fresh-native
+          path: fresh-android/app/build/outputs/apk/release/app-release.apk
+          retention-days: 30
